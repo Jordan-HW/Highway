@@ -6,6 +6,7 @@ import Fournisseurs from './pages/Fournisseurs'
 import Produits from './pages/Produits'
 import Clients from './pages/Clients'
 import Stock from './pages/Stock'
+import Utilisateurs from './pages/Utilisateurs'
 import { CommandesVente, CommandesAchat, Expeditions, Factures } from './pages/Placeholders'
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/commandes-achat" element={<CommandesAchat />} />
           <Route path="/expeditions" element={<Expeditions />} />
           <Route path="/factures" element={<Factures />} />
+          <Route path="/utilisateurs" element={<Utilisateurs />} />
         </Routes>
       </main>
       <ToastContainer />
