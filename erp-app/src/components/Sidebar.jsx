@@ -1,8 +1,9 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Users, ShoppingCart, Truck,
-  Warehouse, FileText, Building2, ChevronRight
+  Warehouse, FileText, Building2
 } from 'lucide-react'
+import highwayLogo from '../assets/highway-logo.png'
 
 const navItems = [
   {
@@ -47,8 +48,11 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <h1>ERP Distribution</h1>
-        <p>v1.0</p>
+        <img
+          src={highwayLogo}
+          alt="Highway"
+          style={{ width: '100%', height: 80, objectFit: 'cover', objectPosition: 'center', borderRadius: 8 }}
+        />
       </div>
       <nav className="sidebar-nav">
         {navItems.map(section => (
