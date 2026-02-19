@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Users, ShoppingCart, Truck,
-  Warehouse, FileText, Building2
+  Warehouse, FileText, Building2, ShieldCheck
 } from 'lucide-react'
 import highwayLogo from '../assets/highway-logo.png'
 
@@ -38,6 +38,12 @@ const navItems = [
     section: 'Finance',
     items: [
       { to: '/factures', icon: FileText, label: 'Factures' },
+    ]
+  },
+  {
+    section: 'Administration',
+    items: [
+      { to: '/utilisateurs', icon: ShieldCheck, label: 'Utilisateurs & Accès' },
     ]
   }
 ]
