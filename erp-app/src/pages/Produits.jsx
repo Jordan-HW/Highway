@@ -160,7 +160,8 @@ export default function Produits() {
     if (!form.libelle.trim()) return toast('Le libellé est obligatoire', 'error')
     if (!form.marque_id) return toast('La marque est obligatoire', 'error')
     setSaving(true)
-    const payload = { ...form }
+    // Exclure les objets de jointure retournés par Supabase (marques, categories, fournisseurs...)
+    const { marques: _m, categories: _c, fournisseurs: _f, ...payload } = { ...form }
     // Clean empty strings to null for numeric fields
     ;['poids_brut_kg','poids_net_kg','volume_m3','longueur_cm','largeur_cm','hauteur_cm',
       'temperature_min_c','temperature_max_c','dlc_duree_jours','pcb'].forEach(f => {
