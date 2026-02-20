@@ -25,7 +25,7 @@ export default function Sidebar({ user, onLogout }) {
       section: 'Catalogue',
       show: !isComptable,
       items: [
-        { to: '/fournisseurs', icon: Building2, label: 'Fournisseurs', show: !isComptable },
+        { to: '/marques', icon: Building2, label: 'Marques', show: !isComptable },
         { to: '/produits', icon: Package, label: 'Produits', show: !isComptable },
       ]
     },
