@@ -3,6 +3,93 @@ import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { Plus, Search, X, Package, Edit2, Trash2, ChevronDown } from 'lucide-react'
 
+function PhotoPanel({ product, onClose }) {
+  if (!product) return null
+  return (
+    <>
+      <div
+        onClick={onClose}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          background: 'rgba(0,0,0,0.25)',
+        }}
+      />
+      <div style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 201,
+        width: 380, background: 'var(--surface)', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
+        display: 'flex', flexDirection: 'column', animation: 'slideIn .2s ease',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)' }}>
+          <span style={{ fontWeight: 600, fontSize: 15 }}>Photo produit</span>
+          <button className="btn-icon" onClick={onClose}><X size={18} /></button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {product.photo_url ? (
+            <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 260 }}>
+              <img
+                src={product.photo_url}
+                alt={product.libelle}
+                style={{ maxWidth: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: 8 }}
+              />
+            </div>
+          ) : (
+            <div style={{ background: 'var(--surface-2)', borderRadius: 12, minHeight: 260, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-muted)' }}>
+              <Package size={40} />
+              <span style={{ fontSize: 13 }}>Aucune photo disponible</span>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Produit</div>
+              <div style={{ fontWeight: 600, fontSize: 15 }}>{product.libelle}</div>
+              {product.marque && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{product.marque}</div>}
+            </div>
+            {product.fournisseurs?.nom && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Fournisseur</div>
+                <div style={{ fontSize: 13 }}>{product.fournisseurs.nom}</div>
+              </div>
+            )}
+            {product.ean13 && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>EAN13</div>
+                <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)' }}>{product.ean13}</div>
+              </div>
+            )}
+            {product.conditionnement && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Conditionnement</div>
+                <div style={{ fontSize: 13 }}>{product.conditionnement} {product.pcb > 1 ? `(${product.pcb} pcs)` : ''}</div>
+              </div>
+            )}
+            {product.description && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Description</div>
+                <div style={{ fontSize: 13, lineHeight: 1.5 }}>{product.description}</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)' }}>
+          <button className="btn btn-secondary" style={{ width: '100%' }} onClick={onClose}>
+            Fermer
+          </button>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes slideIn {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+      `}</style>
+    </>
+  )
+}
+
 const TEMP = ['ambiant', 'frais', 'surgelé']
 const STATUTS = ['actif', 'inactif', 'en_référencement', 'arrêté']
 const DLC_TYPES = ['DLC', 'DLUO', 'DDM']
@@ -32,6 +119,7 @@ export default function Produits() {
   const [editing, setEditing] = useState(null)
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
+  const [photoPanel, setPhotoPanel] = useState(null)
 
   useEffect(() => { fetchAll() }, [])
 
@@ -68,7 +156,7 @@ export default function Produits() {
     if (!form.libelle.trim()) return toast('Le libellé est obligatoire', 'error')
     if (!form.fournisseur_id) return toast('Le fournisseur est obligatoire', 'error')
     setSaving(true)
-    const { fournisseurs: _f, ...payload } = { ...form }
+    const payload = { ...form }
     // Clean empty strings to null for numeric fields
     ;['poids_brut_kg','poids_net_kg','volume_m3','longueur_cm','largeur_cm','hauteur_cm',
       'temperature_min_c','temperature_max_c','dlc_duree_jours','pcb'].forEach(f => {
@@ -165,7 +253,7 @@ export default function Produits() {
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           {row.photo_url ? (
-                            <img src={row.photo_url} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />
+                            <img src={row.photo_url} alt="" onClick={e => { e.stopPropagation(); setPhotoPanel(row) }} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)', cursor: 'zoom-in' }} />
                           ) : (
                             <div style={{ width: 36, height: 36, borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <Package size={16} color="var(--text-muted)" />
@@ -267,7 +355,13 @@ export default function Produits() {
                     </div>
                     {form.photo_url && (
                       <div className="form-full" style={{ marginTop: 4 }}>
-                        <img src={form.photo_url} alt="" style={{ height: 80, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', padding: 4 }} />
+                        <img
+                          src={form.photo_url}
+                          alt=""
+                          onClick={() => setPhotoPanel(form)}
+                          style={{ height: 80, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', padding: 4, cursor: 'zoom-in' }}
+                        />
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Cliquez pour agrandir</div>
                       </div>
                     )}
                   </div>
@@ -439,6 +533,7 @@ export default function Produits() {
           </div>
         </div>
       )}
+      {photoPanel && <PhotoPanel product={photoPanel} onClose={() => setPhotoPanel(null)} />}
     </div>
   )
 }
