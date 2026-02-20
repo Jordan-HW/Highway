@@ -4,7 +4,7 @@ import Sidebar from './components/Sidebar'
 import { ToastContainer } from './components/Toast'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
-import Fournisseurs from './pages/Fournisseurs'
+import Marques from './pages/Marques'
 import Produits from './pages/Produits'
 import Clients from './pages/Clients'
 import Stock from './pages/Stock'
@@ -46,7 +46,7 @@ export default function App() {
           {/* Catalogue — admin + commercial */}
           {!isComptable && (
             <>
-              <Route path="/fournisseurs" element={<Fournisseurs />} />
+              <Route path="/marques" element={<Marques />} />
               <Route path="/produits" element={<Produits />} />
               <Route path="/clients" element={<Clients />} />
               <Route path="/commandes-vente" element={<CommandesVente />} />
