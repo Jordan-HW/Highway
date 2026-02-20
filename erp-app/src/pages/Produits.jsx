@@ -46,10 +46,10 @@ function PhotoPanel({ product, onClose }) {
               <div style={{ fontWeight: 600, fontSize: 15 }}>{product.libelle}</div>
               {product.marque && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{product.marque}</div>}
             </div>
-            {product.fournisseurs?.nom && (
+            {product.marques?.nom && (
               <div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Fournisseur</div>
-                <div style={{ fontSize: 13 }}>{product.fournisseurs.nom}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Marque</div>
+                <div style={{ fontSize: 13 }}>{product.marques.nom}</div>
               </div>
             )}
             {product.ean13 && (
@@ -96,22 +96,24 @@ const DLC_TYPES = ['DLC', 'DLUO', 'DDM']
 
 const emptyForm = {
   ean13: '', libelle: '', libelle_court: '', marque: '', description: '',
-  fournisseur_id: '', categorie_id: '',
+  marque_id: '', categorie_id: '',
   conditionnement: '', unite_vente: 'carton', pcb: 1,
   poids_brut_kg: '', poids_net_kg: '', volume_m3: '',
   longueur_cm: '', largeur_cm: '', hauteur_cm: '',
   temperature_stockage: 'ambiant', temperature_min_c: '', temperature_max_c: '',
   dlc_type: 'DLC', dlc_duree_jours: '',
-  ref_fournisseur: '', photo_url: '', fiche_technique_url: '',
+  ref_marque: '', photo_url: '', fiche_technique_url: '',
   statut: 'actif', code_douanier: '', pays_origine: ''
 }
 
 export default function Produits() {
   const [rows, setRows] = useState([])
-  const [fournisseurs, setFournisseurs] = useState([])
+  const [marques, setMarques] = useState([])
+  const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [filterFournisseur, setFilterFournisseur] = useState('')
+  const [filterMarque, setFilterMarque] = useState('')
+  const [filterCategorie, setFilterCategorie] = useState('')
   const [filterStatut, setFilterStatut] = useState('')
   const [modal, setModal] = useState(false)
   const [detailModal, setDetailModal] = useState(null)
@@ -125,12 +127,14 @@ export default function Produits() {
 
   async function fetchAll() {
     setLoading(true)
-    const [{ data: produits }, { data: fours }] = await Promise.all([
-      supabase.from('produits').select('*, fournisseurs(nom)').order('libelle'),
-      supabase.from('fournisseurs').select('id, nom').eq('actif', true).order('nom')
+    const [{ data: produits }, { data: mqs }, { data: cats }] = await Promise.all([
+      supabase.from('produits').select('*, marques(nom), categories(nom)').order('libelle'),
+      supabase.from('marques').select('id, nom').eq('actif', true).order('nom'),
+      supabase.from('categories').select('id, nom').order('nom'),
     ])
     setRows(produits || [])
-    setFournisseurs(fours || [])
+    setMarques(mqs || [])
+    setCategories(cats || [])
     setLoading(false)
   }
 
@@ -142,7 +146,7 @@ export default function Produits() {
   }
 
   function openEdit(row) {
-    setForm({ ...emptyForm, ...row, fournisseur_id: row.fournisseur_id || '' })
+    setForm({ ...emptyForm, ...row, marque_id: row.marque_id || '' })
     setEditing(row.id)
     setActiveTab('general')
     setModal(true)
@@ -154,7 +158,7 @@ export default function Produits() {
 
   async function save() {
     if (!form.libelle.trim()) return toast('Le libellé est obligatoire', 'error')
-    if (!form.fournisseur_id) return toast('Le fournisseur est obligatoire', 'error')
+    if (!form.marque_id) return toast('La marque est obligatoire', 'error')
     setSaving(true)
     const payload = { ...form }
     // Clean empty strings to null for numeric fields
@@ -188,9 +192,10 @@ export default function Produits() {
     const matchSearch = r.libelle.toLowerCase().includes(search.toLowerCase()) ||
       (r.ean13 || '').includes(search) ||
       (r.marque || '').toLowerCase().includes(search.toLowerCase())
-    const matchFour = !filterFournisseur || r.fournisseur_id === filterFournisseur
+    const matchMarque = !filterMarque || r.marque_id === filterMarque
+    const matchCategorie = !filterCategorie || r.categorie_id === filterCategorie
     const matchStatut = !filterStatut || r.statut === filterStatut
-    return matchSearch && matchFour && matchStatut
+    return matchSearch && matchMarque && matchCategorie && matchStatut
   })
 
   const tempBadge = t => t === 'surgelé' ? 'badge-blue' : t === 'frais' ? 'badge-blue' : 'badge-gray'
@@ -201,7 +206,7 @@ export default function Produits() {
       <div className="page-header">
         <div>
           <h2>Catalogue Produits</h2>
-          <p>{filtered.length} produit{filtered.length > 1 ? 's' : ''} {filterFournisseur ? `— ${fournisseurs.find(f=>f.id===filterFournisseur)?.nom}` : ''}</p>
+          <p>{filtered.length} produit{filtered.length > 1 ? 's' : ''} {filterMarque ? `— ${marques.find(f=>f.id===filterMarque)?.nom}` : ''}</p>
         </div>
         <button className="btn btn-primary" onClick={openCreate}>
           <Plus size={15} /> Nouveau produit
@@ -214,9 +219,13 @@ export default function Produits() {
             <Search />
             <input placeholder="Libellé, EAN, marque..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <select className="filter-select" value={filterFournisseur} onChange={e => setFilterFournisseur(e.target.value)}>
-            <option value="">Tous les fournisseurs</option>
-            {fournisseurs.map(f => <option key={f.id} value={f.id}>{f.nom}</option>)}
+          <select className="filter-select" value={filterMarque} onChange={e => setFilterMarque(e.target.value)}>
+            <option value="">Toutes les marques</option>
+            {marques.map(f => <option key={f.id} value={f.id}>{f.nom}</option>)}
+          </select>
+          <select className="filter-select" value={filterCategorie} onChange={e => setFilterCategorie(e.target.value)}>
+            <option value="">Toutes les catégories</option>
+            {categories.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
           </select>
           <select className="filter-select" value={filterStatut} onChange={e => setFilterStatut(e.target.value)}>
             <option value="">Tous les statuts</option>
@@ -232,7 +241,8 @@ export default function Produits() {
                   <tr>
                     <th>Produit</th>
                     <th>EAN</th>
-                    <th>Fournisseur</th>
+                    <th>Marque</th>
+                    <th>Catégorie</th>
                     <th>Conditionnement</th>
                     <th>Stockage</th>
                     <th>DLC</th>
@@ -242,7 +252,7 @@ export default function Produits() {
                 </thead>
                 <tbody>
                   {filtered.length === 0 ? (
-                    <tr><td colSpan={8}>
+                    <tr><td colSpan={9}>
                       <div className="empty-state">
                         <Package />
                         <p>Aucun produit. Créez votre premier produit !</p>
@@ -266,7 +276,8 @@ export default function Produits() {
                         </div>
                       </td>
                       <td><span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{row.ean13 || '—'}</span></td>
-                      <td>{row.fournisseurs?.nom || '—'}</td>
+                      <td>{row.marques?.nom || '—'}</td>
+                      <td>{row.categories?.nom ? <span className="badge badge-gray">{row.categories.nom}</span> : '—'}</td>
                       <td>{row.conditionnement || '—'} {row.pcb > 1 ? `(${row.pcb} pcs)` : ''}</td>
                       <td><span className={`badge ${tempBadge(row.temperature_stockage)}`}>{row.temperature_stockage}</span></td>
                       <td>{row.dlc_type && row.dlc_duree_jours ? `${row.dlc_type} ${row.dlc_duree_jours}j` : '—'}</td>
@@ -325,10 +336,10 @@ export default function Produits() {
                       <input value={form.marque || ''} onChange={e => set('marque', e.target.value)} />
                     </div>
                     <div className="form-group">
-                      <label>Fournisseur *</label>
-                      <select value={form.fournisseur_id} onChange={e => set('fournisseur_id', e.target.value)}>
+                      <label>Marque *</label>
+                      <select value={form.marque_id} onChange={e => set('marque_id', e.target.value)}>
                         <option value="">Sélectionner...</option>
-                        {fournisseurs.map(f => <option key={f.id} value={f.id}>{f.nom}</option>)}
+                        {marques.map(f => <option key={f.id} value={f.id}>{f.nom}</option>)}
                       </select>
                     </div>
                     <div className="form-group">
@@ -336,8 +347,8 @@ export default function Produits() {
                       <input value={form.ean13 || ''} onChange={e => set('ean13', e.target.value)} placeholder="Code-barres 13 chiffres" style={{ fontFamily: 'var(--font-mono)' }} />
                     </div>
                     <div className="form-group">
-                      <label>Référence fournisseur</label>
-                      <input value={form.ref_fournisseur || ''} onChange={e => set('ref_fournisseur', e.target.value)} />
+                      <label>Référence marque</label>
+                      <input value={form.ref_marque || ''} onChange={e => set('ref_marque', e.target.value)} />
                     </div>
                     <div className="form-group">
                       <label>Statut</label>
