@@ -1,124 +1,237 @@
-# 🛣️ CONTEXTE PROJET HIGHWAY — À COLLER EN DÉBUT DE CONVERSATION
+# HIGHWAY — Fichier de contexte projet
+
+> À coller en début de nouvelle conversation pour reprendre le projet.
+
+---
 
 ## Présentation
-Highway est une application ERP custom pour une activité d'import/distribution alimentaire (produits UK vers la France). Stack : React + Vite + Supabase (PostgreSQL) + Vercel.
+
+**Highway** est un ERP web pour une activité d'import/distribution alimentaire **UK → France**.
+- On importe des produits de marques britanniques (principalement **Marks & Spencer**)
+- On les revend à des clients en France
+- **Highway est le fournisseur** — on gère des **marques** (pas des fournisseurs)
 
 ---
 
 ## Stack technique
-- **Frontend** : React 18 + Vite + React Router + Lucide React
-- **Backend/BDD** : Supabase (PostgreSQL) — projet ID : `igybgbodxfnngstllnre`
-- **Hébergement** : Vercel — repo GitHub : `Highway`, dossier racine `erp-app/`
-- **Design** : fond beige #F7F6F3, accent vert forêt #2D5A3D, font DM Sans
-- **Logo** : photo `highway-logo.png` dans `src/assets/` (style rétro pop violet/rose/cyan)
 
----
-
-## Structure des fichiers
-```
-Highway/
-├── vercel.json
-└── erp-app/
-    ├── index.html          (titre : "Highway — Distribution")
-    ├── package.json
-    ├── vite.config.js
-    ├── .env                (VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY)
-    └── src/
-        ├── main.jsx
-        ├── App.jsx         (gestion auth + routes)
-        ├── index.css
-        ├── lib/supabase.js
-        ├── assets/
-        │   └── highway-logo.png
-        ├── components/
-        │   ├── Sidebar.jsx     (navigation + user info + logout)
-        │   └── Toast.jsx
-        └── pages/
-            ├── Login.jsx           ✅ page de connexion
-            ├── Dashboard.jsx       ✅
-            ├── Fournisseurs.jsx    ✅ CRUD complet
-            ├── Produits.jsx        ✅ CRUD complet (4 onglets)
-            ├── Clients.jsx         ✅ CRUD complet
-            ├── Stock.jsx           ✅ lots + alertes DLC
-            ├── Utilisateurs.jsx    ✅ admins + accès portail
-            └── Placeholders.jsx    ⏳ CommandesVente, CommandesAchat, Expeditions, Factures
-```
-
----
-
-## Base de données Supabase — Tables principales
-
-| Table | Description |
+| Élément | Valeur |
 |---|---|
-| `fournisseurs` | Fournisseurs (M&S code MS01, etc.) |
-| `produits` | Produits avec EAN, PCB, DLC, HSN, meursing_code, prix_conso_ttc |
-| `categories` | Catégories produits (propres au fournisseur) |
-| `clients` | Clients (centrale/indépendant/grossiste) |
-| `tarifs_achat` | Prix achat HT par produit/fournisseur |
-| `tarifs_vente` | Prix vente HT général ou par client |
-| `lots` | Lots avec DLC, localisation, statut |
-| `mouvements_stock` | Entrées/sorties stock |
-| `admin_users` | Utilisateurs ERP (admin/commercial/comptable) |
-| `portail_acces` | Accès portail client (login + mdp) |
-| `client_fournisseurs_autorises` | Fournisseurs visibles par client sur le portail |
-| `commandes_achat` | À construire |
-| `commandes_vente` | À construire |
-| `expeditions` | À construire |
-| `factures` | À construire |
+| Framework | React + Vite |
+| Base de données | Supabase (PostgreSQL) |
+| Authentification | Supabase Auth |
+| Hébergement | GitHub → déploiement via Vercel ou similaire |
+| Repo GitHub | `Highway` / dossier `erp-app/` |
+| Design system | Beige `#F7F6F3`, vert forêt `#2D5A3D`, font DM Sans |
+
+**Identifiants Supabase :**
+- Project ref : `igybgbodxfnngstllnre`
+- Service role key : `⚠️ à retrouver dans Supabase Dashboard → Settings → API`
+- URL API : `https://igybgbodxfnngstllnre.supabase.co`
 
 ---
 
-## Authentification ERP
-- Page Login vérifie `admin_users` (email + mot_de_passe en clair pour l'instant)
-- 3 rôles :
-  - **admin** — accès total
-  - **commercial** — lecture seule (pas de gestion utilisateurs)
-  - **comptable** — factures uniquement
-- Premier admin : `jordan.hadjez@gieunifrais.fr` / `highway2024`
-- Session stockée en mémoire React (pas de localStorage)
+## Schéma base de données
+
+### Tables existantes et confirmées
+
+#### `marques` (ex `fournisseurs` — renommé)
+| Colonne | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| nom | TEXT | |
+| code | TEXT | |
+| pays | TEXT | |
+| devise | TEXT | EUR par défaut |
+| delai_livraison_jours | INT | |
+| contact_nom | TEXT | |
+| contact_email | TEXT | |
+| contact_telephone | TEXT | |
+| conditions_paiement | TEXT | |
+| adresse | TEXT | |
+| notes | TEXT | |
+| actif | BOOLEAN | |
+
+#### `produits`
+| Colonne | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| ean13 | TEXT | |
+| libelle | TEXT | |
+| libelle_court | TEXT | |
+| marque | TEXT | nom marque libre |
+| description | TEXT | |
+| marque_id | UUID FK | → marques(id) |
+| categorie_id | UUID FK | → categories(id) |
+| conditionnement | TEXT | |
+| unite_vente | TEXT | carton/unité |
+| pcb | INT | |
+| poids_brut_kg | NUMERIC | |
+| poids_net_kg | NUMERIC | |
+| volume_m3 | NUMERIC | |
+| longueur_cm | NUMERIC | |
+| largeur_cm | NUMERIC | |
+| hauteur_cm | NUMERIC | |
+| temperature_stockage | TEXT | ambiant/frais/surgelé |
+| temperature_min_c | NUMERIC | |
+| temperature_max_c | NUMERIC | |
+| dlc_type | TEXT | DLC/DLUO/DDM |
+| dlc_duree_jours | INT | |
+| ref_marque | TEXT | |
+| photo_url | TEXT | URL externe (ex: M&S CDN) |
+| fiche_technique_url | TEXT | |
+| statut | TEXT | actif/inactif/en_cours |
+| code_douanier | TEXT | |
+| pays_origine | TEXT | |
+
+#### `categories`
+| Colonne | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| nom | TEXT | Catégories propres à chaque marque |
+
+#### `clients`
+Table clients existante (détail non documenté ici).
+
+#### `commandes_vente`
+Table existante, colonne `statut` (dont valeur `facturée`).
 
 ---
 
-## Portail client (À CONSTRUIRE)
-- App séparée, URL distincte
-- Login = identifiant texte libre (ex: `CARREFOUR01`) + mot de passe
-- Catalogue filtré par fournisseurs autorisés
-- Commande activable ou non par client (champ `peut_commander`)
-- Infos visibles : photo, prix HT, prix conso TTC, ingrédients/allergènes, colisage, DLC
+## Architecture fichiers JSX (erp-app/src/)
+
+```
+src/
+├── assets/
+│   └── highway-logo.png        ← logo galaxy (image AI générée)
+├── components/
+│   └── Toast.jsx
+├── lib/
+│   └── supabase.js
+├── pages/
+│   ├── Dashboard.jsx
+│   ├── Marques.jsx             ← ex Fournisseurs.jsx (renommé)
+│   ├── Produits.jsx
+│   ├── Clients.jsx
+│   ├── CommandesVente.jsx      ← à construire
+│   ├── CommandesAchat.jsx      ← à construire
+│   ├── Stock.jsx               ← à construire
+│   ├── Expeditions.jsx         ← à construire
+│   ├── Factures.jsx            ← à construire
+│   └── Utilisateurs.jsx        ← à construire
+└── Sidebar.jsx
+```
+
+### Routes (App.jsx) — à vérifier/mettre à jour
+```
+/                   → Dashboard
+/marques            → Marques       (ex /fournisseurs)
+/produits           → Produits
+/clients            → Clients
+/commandes-vente    → CommandesVente
+/commandes-achat    → CommandesAchat
+/stock              → Stock
+/expeditions        → Expeditions
+/factures           → Factures
+/utilisateurs       → Utilisateurs
+```
 
 ---
 
-## Produits importés
-- **103 produits Marks & Spencer Food** (code MS01) importés via SQL
-- Catégories : Ambient Celebration, Bakery, Biscuits, Confectionery, Groceries, Savouries
-- Champs : EAN13, PCB, poids, DLC (DLUO en jours), code douanier HSN, meursing_code, pays_origine (Royaume-Uni), prix_achat EUR, prix_vente_ht
+## Fonctionnalités implémentées
+
+### ✅ Dashboard
+- Stats : produits, clients, marques, commandes en cours
+- Liens rapides vers les sections principales
+
+### ✅ Marques (ex Fournisseurs)
+- CRUD complet
+- Champs : nom, code, pays, devise, délai livraison, contact, adresse, notes, actif
+
+### ✅ Produits
+- CRUD complet avec modal multi-onglets (Général, Logistique, Commercial)
+- Tableau avec colonnes : Photo, Libellé, EAN, Marque, **Catégorie**, Conditionnement, Stockage, DLC, Statut
+- Filtres : recherche texte, filtre marque, **filtre catégorie**, filtre statut
+- Miniature photo dans le tableau (cliquable → panneau latéral PhotoPanel)
+- PhotoPanel : panneau droit 380px avec photo agrandie + infos produit
+- `photo_url` : URL externe (ex: `https://assets.digitalcontent.marksandspencer.app/...`)
+- **Fix payload** : les objets jointure (`marques`, `categories`) sont exclus avant save()
+
+### ✅ Sidebar
+- Navigation par sections : Principal, Catalogue, Commercial, Logistique, Finance, Administration
+- Gestion des rôles : admin, commercial, comptable
+- Logo Highway en haut
 
 ---
 
-## Fonctionnalités à construire (par priorité)
-1. ⏳ **Photos produits** — upload ou URL depuis catalogue fournisseur
-2. ⏳ **Portail client** — app séparée avec login/catalogue/commande
-3. ⏳ **Commandes vente** — saisie + suivi
-4. ⏳ **Commandes achat** — vers fournisseurs
-5. ⏳ **Expéditions** — préparation + envoi
-6. ⏳ **Factures** — génération PDF
-7. ⏳ **Tarification client** — prix spécifiques par client
-8. ⏳ **Intégration EDI** — Carrefour, Franprix
+## Bugs connus / fixes appliqués
+
+### Fix payload jointure (CRITIQUE)
+Dans `Produits.jsx`, fonction `save()` :
+```js
+// TOUJOURS exclure les objets de jointure avant d'envoyer à Supabase
+const { marques: _m, categories: _c, fournisseurs: _f, ...payload } = { ...form }
+```
+Sans ce fix → erreur `Could not find the 'marques' column of 'produits' in the schema cache`
+
+### Colonnes ajoutées manuellement via SQL
+Ces colonnes n'existaient pas dans le schéma initial et ont été ajoutées :
+```sql
+ALTER TABLE produits ADD COLUMN IF NOT EXISTS categorie_id UUID REFERENCES categories(id);
+ALTER TABLE produits ADD COLUMN IF NOT EXISTS ref_marque TEXT;
+ALTER TABLE produits ADD COLUMN IF NOT EXISTS fiche_technique_url TEXT;
+ALTER TABLE produits ADD COLUMN IF NOT EXISTS code_douanier TEXT;
+ALTER TABLE produits ADD COLUMN IF NOT EXISTS pays_origine TEXT;
+ALTER TABLE produits ADD COLUMN IF NOT EXISTS libelle_court TEXT;
+ALTER TABLE produits ADD COLUMN IF NOT EXISTS volume_m3 NUMERIC;
+ALTER TABLE produits ADD COLUMN IF NOT EXISTS longueur_cm NUMERIC;
+ALTER TABLE produits ADD COLUMN IF NOT EXISTS largeur_cm NUMERIC;
+ALTER TABLE produits ADD COLUMN IF NOT EXISTS hauteur_cm NUMERIC;
+ALTER TABLE produits ADD COLUMN IF NOT EXISTS temperature_min_c NUMERIC;
+ALTER TABLE produits ADD COLUMN IF NOT EXISTS temperature_max_c NUMERIC;
+ALTER TABLE produits ADD COLUMN IF NOT EXISTS photo_url TEXT;
+```
+
+### Renommage fournisseurs → marques
+```sql
+ALTER TABLE fournisseurs RENAME TO marques;
+ALTER TABLE produits RENAME COLUMN fournisseur_id TO marque_id;
+ALTER TABLE tarifs_achat RENAME COLUMN fournisseur_id TO marque_id;
+ALTER TABLE client_fournisseurs_autorises RENAME COLUMN fournisseur_id TO marque_id;
+-- Note : categories n'avait pas de colonne fournisseur_id
+NOTIFY pgrst, 'reload schema';
+```
 
 ---
 
-## Conventions de code
-- Tous les composants en JSX fonctionnel avec hooks
-- Supabase via `import { supabase } from '../lib/supabase'`
-- Toast notifications via `import { toast } from '../components/Toast'`
-- CSS custom dans `index.css` (classes : `.btn`, `.btn-primary`, `.btn-secondary`, `.card`, `.modal`, `.modal-overlay`, `.badge`, `.badge-green`, `.badge-red`, etc.)
-- Dates affichées en `toLocaleDateString('fr-FR')`
-- Pas de TypeScript, pas de Tailwind
+## Données existantes
+
+- **103 produits M&S** importés dans la table `produits`
+- Photos accessibles via le CDN M&S : `https://assets.digitalcontent.marksandspencer.app/image/upload/w_768,q_auto,c_fill,f_auto/{hash}.jpg`
+- Les `photo_url` sont à renseigner manuellement produit par produit (pas d'automatisation active)
 
 ---
 
-## Comment uploader les fichiers sur GitHub
-1. Naviguer dans le bon dossier du repo
-2. Fichier existant : cliquer → icône crayon → remplacer → commit
-3. Nouveau fichier : **Add file** → **Create new file** → nommer + coller → commit
-4. Vercel redéploie automatiquement après chaque commit
+## À construire (backlog)
+
+### Priorité haute
+- [ ] **Commandes vente** — saisie commande client, lignes produits, statuts (brouillon → confirmée → expédiée → facturée)
+- [ ] **Commandes achat** — approvisionnement marques, réception
+
+### Priorité moyenne
+- [ ] **Stock & Lots** — gestion des lots avec DLC, mouvements de stock
+- [ ] **Expéditions** — préparation, bons de livraison
+- [ ] **Factures** — génération PDF, suivi paiement
+
+### Priorité basse
+- [ ] **Portail client** — interface pour que les clients passent commande eux-mêmes
+- [ ] **Utilisateurs & Accès** — gestion des rôles plus fine
+- [ ] **Photos produits en masse** — script Open Food Facts par EAN13 ou import CSV
+
+---
+
+## Notes importantes
+
+- **Pas d'accès réseau** depuis le sandbox Claude → impossible de faire des appels HTTP directs (GitHub API, Supabase REST). Tout se fait en générant des fichiers à uploader manuellement sur GitHub.
+- Pour recharger le cache Supabase après une modif de schéma : `NOTIFY pgrst, 'reload schema';`
+- Le GitHub PAT : `⚠️ à regénérer dans GitHub → Settings → Developer settings → PAT`
