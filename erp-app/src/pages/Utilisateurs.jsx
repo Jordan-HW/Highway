@@ -35,7 +35,7 @@ export default function Utilisateurs() {
   async function fetchAll() {
     setLoading(true)
     const [{ data: a }, { data: p }, { data: c }, { data: f }] = await Promise.all([
-      supabase.from('admin_users').select('*').order('nom'),
+      supabase.rpc('list_admin_users'),
       supabase.from('portail_acces').select('*, clients(nom, enseigne)').order('login'),
       supabase.from('clients').select('id, nom, enseigne').eq('actif', true).order('nom'),
       supabase.from('fournisseurs').select('id, nom').eq('actif', true).order('nom'),
@@ -56,14 +56,25 @@ export default function Utilisateurs() {
     if (!formAdmin.email.trim()) return toast("L'email est obligatoire", 'error')
     if (!editingId && !formAdmin.mot_de_passe.trim()) return toast('Le mot de passe est obligatoire', 'error')
     setSaving(true)
-    const payload = { ...formAdmin }
-    if (editingId && !payload.mot_de_passe) delete payload.mot_de_passe
     let error
     if (editingId) {
-      const { error: e } = await supabase.from('admin_users').update(payload).eq('id', editingId)
+      const { error: e } = await supabase.rpc('update_admin_user', {
+        p_id: editingId,
+        p_nom: formAdmin.nom,
+        p_email: formAdmin.email,
+        p_mot_de_passe: formAdmin.mot_de_passe || null,
+        p_role: formAdmin.role,
+        p_actif: formAdmin.actif
+      })
       error = e
     } else {
-      const { error: e } = await supabase.from('admin_users').insert(payload)
+      const { error: e } = await supabase.rpc('create_admin_user', {
+        p_nom: formAdmin.nom,
+        p_email: formAdmin.email,
+        p_mot_de_passe: formAdmin.mot_de_passe,
+        p_role: formAdmin.role,
+        p_actif: formAdmin.actif
+      })
       error = e
     }
     setSaving(false)
@@ -74,7 +85,7 @@ export default function Utilisateurs() {
 
   async function deleteAdmin(id) {
     if (!confirm('Supprimer cet utilisateur ?')) return
-    const { error } = await supabase.from('admin_users').delete().eq('id', id)
+    const { error } = await supabase.rpc('delete_admin_user', { p_id: id })
     if (error) return toast('Erreur : ' + error.message, 'error')
     toast('Utilisateur supprimé', 'success'); fetchAll()
   }
