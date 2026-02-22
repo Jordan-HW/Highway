@@ -250,6 +250,37 @@ export default function Produits() {
   const [showColPanel, setShowColPanel] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [showExport, setShowExport]   = useState(false)
+  const [sortConfig, setSortConfig]   = useState({ key: null, dir: 'asc' })
+
+  function handleSort(key) {
+    if (key === 'photo') return
+    setSortConfig(prev => ({ key, dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc' }))
+  }
+
+  function getSortValue(row, key) {
+    switch (key) {
+      case 'libelle':          return (row.libelle || '').toLowerCase()
+      case 'ean13':            return row.ean13 || ''
+      case 'marque_nom':       return (row.marques?.nom || row.marque || '').toLowerCase()
+      case 'categorie_nom':    return (row.categories?.nom || '').toLowerCase()
+      case 'ref_marque':       return (row.ref_marque || '').toLowerCase()
+      case 'statut':           return row.statut || ''
+      case 'conditionnement':  return (row.conditionnement || '').toLowerCase()
+      case 'pcb':              return row.pcb || 0
+      case 'poids_brut_kg':   return row.poids_brut_kg || 0
+      case 'poids_net_kg':    return row.poids_net_kg || 0
+      case 'volume_m3':       return row.volume_m3 || 0
+      case 'longueur_cm':     return row.longueur_cm || 0
+      case 'largeur_cm':      return row.largeur_cm || 0
+      case 'hauteur_cm':      return row.hauteur_cm || 0
+      case 'temperature_stockage': return row.temperature_stockage || ''
+      case 'dlc': case 'dlc_duree_jours': return row.dlc_duree_jours || 0
+      case 'code_douanier':   return row.code_douanier || ''
+      case 'pays_origine':    return row.pays_origine || ''
+      case 'meursing_code':   return row.meursing_code || ''
+      default: return ''
+    }
+  }
 
   useEffect(() => { fetchAll() }, [])
 
@@ -301,7 +332,7 @@ export default function Produits() {
     setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
   function toggleSelectAll() {
-    setSelectedIds(prev => prev.size === filtered.length ? new Set() : new Set(filtered.map(r => r.id)))
+    setSelectedIds(prev => prev.size === sorted.length ? new Set() : new Set(sorted.map(r => r.id)))
   }
 
   const filtered = rows.filter(r => {
@@ -312,6 +343,16 @@ export default function Produits() {
     const matchStatut    = !filterStatut    || r.statut       === filterStatut
     return matchSearch && matchMarque && matchCategorie && matchStatut
   })
+
+  const sorted = sortConfig.key
+    ? [...filtered].sort((a, b) => {
+        const va = getSortValue(a, sortConfig.key)
+        const vb = getSortValue(b, sortConfig.key)
+        if (va < vb) return sortConfig.dir === 'asc' ? -1 : 1
+        if (va > vb) return sortConfig.dir === 'asc' ? 1 : -1
+        return 0
+      })
+    : filtered
 
   const selectedRows = filtered.filter(r => selectedIds.has(r.id))
   const activeCols   = ALL_COLUMNS.filter(c => visibleCols.includes(c.key))
@@ -398,14 +439,26 @@ export default function Produits() {
                         {allSelected ? <CheckSquare size={16} color="var(--primary)" /> : <Square size={16} color="var(--text-muted)" />}
                       </div>
                     </th>
-                    {activeCols.map(col => <th key={col.key}>{col.label}</th>)}
+                    {activeCols.map(col => (
+                      <th key={col.key} onClick={() => handleSort(col.key)}
+                        style={{ cursor: col.key === 'photo' ? 'default' : 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          {col.label}
+                          {col.key !== 'photo' && (
+                            <span style={{ fontSize: 10, color: sortConfig.key === col.key ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 700 }}>
+                              {sortConfig.key === col.key ? (sortConfig.dir === 'asc' ? ' ▲' : ' ▼') : ' ↕'}
+                            </span>
+                          )}
+                        </span>
+                      </th>
+                    ))}
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.length === 0 ? (
                     <tr><td colSpan={activeCols.length + 2}><div className="empty-state"><Package /><p>Aucun produit. Créez votre premier produit !</p></div></td></tr>
-                  ) : filtered.map(row => {
+                  ) : sorted.map(row => {
                     const isSel = selectedIds.has(row.id)
                     return (
                       <tr key={row.id} onClick={() => openEdit(row)} style={{ background: isSel ? '#e8f0eb' : undefined }}>
