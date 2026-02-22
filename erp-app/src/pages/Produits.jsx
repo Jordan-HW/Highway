@@ -184,8 +184,15 @@ function ExportModal({ products, allProducts, onClose }) {
                       const active = exportCols.includes(col.key)
                       return (
                         <div key={col.key} onClick={() => toggleCol(col.key)}
-                          style={{ padding: '4px 10px', borderRadius: 20, fontSize: 12, cursor: 'pointer', background: active ? 'var(--primary)' : 'var(--surface-2)', color: active ? '#fff' : 'var(--text-secondary)', border: `1px solid ${active ? 'var(--primary)' : 'var(--border)'}`, transition: 'all .15s' }}>
-                          {col.label}
+                          style={{
+                            padding: '5px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+                            userSelect: 'none', transition: 'all .15s', fontWeight: 500,
+                            backgroundColor: active ? '#2D5A3D' : '#e8e8e8',
+                            color: active ? '#ffffff' : '#222222',
+                            border: active ? '1.5px solid #2D5A3D' : '1.5px solid #bbb',
+                            outline: 'none',
+                          }}>
+                          {active ? '✓ ' : ''}{col.label}
                         </div>
                       )
                     })}
