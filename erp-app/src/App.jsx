@@ -11,14 +11,25 @@ import Stock from './pages/Stock'
 import Utilisateurs from './pages/Utilisateurs'
 import { CommandesVente, CommandesAchat, Expeditions, Factures } from './pages/Placeholders'
 
+const SESSION_KEY = 'highway_user'
+
 export default function App() {
-  const [user, setUser] = useState(null)
+  const [user, setUser] = useState(() => {
+    try {
+      const stored = localStorage.getItem(SESSION_KEY)
+      return stored ? JSON.parse(stored) : null
+    } catch {
+      return null
+    }
+  })
 
   function handleLogin(userData) {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(userData))
     setUser(userData)
   }
 
   function handleLogout() {
+    localStorage.removeItem(SESSION_KEY)
     setUser(null)
   }
 
@@ -31,10 +42,8 @@ export default function App() {
     )
   }
 
-  // Vérification des droits selon le rôle
   const isAdmin = user.role === 'admin'
   const isComptable = user.role === 'comptable'
-  const isCommercial = user.role === 'commercial'
 
   return (
     <div className="app-layout">
@@ -42,8 +51,6 @@ export default function App() {
       <main className="main-content">
         <Routes>
           <Route path="/" element={<Dashboard />} />
-
-          {/* Catalogue — admin + commercial */}
           {!isComptable && (
             <>
               <Route path="/marques" element={<Marques />} />
@@ -55,14 +62,8 @@ export default function App() {
               <Route path="/expeditions" element={<Expeditions />} />
             </>
           )}
-
-          {/* Factures — tous */}
           <Route path="/factures" element={<Factures />} />
-
-          {/* Utilisateurs — admin seulement */}
           {isAdmin && <Route path="/utilisateurs" element={<Utilisateurs />} />}
-
-          {/* Redirection par défaut */}
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>
