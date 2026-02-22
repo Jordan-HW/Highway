@@ -246,11 +246,23 @@ export default function Produits() {
   const [saving, setSaving]           = useState(false)
   const [activeTab, setActiveTab]     = useState('general')
   const [photoPanel, setPhotoPanel]   = useState(null)
-  const [visibleCols, setVisibleCols] = useState(ALL_COLUMNS.filter(c => c.default).map(c => c.key))
+  const [visibleCols, setVisibleCols] = useState(() => {
+    try {
+      const stored = localStorage.getItem('highway_cols')
+      return stored ? JSON.parse(stored) : ALL_COLUMNS.filter(c => c.default).map(c => c.key)
+    } catch { return ALL_COLUMNS.filter(c => c.default).map(c => c.key) }
+  })
+
+  function updateVisibleCols(val) {
+    const next = typeof val === 'function' ? val(visibleCols) : val
+    localStorage.setItem('highway_cols', JSON.stringify(next))
+    setVisibleCols(next)
+  }
   const [showColPanel, setShowColPanel] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [showExport, setShowExport]   = useState(false)
   const [sortConfig, setSortConfig]   = useState({ key: null, dir: 'asc' })
+  const [colFilters, setColFilters]   = useState({})
 
   function handleSort(key) {
     if (key === 'photo') return
@@ -332,7 +344,7 @@ export default function Produits() {
     setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
   function toggleSelectAll() {
-    setSelectedIds(prev => prev.size === sorted.length ? new Set() : new Set(sorted.map(r => r.id)))
+    setSelectedIds(prev => prev.size === displayed.length ? new Set() : new Set(displayed.map(r => r.id)))
   }
 
   const filtered = rows.filter(r => {
@@ -354,9 +366,30 @@ export default function Produits() {
       })
     : filtered
 
-  const selectedRows = filtered.filter(r => selectedIds.has(r.id))
+  // Filtre par colonne
+  const displayed = Object.keys(colFilters).length === 0 ? sorted : sorted.filter(row => {
+    return Object.entries(colFilters).every(([key, val]) => {
+      if (!val) return true
+      const v = val.toLowerCase()
+      switch (key) {
+        case 'libelle':          return (row.libelle || '').toLowerCase().includes(v)
+        case 'ean13':            return (row.ean13 || '').includes(v)
+        case 'marque_nom':       return (row.marques?.nom || row.marque || '').toLowerCase().includes(v)
+        case 'categorie_nom':    return (row.categories?.nom || '').toLowerCase().includes(v)
+        case 'ref_marque':       return (row.ref_marque || '').toLowerCase().includes(v)
+        case 'statut':           return (row.statut || '').toLowerCase().includes(v)
+        case 'conditionnement':  return (row.conditionnement || '').toLowerCase().includes(v)
+        case 'code_douanier':    return (row.code_douanier || '').toLowerCase().includes(v)
+        case 'pays_origine':     return (row.pays_origine || '').toLowerCase().includes(v)
+        case 'meursing_code':    return (row.meursing_code || '').toLowerCase().includes(v)
+        default: return String(row[key] || '').toLowerCase().includes(v)
+      }
+    })
+  })
+
+  const selectedRows = displayed.filter(r => selectedIds.has(r.id))
   const activeCols   = ALL_COLUMNS.filter(c => visibleCols.includes(c.key))
-  const allSelected  = filtered.length > 0 && selectedIds.size === filtered.length
+  const allSelected  = displayed.length > 0 && selectedIds.size === displayed.length
   const tempBadge    = t => t === 'surgelé' || t === 'frais' ? 'badge-blue' : 'badge-gray'
   const statutBadge  = s => s === 'actif' ? 'badge-green' : s === 'inactif' ? 'badge-red' : 'badge-orange'
 
@@ -454,11 +487,34 @@ export default function Produits() {
                     ))}
                     <th></th>
                   </tr>
+                  <tr>
+                    <th style={{ padding: '4px 8px' }} />
+                    {activeCols.map(col => (
+                      <th key={col.key} style={{ padding: '4px 6px' }}>
+                        {col.key !== 'photo' && col.key !== 'statut' && col.key !== 'temperature_stockage' ? (
+                          <input
+                            value={colFilters[col.key] || ''}
+                            onChange={e => setColFilters(p => ({ ...p, [col.key]: e.target.value }))}
+                            onClick={e => e.stopPropagation()}
+                            placeholder="Filtrer..."
+                            style={{ width: '100%', padding: '3px 7px', fontSize: 11, border: '1px solid var(--border)', borderRadius: 5, background: colFilters[col.key] ? '#fffbe6' : 'var(--surface-2)', color: 'var(--text)', outline: 'none', fontFamily: 'var(--font)' }}
+                          />
+                        ) : <div />}
+                      </th>
+                    ))}
+                    <th style={{ padding: '4px 6px' }}>
+                      {Object.values(colFilters).some(v => v) && (
+                        <button onClick={() => setColFilters({})} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface-2)', cursor: 'pointer', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                          ✕ Reset
+                        </button>
+                      )}
+                    </th>
+                  </tr>
                 </thead>
                 <tbody>
                   {filtered.length === 0 ? (
                     <tr><td colSpan={activeCols.length + 2}><div className="empty-state"><Package /><p>Aucun produit. Créez votre premier produit !</p></div></td></tr>
-                  ) : sorted.map(row => {
+                  ) : displayed.map(row => {
                     const isSel = selectedIds.has(row.id)
                     return (
                       <tr key={row.id} onClick={() => openEdit(row)} style={{ background: isSel ? '#e8f0eb' : undefined }}>
@@ -585,7 +641,7 @@ export default function Produits() {
         </div>
       )}
 
-      {showColPanel && <ColumnPanel visibleCols={visibleCols} onChange={setVisibleCols} onClose={() => setShowColPanel(false)} />}
+      {showColPanel && <ColumnPanel visibleCols={visibleCols} onChange={updateVisibleCols} onClose={() => setShowColPanel(false)} />}
       {showExport   && <ExportModal products={selectedRows} allProducts={filtered} onClose={() => setShowExport(false)} />}
       {photoPanel   && <PhotoPanel  product={photoPanel} onClose={() => setPhotoPanel(null)} />}
     </div>
