@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { Plus, Search, X, Package, Edit2, Trash2, Settings2, Download, CheckSquare, Square } from 'lucide-react'
+import { Plus, Search, X, Package, Edit2, Trash2, Settings2, Download, Upload, CheckSquare, Square } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import ImportProduits from './ImportProduits'
 
 // ─── PhotoPanel ────────────────────────────────────────────────────────────────
 function PhotoPanel({ product, onClose }) {
@@ -261,6 +262,7 @@ export default function Produits() {
   const [showColPanel, setShowColPanel] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [showExport, setShowExport]   = useState(false)
+  const [showImport, setShowImport]   = useState(false)
   const [sortConfig, setSortConfig]   = useState({ key: null, dir: 'asc' })
   const [colFilters, setColFilters]   = useState({})
 
@@ -435,6 +437,7 @@ export default function Produits() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary" onClick={() => setShowImport(true)}><Upload size={15} /> Importer</button>
           <button className="btn btn-secondary" onClick={() => setShowExport(true)}><Download size={15} /> Exporter</button>
           <button className="btn btn-secondary" onClick={() => setShowColPanel(true)}><Settings2 size={15} /> Colonnes</button>
           <button className="btn btn-primary" onClick={openCreate}><Plus size={15} /> Nouveau produit</button>
@@ -641,6 +644,7 @@ export default function Produits() {
         </div>
       )}
 
+      {showImport   && <ImportProduits onClose={() => setShowImport(false)} onImported={fetchAll} />}
       {showColPanel && <ColumnPanel visibleCols={visibleCols} onChange={updateVisibleCols} onClose={() => setShowColPanel(false)} />}
       {showExport   && <ExportModal products={selectedRows} allProducts={filtered} onClose={() => setShowExport(false)} />}
       {photoPanel   && <PhotoPanel  product={photoPanel} onClose={() => setPhotoPanel(null)} />}
