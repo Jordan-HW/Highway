@@ -13,15 +13,13 @@ export default function Login({ onLogin }) {
     if (!email.trim() || !password.trim()) return setError('Email et mot de passe requis')
     setLoading(true); setError('')
     const { data, error: err } = await supabase
-      .from('admin_users').select('*')
-      .eq('email', email.trim().toLowerCase())
-      .eq('mot_de_passe', password)
-      .eq('actif', true)
-      .single()
+      .rpc('login_admin', {
+        p_email: email.trim().toLowerCase(),
+        p_password: password
+      })
     setLoading(false)
-    if (err || !data) return setError('Identifiants incorrects ou compte inactif')
-    await supabase.from('admin_users').update({ derniere_connexion: new Date().toISOString() }).eq('id', data.id)
-    onLogin(data)
+    if (err || !data || data.length === 0) return setError('Identifiants incorrects ou compte inactif')
+    onLogin(data[0])
   }
 
   const inputStyle = {
