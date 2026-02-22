@@ -103,7 +103,7 @@ const emptyForm = {
   temperature_stockage: 'ambiant', temperature_min_c: '', temperature_max_c: '',
   dlc_type: 'DLC', dlc_duree_jours: '',
   ref_marque: '', photo_url: '', fiche_technique_url: '',
-  statut: 'actif', code_douanier: '', pays_origine: ''
+  statut: 'actif', code_douanier: '', pays_origine: '', meursing_code: ''
 }
 
 export default function Produits() {
@@ -529,7 +529,11 @@ export default function Produits() {
                     </div>
                     <div className="form-group">
                       <label>Pays d'origine</label>
-                      <input value={form.pays_origine || ''} onChange={e => set('pays_origine', e.target.value)} placeholder="Maroc, Espagne..." />
+                      <input value={form.pays_origine || ''} onChange={e => set('pays_origine', e.target.value)} placeholder="GB, FR, DE..." />
+                    </div>
+                    <div className="form-group">
+                      <label>Code Meursing</label>
+                      <input value={form.meursing_code || ''} onChange={e => set('meursing_code', e.target.value)} placeholder="ex: 7126" style={{ fontFamily: 'var(--font-mono)' }} />
                     </div>
                   </div>
                 </>
