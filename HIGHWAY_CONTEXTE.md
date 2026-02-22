@@ -1,4 +1,4 @@
-# 🛣️ CONTEXTE PROJET HIGHWAY — À COLLER EN DÉBUT DE CONVERSATION
+# CONTEXTE PROJET HIGHWAY — À COLLER EN DÉBUT DE CONVERSATION
 
 ## Présentation
 Highway est une application ERP custom pour une activité d'import/distribution alimentaire (produits UK → France). Stack : React + Vite + Supabase (PostgreSQL) + Vercel.
@@ -8,10 +8,17 @@ Highway est une application ERP custom pour une activité d'import/distribution 
 ## Stack technique
 - **Frontend** : React 18 + Vite + React Router + Lucide React + xlsx (export/import Excel)
 - **Backend/BDD** : Supabase (PostgreSQL) — projet ID : `igybgbodxfnngstllnre`
-- **Hébergement** : Vercel — repo GitHub : `Highway`, dossier racine `erp-app/`
-- **Design** : fond gris clair #F0F1F3, accent bleu-violet dégradé (#5A8CFF → #AA5AFF), sidebar gris ardoise #373C4B, font Poppins
-- **Logo** : texte JSX pur — "Highway" en Poppins BoldItalic blanc, slogan "ROAD TO THE FINEST" en dégradé CSS bleu→violet. Pas d'image PNG.
-- **Slogan** : "Road to the finest"
+- **Hébergement** : Vercel — repo GitHub : `Jordan-HW/Highway`, dossier racine `erp-app/`
+- **Design** : fond gris clair #F5F4F8, accent violet #5A4A7A, sidebar violet foncé #2A1F40, font DM Sans
+- **Logo** : texte "HIGHWAY" en violet clair #D4B8F0, slogan "ROAD TO THE FINEST"
+
+---
+
+## Accès Supabase (pour requêtes directes)
+```
+URL: https://igybgbodxfnngstllnre.supabase.co
+Anon Key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlneWJnYm9keGZubmdzdGxsbnJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1MDY0MTYsImV4cCI6MjA4NzA4MjQxNn0.coKV5HbOo2wtBH0iNVJ7Fk0YDrppk-bNrm0XMiW7YK4
+```
 
 ---
 
@@ -19,6 +26,7 @@ Highway est une application ERP custom pour une activité d'import/distribution 
 ```
 Highway/
 ├── vercel.json                    (rewrites SPA : /* → /index.html)
+├── HIGHWAY_CONTEXTE.md            (ce fichier)
 └── erp-app/
     ├── index.html                 (titre : "Highway — Distribution")
     ├── package.json               (inclut "xlsx": "^0.18.5")
@@ -27,7 +35,7 @@ Highway/
     └── src/
         ├── main.jsx
         ├── App.jsx                (auth localStorage + routes par rôle)
-        ├── index.css              (palette Highway complète)
+        ├── index.css              (palette Highway + responsive mobile)
         ├── lib/supabase.js
         ├── components/
         │   ├── Sidebar.jsx        (responsive : fixe desktop / hamburger mobile)
@@ -41,6 +49,7 @@ Highway/
             ├── Clients.jsx        ✅ CRUD complet
             ├── Stock.jsx          ✅ lots + alertes DLC
             ├── Utilisateurs.jsx   ✅ admins + accès portail
+            ├── Fournisseurs.jsx   ✅ gestion fournisseurs
             └── Placeholders.jsx   ⏳ CommandesVente, CommandesAchat, Expeditions, Factures
 ```
 
@@ -61,7 +70,7 @@ Highway/
 - **Tri** : clic sur n'importe quel en-tête → tri ▲/▼, icône ↕ si inactif
 - **Filtres par colonne** : ligne de champs sous les en-têtes, fond jaune si actif, bouton "✕ Reset"
 - **Sélection de lignes** : checkbox par ligne + "tout sélectionner"
-- **PhotoPanel** : panneau latéral 380px au clic sur la miniature photo
+- **PhotoPanel** : panneau latéral max 380px au clic sur la miniature photo (responsive)
 
 ### Boutons header
 - **Importer** → ouvre `ImportProduits` (modal 4 étapes)
@@ -146,29 +155,32 @@ Flux en 4 étapes :
 
 ### Couleurs CSS (index.css)
 ```css
---bg: #F0F1F3
+--bg: #F5F4F8
 --surface: #FFFFFF
---surface-2: #EAEBEE
---border: #DADCE2
---sidebar-bg: #373C4B       /* gris ardoise — fond sidebar et login */
---primary: #5A8CFF          /* bleu */
---primary-end: #AA5AFF      /* violet */
---primary-light: #EBF0FF
---text-primary: #1C1E26
---text-secondary: #5A5D70
---text-muted: #9295A8
+--surface-2: #EEEDF4
+--border: #E0DDE8
+--primary: #5A4A7A          /* violet Highway */
+--primary-hover: #4A3A66
+--primary-light: #EDE9F6
+--text-primary: #1A1820
+--text-secondary: #6B6780
+--text-muted: #9E9AB0
+--danger: #C0392B
+--success: #27AE60
+--warning: #D4840A
 ```
 
-### Dégradé signature
+### Sidebar
 ```css
-background: linear-gradient(135deg, #5A8CFF, #AA5AFF)  /* boutons primaires, slogan */
+background: #2A1F40          /* violet foncé */
+logo color: #D4B8F0          /* violet clair */
 ```
 
 ### Composants CSS disponibles
 `.btn` `.btn-primary` `.btn-secondary` `.btn-danger` `.btn-icon`
 `.card` `.card-header` `.card-body`
 `.modal` `.modal-overlay` `.modal-header` `.modal-body` `.modal-footer`
-`.badge` `.badge-green` `.badge-red` `.badge-orange` `.badge-gray` `.badge-blue`
+`.badge` `.badge-green` `.badge-red` `.badge-orange` `.badge-gray` `.badge-blue` `.badge-purple`
 `.form-group` `.form-grid` `.form-grid-3` `.form-full`
 `.table-container` `.tabs` `.tab`
 `.filters-bar` `.search-input` `.filter-select`
@@ -179,10 +191,18 @@ background: linear-gradient(135deg, #5A8CFF, #AA5AFF)  /* boutons primaires, slo
 
 ---
 
-## Sidebar responsive (Sidebar.jsx)
-- **Desktop (≥768px)** : sidebar fixe 240px, `margin-left: 240px` sur `.main-content`
-- **Mobile (<768px)** : topbar fixe 56px + bouton hamburger ☰, drawer animé depuis la gauche, overlay sombre, fermeture auto à chaque navigation
-- Styles **inline** (pas de classes CSS) pour éviter les conflits
+## Responsive Mobile (< 768px)
+✅ **Entièrement fonctionnel** — testé iPhone
+
+- **Sidebar** : hamburger menu + drawer animé
+- **Page header** : boutons en grille 2x2
+- **Page body** : padding réduit à 16px
+- **Stats** : grille 2 colonnes
+- **Filtres** : empilés verticalement
+- **Tables** : scroll horizontal avec min-width
+- **Modals** : pleine largeur, footer en colonne
+- **Tabs** : scroll horizontal
+- **PhotoPanel / ColumnPanel** : max-width au lieu de width fixe
 
 ---
 
@@ -217,8 +237,31 @@ background: linear-gradient(135deg, #5A8CFF, #AA5AFF)  /* boutons primaires, slo
 
 ---
 
-## Comment uploader les fichiers sur GitHub
-1. Naviguer dans le bon dossier du repo
-2. Fichier existant : cliquer → icône crayon ✏️ → Ctrl+A tout sélectionner → coller le nouveau contenu → commit
-3. Nouveau fichier : **Add file** → **Create new file** → nommer + coller → commit
-4. Vercel redéploie automatiquement après chaque commit
+## Développement avec Claude Code
+
+### Repo local
+```
+C:\Users\jorda\Highway
+```
+
+### Commandes utiles
+```bash
+# Se placer dans le projet
+cd C:\Users\jorda\Highway
+
+# Voir les modifications
+git status
+
+# Commit et push
+git add . && git commit -m "message" && git push
+
+# Requête Supabase (exemple)
+curl -s "https://igybgbodxfnngstllnre.supabase.co/rest/v1/produits?select=*&limit=5" \
+  -H "apikey: [ANON_KEY]" \
+  -H "Authorization: Bearer [ANON_KEY]"
+```
+
+### Workflow
+1. Claude Code modifie les fichiers localement
+2. Commit + push sur GitHub
+3. Vercel redéploie automatiquement (1-2 min)
