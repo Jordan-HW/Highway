@@ -1,5 +1,4 @@
 {
-  "rootDirectory": "erp-app",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]
