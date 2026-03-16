@@ -51,6 +51,7 @@ Highway/
             ├── Clients.jsx        ✅ CRUD complet
             ├── Stock.jsx          ✅ lots + alertes DLC
             ├── Utilisateurs.jsx   ✅ gestion via RPC sécurisé
+            ├── Tarifs.jsx         ✅ gestion tarifs (achat/vente/client) + import Excel + modification en masse
             ├── Fournisseurs.jsx   ✅ gestion fournisseurs
             └── Placeholders.jsx   ⏳ CommandesVente, CommandesAchat, Expeditions, Factures
 ```
@@ -155,8 +156,8 @@ logo color: #D4B8F0          /* violet clair */
 | `categories` | Catégories produits |
 | `produits` | 103 produits M&S importés |
 | `clients` | Clients (centrale/indépendant/grossiste) |
-| `tarifs_achat` | Prix achat HT par produit/marque |
-| `tarifs_vente` | Prix vente HT général ou par client |
+| `tarifs_achat` | Prix achat HT par produit (206 enregistrements) |
+| `tarifs_vente` | Prix vente HT général ou par client (204 enregistrements) |
 | `lots` | Lots avec DLC, localisation, statut |
 | `mouvements_stock` | Entrées/sorties stock |
 | `portail_acces` | Accès portail client |
@@ -169,14 +170,22 @@ logo color: #D4B8F0          /* violet clair */
 
 ---
 
+## Fonctionnalités réalisées (tarifs)
+- ✅ **Page Tarifs** (`/tarifs`) — vue par produit (marges) + vue par client (écarts)
+- ✅ **Onglet Tarifs** dans le modal produit — prix achat HT/TTC, tarif général, PVPR, tarifs clients
+- ✅ **Import tarifs Excel** — clé EAN13, supporte achat HT, TVA, vente HT, PVPR, tarifs clients
+- ✅ **Modification en masse** — sélection par marque ou individuelle, pourcentage +/-, aperçu avant application
+- ✅ **PVPR** — prix public recommandé stocké sur `produits.pvpr`
+- ✅ **Marges** — Marge Highway = (vente - achat) / achat, Marge Client = (PVPR - vente) / vente
+- ✅ Colonnes ajoutées : `produits.taux_tva` (default 5.5), `produits.pvpr`
+
 ## Fonctionnalités à construire (par priorité)
 1. ⏳ **Commandes vente** — saisie, suivi, statuts
 2. ⏳ **Commandes achat** — vers marques/fournisseurs
 3. ⏳ **Expéditions** — préparation + envoi
 4. ⏳ **Factures** — génération PDF
 5. ⏳ **Portail client** — app séparée, login client, catalogue filtré, commandes
-6. ⏳ **Tarification client** — prix spécifiques par client
-7. ⏳ **Intégration EDI** — Carrefour, Franprix
+6. ⏳ **Intégration EDI** — Carrefour, Franprix
 
 ---
 
