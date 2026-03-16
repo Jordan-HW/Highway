@@ -19,6 +19,7 @@ export default function Tarifs() {
 
   // Modal edit
   const [editModal, setEditModal] = useState(null) // { produit, clientId? }
+  const [editPvpr, setEditPvpr] = useState('')
   const [editAchat, setEditAchat] = useState({ prix_unitaire_ht: '', taux_tva: 5.5 })
   const [editVenteGeneral, setEditVenteGeneral] = useState({ prix_unitaire_ht: '', remise_pourcent: '' })
   const [editVenteClient, setEditVenteClient] = useState({ prix_unitaire_ht: '', remise_pourcent: '' })
@@ -83,6 +84,7 @@ export default function Tarifs() {
   function openEditModal(produit, clientId = null) {
     const achat = getLastAchat(produit.id)
     const general = getGeneralVente(produit.id)
+    setEditPvpr(produit.pvpr ?? '')
     setEditAchat(achat ? { prix_unitaire_ht: achat.prix_unitaire_ht ?? '', taux_tva: achat.taux_tva ?? 5.5 } : { prix_unitaire_ht: '', taux_tva: 5.5 })
     setEditVenteGeneral(general ? { prix_unitaire_ht: general.prix_unitaire_ht ?? '', remise_pourcent: general.remise_pourcent ?? '' } : { prix_unitaire_ht: '', remise_pourcent: '' })
     if (clientId) {
@@ -242,12 +244,19 @@ export default function Tarifs() {
 
   const bulkCanPreview = bulkClient && bulkPourcent && (bulkMode === 'marque' ? bulkMarque : bulkSelectedIds.size > 0)
 
-  // ── Margin badge ──
-  function margeBadge(achatHT, venteHT) {
-    if (!achatHT || !venteHT || achatHT === 0) return null
-    const marge = ((venteHT - achatHT) / achatHT) * 100
-    const color = marge > 20 ? 'badge-green' : marge > 10 ? 'badge-orange' : 'badge-red'
-    return <span className={`badge ${color}`}>{marge.toFixed(1)}%</span>
+  // ── Margin helpers ──
+  function margeBadge(val) {
+    if (val == null) return '—'
+    const color = val > 20 ? 'badge-green' : val > 10 ? 'badge-orange' : 'badge-red'
+    return <span className={`badge ${color}`}>{val.toFixed(1)}%</span>
+  }
+  function calcMargeHighway(achatHT, venteClientHT) {
+    if (!achatHT || !venteClientHT || achatHT === 0) return null
+    return ((venteClientHT - achatHT) / achatHT) * 100
+  }
+  function calcMargeClient(venteClientHT, pvpr) {
+    if (!venteClientHT || !pvpr || venteClientHT === 0) return null
+    return ((pvpr - venteClientHT) / venteClientHT) * 100
   }
 
   // ── Clients with tarif count ──
@@ -310,10 +319,10 @@ export default function Tarifs() {
                         <th>Produit</th>
                         <th>Marque</th>
                         <th>Achat HT</th>
-                        <th>TVA</th>
-                        <th>Achat TTC</th>
                         <th>Tarif Général HT</th>
-                        <th>Marge</th>
+                        <th>PVPR TTC</th>
+                        <th>Marge Highway</th>
+                        <th>Marge Client</th>
                         <th>Tarifs clients</th>
                         <th></th>
                       </tr>
@@ -326,18 +335,19 @@ export default function Tarifs() {
                         const vente = getGeneralVente(p.id)
                         const nbClients = countClientTarifs(p.id)
                         const achatHT = achat?.prix_unitaire_ht
-                        const tva = achat?.taux_tva ?? 5.5
-                        const achatTTC = achatHT != null ? (achatHT * (1 + tva / 100)).toFixed(2) : null
                         const venteHT = vente?.prix_unitaire_ht
+                        const pvpr = p.pvpr
+                        const margeHW = calcMargeHighway(achatHT, venteHT)
+                        const margeCl = calcMargeClient(venteHT, pvpr)
                         return (
                           <tr key={p.id} onClick={() => openEditModal(p)} style={{ cursor: 'pointer' }}>
                             <td><div style={{ fontWeight: 500 }}>{p.libelle}</div></td>
                             <td>{p.marques?.nom || '—'}</td>
                             <td>{achatHT != null ? `${Number(achatHT).toFixed(2)} €` : '—'}</td>
-                            <td>{achatHT != null ? `${tva}%` : '—'}</td>
-                            <td>{achatTTC != null ? `${achatTTC} €` : '—'}</td>
                             <td style={{ fontWeight: 500 }}>{venteHT != null ? `${Number(venteHT).toFixed(2)} €` : '—'}</td>
-                            <td>{margeBadge(achatHT, venteHT) || '—'}</td>
+                            <td>{pvpr != null ? `${Number(pvpr).toFixed(2)} €` : '—'}</td>
+                            <td>{margeBadge(margeHW)}</td>
+                            <td>{margeBadge(margeCl)}</td>
                             <td>{nbClients > 0 ? <span className="badge badge-blue">{nbClients}</span> : '—'}</td>
                             <td>
                               <button className="btn-icon" onClick={e => { e.stopPropagation(); openEditModal(p) }}><Edit2 size={14} /></button>
@@ -392,6 +402,9 @@ export default function Tarifs() {
                           <th>Tarif Général HT</th>
                           <th>Tarif Client HT</th>
                           <th>Écart</th>
+                          <th>PVPR TTC</th>
+                          <th>Marge Highway</th>
+                          <th>Marge Client</th>
                           <th></th>
                         </tr>
                       </thead>
@@ -400,14 +413,18 @@ export default function Tarifs() {
                           const general = getGeneralVente(p.id)
                           const client = getClientVente(p.id, selectedClient.id)
                           if (!general && !client) return null
+                          const achat = getLastAchat(p.id)
                           const gHT = general?.prix_unitaire_ht
                           const cHT = client?.prix_unitaire_ht
+                          const pvpr = p.pvpr
                           let ecart = null
                           let ecartColor = 'var(--text-muted)'
                           if (gHT && cHT) {
                             ecart = ((cHT - gHT) / gHT * 100).toFixed(1)
                             ecartColor = ecart > 0 ? '#e74c3c' : ecart < 0 ? '#27ae60' : 'var(--text-muted)'
                           }
+                          const margeHW = calcMargeHighway(achat?.prix_unitaire_ht, cHT || gHT)
+                          const margeCl = calcMargeClient(cHT || gHT, pvpr)
                           return (
                             <tr key={p.id}>
                               <td style={{ fontWeight: 500 }}>{p.libelle}</td>
@@ -415,6 +432,9 @@ export default function Tarifs() {
                               <td>{gHT != null ? `${Number(gHT).toFixed(2)} €` : '—'}</td>
                               <td style={{ fontWeight: 500 }}>{cHT != null ? `${Number(cHT).toFixed(2)} €` : '—'}</td>
                               <td>{ecart != null ? <span style={{ fontWeight: 600, color: ecartColor }}>{ecart > 0 ? '+' : ''}{ecart}%</span> : '—'}</td>
+                              <td>{pvpr != null ? `${Number(pvpr).toFixed(2)} €` : '—'}</td>
+                              <td>{margeBadge(margeHW)}</td>
+                              <td>{margeBadge(margeCl)}</td>
                               <td>
                                 <button className="btn-icon" onClick={() => openEditModal(p, selectedClient.id)}><Edit2 size={14} /></button>
                               </td>
@@ -478,6 +498,43 @@ export default function Tarifs() {
               <div style={{ marginTop: 8, marginBottom: 20 }}>
                 <button className="btn btn-primary" onClick={saveEditVenteGeneral} disabled={savingEdit} style={{ fontSize: 13 }}>
                   {savingEdit ? 'Enregistrement...' : 'Enregistrer tarif général'}
+                </button>
+              </div>
+
+              <hr className="divider" />
+              <p className="section-title">PVPR & Marges</p>
+              <div className="form-grid-3">
+                <div className="form-group">
+                  <label>PVPR TTC (€)</label>
+                  <input type="number" step="0.01" value={editPvpr} onChange={e => setEditPvpr(e.target.value)} placeholder="0.00" />
+                </div>
+                <div className="form-group">
+                  <label>Marge Highway</label>
+                  <input type="text" disabled value={
+                    editAchat.prix_unitaire_ht && editVenteGeneral.prix_unitaire_ht
+                      ? `${calcMargeHighway(parseFloat(editAchat.prix_unitaire_ht), parseFloat(editVenteGeneral.prix_unitaire_ht)).toFixed(1)}%`
+                      : '—'
+                  } style={{ background: 'var(--surface-2)', fontWeight: 600 }} />
+                </div>
+                <div className="form-group">
+                  <label>Marge Client</label>
+                  <input type="text" disabled value={
+                    editVenteGeneral.prix_unitaire_ht && editPvpr
+                      ? `${calcMargeClient(parseFloat(editVenteGeneral.prix_unitaire_ht), parseFloat(editPvpr)).toFixed(1)}%`
+                      : '—'
+                  } style={{ background: 'var(--surface-2)', fontWeight: 600 }} />
+                </div>
+              </div>
+              <div style={{ marginTop: 8, marginBottom: 20 }}>
+                <button className="btn btn-primary" onClick={async () => {
+                  setSavingEdit(true)
+                  const { error } = await supabase.from('produits').update({ pvpr: editPvpr ? parseFloat(editPvpr) : null }).eq('id', editModal.produit.id)
+                  setSavingEdit(false)
+                  if (error) return toast('Erreur : ' + error.message, 'error')
+                  toast('PVPR enregistré', 'success')
+                  fetchAll()
+                }} disabled={savingEdit} style={{ fontSize: 13 }}>
+                  {savingEdit ? 'Enregistrement...' : 'Enregistrer PVPR'}
                 </button>
               </div>
 

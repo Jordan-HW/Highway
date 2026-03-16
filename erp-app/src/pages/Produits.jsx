@@ -229,7 +229,7 @@ const emptyForm = {
   dlc_type: 'DLC', dlc_duree_jours: '',
   ref_marque: '', photo_url: '', fiche_technique_url: '',
   statut: 'actif', code_douanier: '', pays_origine: '', meursing_code: '',
-  taux_tva: 5.5
+  taux_tva: 5.5, pvpr: ''
 }
 
 // ─── Composant principal ───────────────────────────────────────────────────────
@@ -394,7 +394,7 @@ export default function Produits() {
     setSaving(true)
     const { marques: _m, categories: _c, fournisseurs: _f, ...payload } = { ...form }
     ;['poids_brut_kg','poids_net_kg','volume_m3','longueur_cm','largeur_cm','hauteur_cm',
-      'temperature_min_c','temperature_max_c','dlc_duree_jours','pcb','taux_tva'].forEach(f => {
+      'temperature_min_c','temperature_max_c','dlc_duree_jours','pcb','taux_tva','pvpr'].forEach(f => {
       if (payload[f] === '') payload[f] = null
     })
     let error
@@ -752,6 +752,26 @@ export default function Produits() {
                       <button className="btn btn-primary" onClick={saveTarifVenteGeneral} disabled={savingTarif} style={{ fontSize: 13 }}>
                         {savingTarif ? 'Enregistrement...' : 'Enregistrer tarif général'}
                       </button>
+                    </div>
+
+                    <hr className="divider" />
+                    <p className="section-title">Prix de vente public recommandé (PVPR)</p>
+                    <div className="form-grid">
+                      <div className="form-group">
+                        <label>PVPR TTC (€)</label>
+                        <input type="number" step="0.01" value={form.pvpr || ''} onChange={e => set('pvpr', e.target.value)} placeholder="0.00" />
+                      </div>
+                      <div className="form-group">
+                        <label>Marge Highway</label>
+                        <input type="text" disabled value={
+                          tarifAchat.prix_unitaire_ht && tarifVenteGeneral.prix_unitaire_ht
+                            ? `${(((parseFloat(tarifVenteGeneral.prix_unitaire_ht) - parseFloat(tarifAchat.prix_unitaire_ht)) / parseFloat(tarifAchat.prix_unitaire_ht)) * 100).toFixed(1)}%`
+                            : '—'
+                        } style={{ background: 'var(--surface-2)' }} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, marginBottom: 16 }}>
+                      Le PVPR est enregistré avec la fiche produit (bouton "Mettre à jour" en bas).
                     </div>
 
                     {tarifsVenteClients.length > 0 && (
