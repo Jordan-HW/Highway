@@ -17,8 +17,16 @@ export default function Login({ onLogin }) {
         p_email: email.trim().toLowerCase(),
         p_password: password
       })
+    if (err || !data || data.length === 0) {
+      setLoading(false)
+      return setError('Identifiants incorrects ou compte inactif')
+    }
+    // Sign in via Supabase Auth for RLS authenticated access
+    await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password: password
+    })
     setLoading(false)
-    if (err || !data || data.length === 0) return setError('Identifiants incorrects ou compte inactif')
     onLogin(data[0])
   }
 

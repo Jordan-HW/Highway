@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { supabase } from './lib/supabase'
 import Sidebar from './components/Sidebar'
 import { ToastContainer } from './components/Toast'
 import Login from './pages/Login'
@@ -28,7 +29,8 @@ export default function App() {
     setUser(userData)
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    await supabase.auth.signOut()
     localStorage.removeItem(SESSION_KEY)
     setUser(null)
   }
