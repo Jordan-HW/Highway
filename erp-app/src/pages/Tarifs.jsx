@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { Search, X, Edit2, TrendingUp, Package, Users, DollarSign } from 'lucide-react'
+import { Search, X, Edit2, TrendingUp, Package, Users, Upload, FileSpreadsheet, ChevronRight, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 const TVA_OPTIONS = [0, 5.5, 10, 20]
 
@@ -35,6 +36,15 @@ export default function Tarifs() {
   const [bulkPourcent, setBulkPourcent] = useState('')
   const [bulkPreview, setBulkPreview] = useState([])
   const [applyingBulk, setApplyingBulk] = useState(false)
+
+  // Import modal
+  const [importModal, setImportModal] = useState(false)
+  const [importStep, setImportStep] = useState('upload') // 'upload' | 'mapping' | 'validation' | 'done'
+  const [importFile, setImportFile] = useState(null) // { cols, rows, filename }
+  const [importMapping, setImportMapping] = useState({})
+  const [importValidation, setImportValidation] = useState(null)
+  const [importingData, setImportingData] = useState(false)
+  const [importResult, setImportResult] = useState(null)
 
   useEffect(() => { fetchAll() }, [])
 
@@ -244,6 +254,181 @@ export default function Tarifs() {
 
   const bulkCanPreview = bulkClient && bulkPourcent && (bulkMode === 'marque' ? bulkMarque : bulkSelectedIds.size > 0)
 
+  // ── Import tarifs logic ──
+  const IMPORT_FIELDS = [
+    { key: '__ignore__', label: '— Ignorer —' },
+    { key: 'ean13', label: 'EAN13 (clé) *' },
+    { key: 'prix_achat_ht', label: 'Prix achat HT' },
+    { key: 'taux_tva', label: 'Taux TVA (%)' },
+    { key: 'prix_vente_ht', label: 'Tarif vente général HT' },
+    { key: 'remise_pourcent', label: 'Remise vente (%)' },
+    { key: 'pvpr', label: 'PVPR TTC' },
+    { key: 'client_nom', label: 'Client (nom)' },
+    { key: 'prix_client_ht', label: 'Tarif client HT' },
+    { key: 'remise_client_pourcent', label: 'Remise client (%)' },
+  ]
+
+  function autoMapTarifs(cols) {
+    const map = {}
+    const hints = {
+      ean: 'ean13', ean13: 'ean13', 'code barre': 'ean13', 'code-barres': 'ean13', barcode: 'ean13',
+      'prix achat': 'prix_achat_ht', 'achat ht': 'prix_achat_ht', 'prix achat ht': 'prix_achat_ht', 'purchase price': 'prix_achat_ht',
+      tva: 'taux_tva', 'taux tva': 'taux_tva', 'vat': 'taux_tva',
+      'prix vente': 'prix_vente_ht', 'vente ht': 'prix_vente_ht', 'tarif general': 'prix_vente_ht', 'prix vente ht': 'prix_vente_ht', 'tarif général': 'prix_vente_ht', 'selling price': 'prix_vente_ht',
+      remise: 'remise_pourcent', 'remise %': 'remise_pourcent', discount: 'remise_pourcent',
+      pvpr: 'pvpr', 'prix public': 'pvpr', 'pvp': 'pvpr', 'rrp': 'pvpr', 'prix recommandé': 'pvpr', 'prix recommande': 'pvpr',
+      client: 'client_nom', 'nom client': 'client_nom',
+      'prix client': 'prix_client_ht', 'tarif client': 'prix_client_ht', 'prix client ht': 'prix_client_ht',
+      'remise client': 'remise_client_pourcent',
+    }
+    cols.forEach(col => {
+      const key = col.toLowerCase().trim().replace(/_/g, ' ')
+      map[col] = hints[key] || '__ignore__'
+    })
+    return map
+  }
+
+  function openImportModal() {
+    setImportStep('upload')
+    setImportFile(null)
+    setImportMapping({})
+    setImportValidation(null)
+    setImportResult(null)
+    setImportModal(true)
+  }
+
+  function handleImportFile(file) {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const raw = XLSX.utils.sheet_to_json(ws, { defval: '' })
+        if (!raw.length) return toast('Fichier vide ou non reconnu', 'error')
+        const cols = Object.keys(raw[0])
+        setImportFile({ cols, rows: raw, filename: file.name })
+        setImportMapping(autoMapTarifs(cols))
+        setImportStep('mapping')
+      } catch {
+        toast('Impossible de lire ce fichier', 'error')
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  function validateImportMapping() {
+    if (!Object.values(importMapping).includes('ean13')) {
+      return toast('Vous devez mapper au moins la colonne EAN13', 'error')
+    }
+
+    const eanIndex = new Map()
+    produits.forEach(p => { if (p.ean13) eanIndex.set(p.ean13, p) })
+
+    const clientIndex = new Map()
+    clients.forEach(c => clientIndex.set(c.nom.toLowerCase(), c))
+
+    const toProcess = []
+    const errors = []
+
+    importFile.rows.forEach((row, i) => {
+      const obj = {}
+      Object.entries(importMapping).forEach(([col, field]) => {
+        if (field === '__ignore__') return
+        let val = row[col]
+        if (val === null || val === undefined) val = ''
+        obj[field] = String(val).trim()
+      })
+
+      if (!obj.ean13) { errors.push({ row: i + 2, msg: 'EAN13 manquant' }); return }
+      const produit = eanIndex.get(obj.ean13)
+      if (!produit) { errors.push({ row: i + 2, msg: `EAN ${obj.ean13} non trouvé en base` }); return }
+
+      // Résoudre le client si spécifié
+      let resolvedClient = null
+      if (obj.client_nom) {
+        resolvedClient = clientIndex.get(obj.client_nom.toLowerCase())
+        if (!resolvedClient) { errors.push({ row: i + 2, msg: `Client "${obj.client_nom}" non trouvé` }); return }
+      }
+
+      toProcess.push({ ...obj, _row: i + 2, _produit: produit, _client: resolvedClient })
+    })
+
+    setImportValidation({ toProcess, errors })
+    setImportStep('validation')
+  }
+
+  async function doImportTarifs() {
+    setImportingData(true)
+    const today = new Date().toISOString().slice(0, 10)
+    let updated = 0, failed = 0
+
+    for (const item of importValidation.toProcess) {
+      const prodId = item._produit.id
+
+      // Update PVPR on produit if provided
+      if (item.pvpr) {
+        const { error } = await supabase.from('produits').update({ pvpr: parseFloat(item.pvpr) || null }).eq('id', prodId)
+        if (error) failed++
+      }
+
+      // Upsert tarif achat if provided
+      if (item.prix_achat_ht) {
+        const payload = {
+          produit_id: prodId,
+          prix_unitaire_ht: parseFloat(item.prix_achat_ht),
+          taux_tva: item.taux_tva ? parseFloat(item.taux_tva) : 5.5,
+          date_debut: today,
+        }
+        const existing = getLastAchat(prodId)
+        const { error } = existing
+          ? await supabase.from('tarifs_achat').update(payload).eq('id', existing.id)
+          : await supabase.from('tarifs_achat').insert(payload)
+        if (error) { failed++; continue }
+      }
+
+      // Upsert tarif vente général if provided
+      if (item.prix_vente_ht) {
+        const payload = {
+          produit_id: prodId,
+          client_id: null,
+          prix_unitaire_ht: parseFloat(item.prix_vente_ht),
+          remise_pourcent: item.remise_pourcent ? parseFloat(item.remise_pourcent) : null,
+          date_debut: today,
+        }
+        const existing = getGeneralVente(prodId)
+        const { error } = existing
+          ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
+          : await supabase.from('tarifs_vente').insert(payload)
+        if (error) { failed++; continue }
+      }
+
+      // Upsert tarif client if provided
+      if (item.prix_client_ht && item._client) {
+        const payload = {
+          produit_id: prodId,
+          client_id: item._client.id,
+          prix_unitaire_ht: parseFloat(item.prix_client_ht),
+          remise_pourcent: item.remise_client_pourcent ? parseFloat(item.remise_client_pourcent) : null,
+          date_debut: today,
+          note: 'Import Excel',
+        }
+        const existing = getClientVente(prodId, item._client.id)
+        const { error } = existing
+          ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
+          : await supabase.from('tarifs_vente').insert(payload)
+        if (error) { failed++; continue }
+      }
+
+      updated++
+    }
+
+    setImportResult({ updated, failed })
+    setImportingData(false)
+    setImportStep('done')
+    fetchAll()
+  }
+
   // ── Margin helpers ──
   function margeBadge(val) {
     if (val == null) return '—'
@@ -273,7 +458,8 @@ export default function Tarifs() {
           <p>{view === 'produit' ? `${filteredProduits.length} produit(s)` : selectedClient ? 'Tarifs du client' : `${clients.length} client(s)`}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary" onClick={openBulkModal}><TrendingUp size={15} /> Majoration en masse</button>
+          <button className="btn btn-secondary" onClick={openImportModal}><Upload size={15} /> Importer</button>
+          <button className="btn btn-secondary" onClick={openBulkModal}><TrendingUp size={15} /> Modification en masse</button>
         </div>
       </div>
 
@@ -572,7 +758,7 @@ export default function Tarifs() {
         <div className="modal-overlay" onClick={() => setBulkModal(false)}>
           <div className="modal" style={{ maxWidth: 700 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Majoration en masse</h3>
+              <h3>Modification en masse</h3>
               <button className="btn-icon" onClick={() => setBulkModal(false)}><X size={18} /></button>
             </div>
             <div className="modal-body">
@@ -681,6 +867,184 @@ export default function Tarifs() {
                     {applyingBulk ? 'Application...' : `Appliquer à ${bulkPreview.length} produit(s)`}
                   </button>
                 </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Modal import tarifs ── */}
+      {importModal && (
+        <div className="modal-overlay" onClick={() => setImportModal(false)}>
+          <div className="modal" style={{ maxWidth: 720, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>Import tarifs depuis Excel</h3>
+                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                  {['Fichier', 'Mapping', 'Validation', 'Terminé'].map((s, i) => {
+                    const idx = ['upload', 'mapping', 'validation', 'done'].indexOf(importStep)
+                    return (
+                      <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: i === idx ? 'var(--primary)' : i < idx ? '#e8f0eb' : 'var(--surface-2)', color: i === idx ? '#fff' : i < idx ? 'var(--primary)' : 'var(--text-muted)' }}>{s}</span>
+                        {i < 3 && <ChevronRight size={12} color="var(--text-muted)" />}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              <button className="btn-icon" onClick={() => setImportModal(false)}><X size={18} /></button>
+            </div>
+
+            <div className="modal-body" style={{ flex: 1, overflowY: 'auto' }}>
+              {importStep === 'upload' && (
+                <div
+                  onDrop={e => { e.preventDefault(); handleImportFile(e.dataTransfer.files[0]) }}
+                  onDragOver={e => e.preventDefault()}
+                  onClick={() => document.getElementById('tarif-file-input').click()}
+                  style={{ border: '2px dashed var(--border)', borderRadius: 12, padding: '60px 40px', textAlign: 'center', cursor: 'pointer' }}
+                >
+                  <FileSpreadsheet size={40} color="var(--text-muted)" style={{ marginBottom: 16 }} />
+                  <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>Glissez un fichier Excel ici</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>ou cliquez pour choisir un fichier .xlsx / .xls / .csv</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--surface-2)', borderRadius: 8, padding: '10px 16px', display: 'inline-block', textAlign: 'left' }}>
+                    <strong>Colonnes reconnues :</strong> EAN13 (obligatoire), Prix achat HT, Taux TVA, Prix vente HT, Remise %, PVPR, Client, Prix client HT, Remise client %
+                  </div>
+                  <input id="tarif-file-input" type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={e => handleImportFile(e.target.files[0])} />
+                </div>
+              )}
+
+              {importStep === 'mapping' && importFile && (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 8 }}>
+                    <FileSpreadsheet size={18} color="var(--primary)" />
+                    <span style={{ fontSize: 13, fontWeight: 500 }}>{importFile.filename}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 'auto' }}>{importFile.rows.length} lignes</span>
+                  </div>
+                  <p className="section-title">Associez les colonnes aux champs tarifs</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {importFile.cols.map(col => {
+                      const preview = importFile.rows.slice(0, 2).map(r => r[col]).filter(Boolean).join(', ')
+                      return (
+                        <div key={col} style={{ display: 'grid', gridTemplateColumns: '1fr 24px 1fr', gap: 10, alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: 'var(--surface-2)' }}>
+                          <div>
+                            <div style={{ fontWeight: 500, fontSize: 13 }}>{col}</div>
+                            {preview && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>ex: {preview.slice(0, 60)}</div>}
+                          </div>
+                          <ChevronRight size={16} color="var(--text-muted)" />
+                          <select
+                            value={importMapping[col] || '__ignore__'}
+                            onChange={e => setImportMapping(p => ({ ...p, [col]: e.target.value }))}
+                            style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: importMapping[col] && importMapping[col] !== '__ignore__' ? '#e8f0eb' : 'var(--surface)', fontSize: 12, color: 'var(--text)' }}
+                          >
+                            {IMPORT_FIELDS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+                          </select>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+
+              {importStep === 'validation' && importValidation && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+                    <div style={{ padding: '14px 16px', borderRadius: 10, background: '#e8f0eb', textAlign: 'center' }}>
+                      <div style={{ fontSize: 28, fontWeight: 700, color: '#2D5A3D' }}>{importValidation.toProcess.length}</div>
+                      <div style={{ fontSize: 12, color: '#2D5A3D' }}>Tarifs à importer</div>
+                    </div>
+                    <div style={{ padding: '14px 16px', borderRadius: 10, background: '#fee2e2', textAlign: 'center' }}>
+                      <div style={{ fontSize: 28, fontWeight: 700, color: '#dc2626' }}>{importValidation.errors.length}</div>
+                      <div style={{ fontSize: 12, color: '#dc2626' }}>Erreurs ignorées</div>
+                    </div>
+                  </div>
+
+                  {importValidation.errors.length > 0 && (
+                    <>
+                      <p className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <AlertTriangle size={14} color="#dc2626" /> Lignes ignorées
+                      </p>
+                      <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid #fca5a5', borderRadius: 8, marginBottom: 16 }}>
+                        {importValidation.errors.map((e, i) => (
+                          <div key={i} style={{ padding: '6px 12px', borderBottom: '1px solid #fee2e2', fontSize: 12 }}>
+                            <span style={{ color: '#dc2626', fontWeight: 600 }}>Ligne {e.row}</span> — {e.msg}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {importValidation.toProcess.length > 0 && (
+                    <>
+                      <p className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <CheckCircle size={14} color="#2D5A3D" /> Aperçu
+                      </p>
+                      <div className="table-container" style={{ maxHeight: 250, overflowY: 'auto' }}>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>EAN</th>
+                              <th>Produit</th>
+                              <th>Achat HT</th>
+                              <th>Vente HT</th>
+                              <th>PVPR</th>
+                              <th>Client</th>
+                              <th>Prix client</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {importValidation.toProcess.slice(0, 30).map((item, i) => (
+                              <tr key={i}>
+                                <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{item.ean13}</td>
+                                <td style={{ fontWeight: 500, fontSize: 12 }}>{item._produit.libelle}</td>
+                                <td>{item.prix_achat_ht || '—'}</td>
+                                <td>{item.prix_vente_ht || '—'}</td>
+                                <td>{item.pvpr || '—'}</td>
+                                <td style={{ fontSize: 12 }}>{item._client?.nom || '—'}</td>
+                                <td>{item.prix_client_ht || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {importValidation.toProcess.length > 30 && (
+                        <div style={{ padding: 8, color: 'var(--text-muted)', fontSize: 12 }}>… et {importValidation.toProcess.length - 30} autres</div>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+
+              {importStep === 'done' && importResult && (
+                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                  <CheckCircle size={48} color="#2D5A3D" style={{ marginBottom: 20 }} />
+                  <h3 style={{ marginBottom: 16 }}>Import terminé !</h3>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: 20 }}>
+                    {importResult.updated > 0 && <div style={{ padding: '12px 24px', background: '#e8f0eb', borderRadius: 10 }}><div style={{ fontSize: 24, fontWeight: 700, color: '#2D5A3D' }}>{importResult.updated}</div><div style={{ fontSize: 12, color: '#2D5A3D' }}>importés</div></div>}
+                    {importResult.failed > 0 && <div style={{ padding: '12px 24px', background: '#fee2e2', borderRadius: 10 }}><div style={{ fontSize: 24, fontWeight: 700, color: '#dc2626' }}>{importResult.failed}</div><div style={{ fontSize: 12, color: '#dc2626' }}>échecs</div></div>}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              {importStep === 'upload' && (
+                <button className="btn btn-secondary" onClick={() => setImportModal(false)}>Annuler</button>
+              )}
+              {importStep === 'mapping' && (
+                <>
+                  <button className="btn btn-secondary" onClick={() => setImportStep('upload')}>Retour</button>
+                  <button className="btn btn-primary" onClick={validateImportMapping}>Valider le mapping <ChevronRight size={15} /></button>
+                </>
+              )}
+              {importStep === 'validation' && (
+                <>
+                  <button className="btn btn-secondary" onClick={() => setImportStep('mapping')}>Retour</button>
+                  <button className="btn btn-primary" onClick={doImportTarifs} disabled={importingData || importValidation.toProcess.length === 0}>
+                    {importingData ? 'Import en cours...' : `Importer ${importValidation.toProcess.length} tarif(s)`}
+                  </button>
+                </>
+              )}
+              {importStep === 'done' && (
+                <button className="btn btn-primary" onClick={() => setImportModal(false)}>Fermer</button>
               )}
             </div>
           </div>
