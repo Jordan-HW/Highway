@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Package, Users, ShoppingCart, Truck, Warehouse, FileText, Building2, ShieldCheck, LogOut, Menu, X } from 'lucide-react'
+import { LayoutDashboard, Package, Users, ShoppingCart, Truck, Warehouse, FileText, Building2, ShieldCheck, LogOut, Menu, X, DollarSign } from 'lucide-react'
 
 export default function Sidebar({ user, onLogout }) {
   const location    = useLocation()
@@ -33,6 +33,7 @@ export default function Sidebar({ user, onLogout }) {
     ]},
     { section: 'Commercial', show: !isComptable, items: [
       { to: '/clients',         icon: Users,        label: 'Clients',         show: !isComptable },
+      { to: '/tarifs',          icon: DollarSign,   label: 'Tarifs',          show: !isComptable },
       { to: '/commandes-vente', icon: ShoppingCart, label: 'Commandes vente', show: !isComptable },
       { to: '/commandes-achat', icon: Truck,        label: 'Commandes achat', show: !isComptable },
     ]},

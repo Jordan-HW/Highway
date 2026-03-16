@@ -228,7 +228,8 @@ const emptyForm = {
   temperature_stockage: 'ambiant', temperature_min_c: '', temperature_max_c: '',
   dlc_type: 'DLC', dlc_duree_jours: '',
   ref_marque: '', photo_url: '', fiche_technique_url: '',
-  statut: 'actif', code_douanier: '', pays_origine: '', meursing_code: ''
+  statut: 'actif', code_douanier: '', pays_origine: '', meursing_code: '',
+  taux_tva: 5.5
 }
 
 // ─── Composant principal ───────────────────────────────────────────────────────
@@ -263,6 +264,11 @@ export default function Produits() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [showExport, setShowExport]   = useState(false)
   const [showImport, setShowImport]   = useState(false)
+  const [tarifAchat, setTarifAchat]         = useState({ prix_unitaire_ht: '', taux_tva: 5.5 })
+  const [tarifVenteGeneral, setTarifVenteGeneral] = useState({ prix_unitaire_ht: '', remise_pourcent: '' })
+  const [tarifsVenteClients, setTarifsVenteClients] = useState([])
+  const [loadingTarifs, setLoadingTarifs]   = useState(false)
+  const [savingTarif, setSavingTarif]       = useState(false)
   const [sortConfig, setSortConfig]   = useState({ key: null, dir: 'asc' })
   const [colFilters, setColFilters]   = useState({})
 
@@ -311,6 +317,72 @@ export default function Produits() {
     setLoading(false)
   }
 
+  async function fetchTarifs(produitId) {
+    setLoadingTarifs(true)
+    const [{ data: achats }, { data: ventes }] = await Promise.all([
+      supabase.from('tarifs_achat').select('*').eq('produit_id', produitId).order('date_debut', { ascending: false }).limit(1),
+      supabase.from('tarifs_vente').select('*, clients(nom)').eq('produit_id', produitId).order('date_debut', { ascending: false }),
+    ])
+    if (achats && achats.length > 0) {
+      setTarifAchat({ prix_unitaire_ht: achats[0].prix_unitaire_ht ?? '', taux_tva: achats[0].taux_tva ?? 5.5 })
+    } else {
+      setTarifAchat({ prix_unitaire_ht: '', taux_tva: 5.5 })
+    }
+    const general = ventes?.find(v => !v.client_id)
+    setTarifVenteGeneral(general ? { prix_unitaire_ht: general.prix_unitaire_ht ?? '', remise_pourcent: general.remise_pourcent ?? '' } : { prix_unitaire_ht: '', remise_pourcent: '' })
+    setTarifsVenteClients(ventes?.filter(v => v.client_id) || [])
+    setLoadingTarifs(false)
+  }
+
+  async function saveTarifAchat() {
+    if (!editing) return
+    if (!tarifAchat.prix_unitaire_ht && tarifAchat.prix_unitaire_ht !== 0) return toast('Saisissez un prix HT', 'error')
+    setSavingTarif(true)
+    const payload = {
+      produit_id: editing,
+      prix_unitaire_ht: parseFloat(tarifAchat.prix_unitaire_ht),
+      taux_tva: parseFloat(tarifAchat.taux_tva),
+      date_debut: new Date().toISOString().slice(0, 10),
+    }
+    const { data: existing } = await supabase.from('tarifs_achat').select('id').eq('produit_id', editing).order('date_debut', { ascending: false }).limit(1)
+    let error
+    if (existing && existing.length > 0) {
+      const { error: e } = await supabase.from('tarifs_achat').update(payload).eq('id', existing[0].id)
+      error = e
+    } else {
+      const { error: e } = await supabase.from('tarifs_achat').insert(payload)
+      error = e
+    }
+    setSavingTarif(false)
+    if (error) return toast('Erreur : ' + error.message, 'error')
+    toast('Prix d\'achat enregistré', 'success')
+  }
+
+  async function saveTarifVenteGeneral() {
+    if (!editing) return
+    if (!tarifVenteGeneral.prix_unitaire_ht && tarifVenteGeneral.prix_unitaire_ht !== 0) return toast('Saisissez un prix HT', 'error')
+    setSavingTarif(true)
+    const payload = {
+      produit_id: editing,
+      client_id: null,
+      prix_unitaire_ht: parseFloat(tarifVenteGeneral.prix_unitaire_ht),
+      remise_pourcent: tarifVenteGeneral.remise_pourcent ? parseFloat(tarifVenteGeneral.remise_pourcent) : null,
+      date_debut: new Date().toISOString().slice(0, 10),
+    }
+    const { data: existing } = await supabase.from('tarifs_vente').select('id').eq('produit_id', editing).is('client_id', null).order('date_debut', { ascending: false }).limit(1)
+    let error
+    if (existing && existing.length > 0) {
+      const { error: e } = await supabase.from('tarifs_vente').update(payload).eq('id', existing[0].id)
+      error = e
+    } else {
+      const { error: e } = await supabase.from('tarifs_vente').insert(payload)
+      error = e
+    }
+    setSavingTarif(false)
+    if (error) return toast('Erreur : ' + error.message, 'error')
+    toast('Tarif général enregistré', 'success')
+  }
+
   function openCreate() { setForm(emptyForm); setEditing(null); setActiveTab('general'); setModal(true) }
   function openEdit(row) { setForm({ ...emptyForm, ...row, marque_id: row.marque_id || '' }); setEditing(row.id); setActiveTab('general'); setModal(true) }
   function close() { setModal(false); setForm(emptyForm); setEditing(null) }
@@ -322,7 +394,7 @@ export default function Produits() {
     setSaving(true)
     const { marques: _m, categories: _c, fournisseurs: _f, ...payload } = { ...form }
     ;['poids_brut_kg','poids_net_kg','volume_m3','longueur_cm','largeur_cm','hauteur_cm',
-      'temperature_min_c','temperature_max_c','dlc_duree_jours','pcb'].forEach(f => {
+      'temperature_min_c','temperature_max_c','dlc_duree_jours','pcb','taux_tva'].forEach(f => {
       if (payload[f] === '') payload[f] = null
     })
     let error
@@ -553,8 +625,8 @@ export default function Produits() {
             </div>
             <div style={{ padding: '0 24px' }}>
               <div className="tabs">
-                {[['general','Général'],['colisage','Colisage & Stockage'],['ingredients','Ingrédients'],['import','Import / Douane']].map(([key, label]) => (
-                  <button key={key} className={`tab ${activeTab === key ? 'active' : ''}`} onClick={() => setActiveTab(key)}>{label}</button>
+                {[['general','Général'],['colisage','Colisage & Stockage'],['ingredients','Ingrédients'],['import','Import / Douane'], ...(editing ? [['tarifs','Tarifs']] : [])].map(([key, label]) => (
+                  <button key={key} className={`tab ${activeTab === key ? 'active' : ''}`} onClick={() => { setActiveTab(key); if (key === 'tarifs' && editing && !loadingTarifs && !tarifAchat.prix_unitaire_ht && !tarifVenteGeneral.prix_unitaire_ht) fetchTarifs(editing) }}>{label}</button>
                 ))}
               </div>
             </div>
@@ -634,6 +706,80 @@ export default function Produits() {
                     <div className="form-group"><label>Code Meursing</label><input value={form.meursing_code || ''} onChange={e => set('meursing_code', e.target.value)} placeholder="ex: 7126" style={{ fontFamily: 'var(--font-mono)' }} /></div>
                   </div>
                 </>
+              )}
+              {activeTab === 'tarifs' && (
+                loadingTarifs ? <div className="loading">Chargement des tarifs...</div> : (
+                  <>
+                    <p className="section-title">Prix d'achat fournisseur</p>
+                    <div className="form-grid-3">
+                      <div className="form-group">
+                        <label>Prix HT (€)</label>
+                        <input type="number" step="0.01" value={tarifAchat.prix_unitaire_ht} onChange={e => setTarifAchat(p => ({ ...p, prix_unitaire_ht: e.target.value }))} placeholder="0.00" />
+                      </div>
+                      <div className="form-group">
+                        <label>TVA (%)</label>
+                        <select value={tarifAchat.taux_tva} onChange={e => setTarifAchat(p => ({ ...p, taux_tva: parseFloat(e.target.value) }))}>
+                          <option value="0">0%</option>
+                          <option value="5.5">5.5%</option>
+                          <option value="10">10%</option>
+                          <option value="20">20%</option>
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Prix TTC (€)</label>
+                        <input type="text" disabled value={tarifAchat.prix_unitaire_ht ? (parseFloat(tarifAchat.prix_unitaire_ht) * (1 + tarifAchat.taux_tva / 100)).toFixed(2) : '—'} style={{ background: 'var(--surface-2)' }} />
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 8, marginBottom: 20 }}>
+                      <button className="btn btn-primary" onClick={saveTarifAchat} disabled={savingTarif} style={{ fontSize: 13 }}>
+                        {savingTarif ? 'Enregistrement...' : 'Enregistrer prix d\'achat'}
+                      </button>
+                    </div>
+
+                    <hr className="divider" />
+                    <p className="section-title">Tarif général de vente</p>
+                    <div className="form-grid">
+                      <div className="form-group">
+                        <label>Prix vente HT (€)</label>
+                        <input type="number" step="0.01" value={tarifVenteGeneral.prix_unitaire_ht} onChange={e => setTarifVenteGeneral(p => ({ ...p, prix_unitaire_ht: e.target.value }))} placeholder="0.00" />
+                      </div>
+                      <div className="form-group">
+                        <label>Remise (%)</label>
+                        <input type="number" step="0.1" value={tarifVenteGeneral.remise_pourcent} onChange={e => setTarifVenteGeneral(p => ({ ...p, remise_pourcent: e.target.value }))} placeholder="0" />
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 8, marginBottom: 20 }}>
+                      <button className="btn btn-primary" onClick={saveTarifVenteGeneral} disabled={savingTarif} style={{ fontSize: 13 }}>
+                        {savingTarif ? 'Enregistrement...' : 'Enregistrer tarif général'}
+                      </button>
+                    </div>
+
+                    {tarifsVenteClients.length > 0 && (
+                      <>
+                        <hr className="divider" />
+                        <p className="section-title">Tarifs spécifiques clients</p>
+                        <div className="table-container" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                          <table>
+                            <thead><tr><th>Client</th><th>Prix HT</th><th>Remise %</th><th>Depuis</th></tr></thead>
+                            <tbody>
+                              {tarifsVenteClients.map(t => (
+                                <tr key={t.id}>
+                                  <td>{t.clients?.nom || '—'}</td>
+                                  <td>{t.prix_unitaire_ht != null ? `${Number(t.prix_unitaire_ht).toFixed(2)} €` : '—'}</td>
+                                  <td>{t.remise_pourcent != null ? `${t.remise_pourcent}%` : '—'}</td>
+                                  <td>{t.date_debut || '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div style={{ marginTop: 8 }}>
+                          <a href="/tarifs" style={{ fontSize: 13, color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}>Gérer les tarifs clients →</a>
+                        </div>
+                      </>
+                    )}
+                  </>
+                )
               )}
             </div>
             <div className="modal-footer">

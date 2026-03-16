@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard'
 import Marques from './pages/Marques'
 import Produits from './pages/Produits'
 import Clients from './pages/Clients'
+import Tarifs from './pages/Tarifs'
 import Stock from './pages/Stock'
 import Utilisateurs from './pages/Utilisateurs'
 import { CommandesVente, CommandesAchat, Expeditions, Factures } from './pages/Placeholders'
@@ -58,6 +59,7 @@ export default function App() {
               <Route path="/marques" element={<Marques />} />
               <Route path="/produits" element={<Produits />} />
               <Route path="/clients" element={<Clients />} />
+              <Route path="/tarifs" element={<Tarifs />} />
               <Route path="/commandes-vente" element={<CommandesVente />} />
               <Route path="/commandes-achat" element={<CommandesAchat />} />
               <Route path="/stock" element={<Stock />} />
