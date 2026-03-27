@@ -5,7 +5,8 @@ import { Plus, Search, X, Building2, Edit2, Trash2, UserPlus, Tag } from 'lucide
 
 const emptyMarque = {
   nom: '', code: '', pays: '', devise: 'EUR', delai_livraison_jours: 7,
-  conditions_paiement: '', adresse: '', notes: '', actif: true
+  conditions_paiement: '', adresse: '', notes: '', actif: true,
+  nomenclature_specifique: false
 }
 
 const emptyContact = { prenom: '', nom: '', fonction: '', email: '' }
@@ -199,7 +200,7 @@ export default function Marques() {
                     <th>Code</th>
                     <th>Pays</th>
                     <th>Contacts</th>
-                    <th>Catégories</th>
+                    <th>Nomenclature</th>
                     <th>Délai livraison</th>
                     <th>Statut</th>
                     <th></th>
@@ -219,7 +220,12 @@ export default function Marques() {
                       <td><span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{row.code || '—'}</span></td>
                       <td>{row.pays || '—'}</td>
                       <td>{row.marque_contacts?.length || 0}</td>
-                      <td>{row.categories?.length || 0}</td>
+                      <td>
+                        {row.nomenclature_specifique
+                          ? <span className="badge badge-purple" style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>Spécifique ({row.categories?.length || 0})</span>
+                          : <span className="badge badge-gray">Générale</span>
+                        }
+                      </td>
                       <td>{row.delai_livraison_jours} j</td>
                       <td><span className={`badge ${row.actif ? 'badge-green' : 'badge-gray'}`}>{row.actif ? 'Actif' : 'Inactif'}</span></td>
                       <td onClick={e => e.stopPropagation()}>
@@ -250,7 +256,7 @@ export default function Marques() {
               {[
                 { key: 'infos', label: 'Informations' },
                 { key: 'contacts', label: `Contacts (${contacts.filter(c => c.prenom || c.nom || c.email).length})` },
-                { key: 'categories', label: `Catégories (${categories.length})` },
+                ...(form.nomenclature_specifique ? [{ key: 'categories', label: `Catégories (${categories.length})` }] : []),
               ].map(t => (
                 <button
                   key={t.key}
@@ -321,11 +327,23 @@ export default function Marques() {
                     </div>
                   </div>
 
-                  <div className="form-group" style={{ marginTop: 8 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
                     <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8, display: 'flex', cursor: 'pointer' }}>
                       <input type="checkbox" checked={form.actif} onChange={e => set('actif', e.target.checked)} />
                       Marque active
                     </label>
+                    <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8, display: 'flex', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={form.nomenclature_specifique || false} onChange={e => {
+                        set('nomenclature_specifique', e.target.checked)
+                        if (!e.target.checked && tab === 'categories') setTab('infos')
+                      }} />
+                      Nomenclature de catégories spécifique à cette marque
+                    </label>
+                    {!form.nomenclature_specifique && (
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 26 }}>
+                        Cette marque utilise la nomenclature de catégories générale.
+                      </p>
+                    )}
                   </div>
                 </>
               )}

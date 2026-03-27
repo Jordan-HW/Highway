@@ -308,7 +308,7 @@ export default function Produits() {
     setLoading(true)
     const [{ data: produits }, { data: mqs }, { data: cats }] = await Promise.all([
       supabase.from('produits').select('*, marques(nom), categories(nom)').order('libelle'),
-      supabase.from('marques').select('id, nom').eq('actif', true).order('nom'),
+      supabase.from('marques').select('id, nom, nomenclature_specifique').eq('actif', true).order('nom'),
       supabase.from('categories').select('id, nom, marque_id').order('nom'),
     ])
     setRows(produits || [])
@@ -528,7 +528,11 @@ export default function Produits() {
           </select>
           <select className="filter-select" value={filterCategorie} onChange={e => setFilterCategorie(e.target.value)}>
             <option value="">Toutes les catégories</option>
-            {categories.filter(c => !filterMarque || c.marque_id === filterMarque).map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+            {categories.filter(c => {
+              if (!filterMarque) return true
+              const mq = marques.find(m => m.id === filterMarque)
+              return mq?.nomenclature_specifique ? c.marque_id === filterMarque : !c.marque_id
+            }).map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
           </select>
           <select className="filter-select" value={filterStatut} onChange={e => setFilterStatut(e.target.value)}>
             <option value="">Tous les statuts</option>
