@@ -292,7 +292,7 @@ export default function Marques() {
 
       {modal && (
         <div className="modal-overlay" onClick={close}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 640 }}>
             <div className="modal-header">
               <h3>{editing ? form.nom : 'Nouvelle marque'}</h3>
               <button className="btn-icon" onClick={close}><X size={18} /></button>
