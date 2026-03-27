@@ -31,6 +31,7 @@ export default function Marques() {
 
   // Onglet actif dans la modale
   const [tab, setTab] = useState('infos')
+  const [editingInfos, setEditingInfos] = useState(false)
 
   // Modale catégories générales
   const [catModal, setCatModal] = useState(false)
@@ -59,6 +60,7 @@ export default function Marques() {
     setDeletedCatIds([])
     setNewCatName('')
     setTab('infos')
+    setEditingInfos(true)
     setModal(true)
   }
 
@@ -66,12 +68,13 @@ export default function Marques() {
     const { marque_contacts, categories: cats, ...marqueData } = row
     setForm(marqueData)
     setEditing(row.id)
-    setContacts(marque_contacts?.length ? marque_contacts.map(c => ({ ...c })) : [{ ...emptyContact }])
+    setContacts(marque_contacts?.length ? marque_contacts.map(c => ({ ...c })) : [])
     setDeletedContactIds([])
     setCategories(cats?.length ? cats.map(c => ({ ...c })) : [])
     setDeletedCatIds([])
     setNewCatName('')
     setTab('infos')
+    setEditingInfos(false)
     setModal(true)
   }
 
@@ -285,16 +288,16 @@ export default function Marques() {
 
       {modal && (
         <div className="modal-overlay" onClick={close}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 680 }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
             <div className="modal-header">
-              <h3>{editing ? 'Modifier la marque' : 'Nouvelle marque'}</h3>
+              <h3>{editing ? form.nom : 'Nouvelle marque'}</h3>
               <button className="btn-icon" onClick={close}><X size={18} /></button>
             </div>
 
             {/* Tabs */}
-            <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', padding: '0 24px' }}>
+            <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', padding: '0 20px' }}>
               {[
-                { key: 'infos', label: 'Informations' },
+                { key: 'infos', label: 'Infos' },
                 { key: 'contacts', label: `Contacts (${contacts.filter(c => c.prenom || c.nom || c.email).length})` },
                 ...(form.nomenclature_specifique ? [{ key: 'categories', label: `Catégories (${categories.length})` }] : []),
               ].map(t => (
@@ -302,8 +305,8 @@ export default function Marques() {
                   key={t.key}
                   onClick={() => setTab(t.key)}
                   style={{
-                    padding: '10px 16px',
-                    fontSize: 13,
+                    padding: '9px 14px',
+                    fontSize: 12,
                     fontWeight: tab === t.key ? 600 : 400,
                     color: tab === t.key ? 'var(--primary)' : 'var(--text-secondary)',
                     background: 'none',
@@ -318,11 +321,44 @@ export default function Marques() {
               ))}
             </div>
 
-            <div className="modal-body">
+            <div className="modal-body" style={{ padding: '16px 20px' }}>
               {/* ── TAB INFOS ── */}
-              {tab === 'infos' && (
+              {tab === 'infos' && !editingInfos && editing && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)' }}>Informations</span>
+                    <button className="btn-icon" onClick={() => setEditingInfos(true)} title="Modifier"><Edit2 size={14} /></button>
+                  </div>
+                  {[
+                    ['Code', form.code],
+                    ['Pays', form.pays],
+                    ['Devise', form.devise],
+                    ['Délai livraison', form.delai_livraison_jours ? `${form.delai_livraison_jours} jours` : null],
+                    ['Paiement', form.conditions_paiement],
+                    ['Adresse', form.adresse],
+                    ['Notes', form.notes],
+                  ].map(([label, val]) => (
+                    <div key={label} style={{ display: 'flex', padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                      <span style={{ width: 120, flexShrink: 0, color: 'var(--text-muted)', fontSize: 12 }}>{label}</span>
+                      <span style={{ color: val ? 'var(--text-primary)' : 'var(--text-muted)' }}>{val || '—'}</span>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                    <span style={{ width: 120, flexShrink: 0, color: 'var(--text-muted)', fontSize: 12 }}>Statut</span>
+                    <span className={`badge ${form.actif ? 'badge-green' : 'badge-gray'}`} style={{ fontSize: 11 }}>{form.actif ? 'Actif' : 'Inactif'}</span>
+                  </div>
+                  <div style={{ display: 'flex', padding: '7px 0', fontSize: 13 }}>
+                    <span style={{ width: 120, flexShrink: 0, color: 'var(--text-muted)', fontSize: 12 }}>Nomenclature</span>
+                    <span>{form.nomenclature_specifique
+                      ? <span className="badge" style={{ background: 'var(--primary-light)', color: 'var(--primary)', fontSize: 11 }}>Spécifique</span>
+                      : <span className="badge badge-gray" style={{ fontSize: 11 }}>Générale</span>
+                    }</span>
+                  </div>
+                </div>
+              )}
+
+              {tab === 'infos' && (editingInfos || !editing) && (
                 <>
-                  <p className="section-title">Informations générales</p>
                   <div className="form-grid">
                     <div className="form-group form-full">
                       <label>Nom *</label>
@@ -330,11 +366,11 @@ export default function Marques() {
                     </div>
                     <div className="form-group">
                       <label>Code interne</label>
-                      <input value={form.code || ''} onChange={e => set('code', e.target.value)} placeholder="EX: MKS001" />
+                      <input value={form.code || ''} onChange={e => set('code', e.target.value)} placeholder="MKS001" />
                     </div>
                     <div className="form-group">
                       <label>Pays</label>
-                      <input value={form.pays || ''} onChange={e => set('pays', e.target.value)} placeholder="Royaume-Uni, France..." />
+                      <input value={form.pays || ''} onChange={e => set('pays', e.target.value)} placeholder="Royaume-Uni..." />
                     </div>
                     <div className="form-group">
                       <label>Devise</label>
@@ -346,44 +382,34 @@ export default function Marques() {
                       </select>
                     </div>
                     <div className="form-group">
-                      <label>Délai livraison (jours)</label>
+                      <label>Délai livraison (j)</label>
                       <input type="number" value={form.delai_livraison_jours} onChange={e => set('delai_livraison_jours', +e.target.value)} />
                     </div>
                     <div className="form-group">
-                      <label>Conditions de paiement</label>
-                      <input value={form.conditions_paiement || ''} onChange={e => set('conditions_paiement', e.target.value)} placeholder="30 jours fin de mois" />
+                      <label>Conditions paiement</label>
+                      <input value={form.conditions_paiement || ''} onChange={e => set('conditions_paiement', e.target.value)} placeholder="30j fin de mois" />
                     </div>
-                  </div>
-
-                  <hr className="divider" />
-                  <div className="form-grid">
                     <div className="form-group form-full">
                       <label>Adresse</label>
                       <textarea value={form.adresse || ''} onChange={e => set('adresse', e.target.value)} rows={2} />
                     </div>
                     <div className="form-group form-full">
-                      <label>Notes internes</label>
+                      <label>Notes</label>
                       <textarea value={form.notes || ''} onChange={e => set('notes', e.target.value)} rows={2} />
                     </div>
                   </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-                    <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8, display: 'flex', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
                       <input type="checkbox" checked={form.actif} onChange={e => set('actif', e.target.checked)} />
                       Marque active
                     </label>
-                    <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8, display: 'flex', cursor: 'pointer' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
                       <input type="checkbox" checked={form.nomenclature_specifique || false} onChange={e => {
                         set('nomenclature_specifique', e.target.checked)
                         if (!e.target.checked && tab === 'categories') setTab('infos')
                       }} />
-                      Nomenclature de catégories spécifique à cette marque
+                      Nomenclature catégories spécifique
                     </label>
-                    {!form.nomenclature_specifique && (
-                      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 26 }}>
-                        Cette marque utilise la nomenclature de catégories générale.
-                      </p>
-                    )}
                   </div>
                 </>
               )}
@@ -391,55 +417,40 @@ export default function Marques() {
               {/* ── TAB CONTACTS ── */}
               {tab === 'contacts' && (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <p className="section-title" style={{ margin: 0 }}>Contacts de la marque</p>
-                    <button className="btn btn-secondary" onClick={addContact} style={{ fontSize: 12, padding: '6px 12px' }}>
-                      <UserPlus size={14} /> Ajouter
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)' }}>Contacts</span>
+                    <button className="btn btn-secondary" onClick={addContact} style={{ fontSize: 11, padding: '4px 10px' }}>
+                      <UserPlus size={13} /> Ajouter
                     </button>
                   </div>
 
                   {contacts.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)' }}>
-                      <UserPlus size={32} style={{ marginBottom: 8, opacity: 0.4 }} />
-                      <p>Aucun contact. Ajoutez-en un.</p>
+                    <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: 13 }}>
+                      Aucun contact.
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {contacts.map((c, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            border: '1px solid var(--border)',
-                            borderRadius: 'var(--radius)',
-                            padding: 16,
-                            position: 'relative',
-                            background: 'var(--surface-2)',
-                          }}
-                        >
-                          <button
-                            className="btn-icon"
-                            onClick={() => removeContact(idx)}
-                            style={{ position: 'absolute', top: 8, right: 8 }}
-                            title="Supprimer ce contact"
-                          >
-                            <Trash2 size={14} />
+                        <div key={idx} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '10px 12px', background: 'var(--surface-2)', position: 'relative' }}>
+                          <button className="btn-icon" onClick={() => removeContact(idx)} style={{ position: 'absolute', top: 6, right: 6 }} title="Supprimer">
+                            <Trash2 size={13} />
                           </button>
-                          <div className="form-grid">
-                            <div className="form-group">
-                              <label>Prénom</label>
-                              <input value={c.prenom || ''} onChange={e => setContact(idx, 'prenom', e.target.value)} />
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 10px' }}>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label style={{ fontSize: 11 }}>Prénom</label>
+                              <input value={c.prenom || ''} onChange={e => setContact(idx, 'prenom', e.target.value)} style={{ padding: '5px 8px', fontSize: 13 }} />
                             </div>
-                            <div className="form-group">
-                              <label>Nom</label>
-                              <input value={c.nom || ''} onChange={e => setContact(idx, 'nom', e.target.value)} />
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label style={{ fontSize: 11 }}>Nom</label>
+                              <input value={c.nom || ''} onChange={e => setContact(idx, 'nom', e.target.value)} style={{ padding: '5px 8px', fontSize: 13 }} />
                             </div>
-                            <div className="form-group">
-                              <label>Fonction</label>
-                              <input value={c.fonction || ''} onChange={e => setContact(idx, 'fonction', e.target.value)} placeholder="Directeur commercial..." />
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label style={{ fontSize: 11 }}>Fonction</label>
+                              <input value={c.fonction || ''} onChange={e => setContact(idx, 'fonction', e.target.value)} placeholder="Dir. commercial..." style={{ padding: '5px 8px', fontSize: 13 }} />
                             </div>
-                            <div className="form-group">
-                              <label>Email</label>
-                              <input type="email" value={c.email || ''} onChange={e => setContact(idx, 'email', e.target.value)} />
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label style={{ fontSize: 11 }}>Email</label>
+                              <input type="email" value={c.email || ''} onChange={e => setContact(idx, 'email', e.target.value)} style={{ padding: '5px 8px', fontSize: 13 }} />
                             </div>
                           </div>
                         </div>
@@ -452,51 +463,40 @@ export default function Marques() {
               {/* ── TAB CATÉGORIES ── */}
               {tab === 'categories' && (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <p className="section-title" style={{ margin: 0 }}>Catégories de la marque</p>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                     <input
                       value={newCatName}
                       onChange={e => setNewCatName(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && addCategory()}
-                      placeholder="Nom de la catégorie..."
-                      style={{ flex: 1 }}
+                      placeholder="Nouvelle catégorie..."
+                      style={{ flex: 1, padding: '6px 10px', fontSize: 13 }}
                     />
-                    <button className="btn btn-primary" onClick={addCategory} style={{ fontSize: 12, padding: '6px 14px', whiteSpace: 'nowrap' }}>
-                      <Plus size={14} /> Ajouter
+                    <button className="btn btn-primary" onClick={addCategory} style={{ fontSize: 11, padding: '5px 12px', whiteSpace: 'nowrap' }}>
+                      <Plus size={13} /> Ajouter
                     </button>
                   </div>
 
                   {categories.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)' }}>
-                      <Tag size={32} style={{ marginBottom: 8, opacity: 0.4 }} />
-                      <p>Aucune catégorie pour cette marque.</p>
+                    <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: 13 }}>
+                      Aucune catégorie.
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       {categories.map((c, idx) => (
                         <div
                           key={c.id || `new-${idx}`}
                           style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '10px 14px',
-                            border: '1px solid var(--border)',
-                            borderRadius: 'var(--radius)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
                             background: c._new ? 'var(--primary-light)' : 'var(--surface-2)',
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Tag size={14} style={{ color: 'var(--text-muted)' }} />
-                            <span style={{ fontSize: 13, fontWeight: 500 }}>{c.nom}</span>
-                            {c._new && <span style={{ fontSize: 10, color: 'var(--primary)', background: 'var(--surface)', padding: '2px 6px', borderRadius: 4 }}>Nouveau</span>}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Tag size={12} style={{ color: 'var(--text-muted)' }} />
+                            <span style={{ fontSize: 13 }}>{c.nom}</span>
+                            {c._new && <span style={{ fontSize: 10, color: 'var(--primary)', background: 'var(--surface)', padding: '1px 5px', borderRadius: 3 }}>Nouveau</span>}
                           </div>
-                          <button className="btn-icon" onClick={() => removeCategory(idx)} title="Supprimer">
-                            <Trash2 size={14} />
-                          </button>
+                          <button className="btn-icon" onClick={() => removeCategory(idx)} title="Supprimer"><Trash2 size={13} /></button>
                         </div>
                       ))}
                     </div>
