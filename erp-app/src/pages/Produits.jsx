@@ -1,9 +1,496 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { Plus, Search, X, Package, Edit2, Trash2, Settings2, Download, Upload, CheckSquare, Square } from 'lucide-react'
+import { Plus, Search, X, Package, Edit2, Trash2, Settings2, Download, Upload, CheckSquare, Square, Info, Languages, Save } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import ImportProduits from './ImportProduits'
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function formatStatut(s) {
+  if (!s) return ''
+  const map = {
+    'actif': 'Actif',
+    'inactif': 'Inactif',
+    'en_référencement': 'En référencement',
+    'arrêté': 'Arrêté',
+  }
+  return map[s] || s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+// ─── ReadRow ──────────────────────────────────────────────────────────────────
+function ReadRow({ label, value, mono }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+      <span style={{ width: 120, flexShrink: 0, color: 'var(--text-muted)', fontSize: 12 }}>{label}</span>
+      <span style={{ fontFamily: mono ? 'var(--font-mono)' : 'var(--font)', fontWeight: 450 }}>{value || '—'}</span>
+    </div>
+  )
+}
+
+// ─── DetailPanel (right panel on row click) ──────────────────────────────────
+function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete }) {
+  const [panelTab, setPanelTab] = useState('general')
+  const [editSection, setEditSection] = useState(null)
+  const [form, setForm] = useState({})
+  const [saving, setSaving] = useState(false)
+  const [tarifAchat, setTarifAchat] = useState({ prix_unitaire_ht: '', taux_tva: 5.5 })
+  const [tarifVenteGeneral, setTarifVenteGeneral] = useState({ prix_unitaire_ht: '', remise_pourcent: '' })
+  const [tarifsVenteClients, setTarifsVenteClients] = useState([])
+  const [loadingTarifs, setLoadingTarifs] = useState(false)
+  const [savingTarif, setSavingTarif] = useState(false)
+  const [tooltipVisible, setTooltipVisible] = useState(false)
+
+  useEffect(() => {
+    if (product) {
+      setForm({ ...product })
+      setPanelTab('general')
+      setEditSection(null)
+    }
+  }, [product?.id])
+
+  useEffect(() => {
+    if (product && panelTab === 'tarifs') fetchTarifs(product.id)
+  }, [panelTab])
+
+  async function fetchTarifs(produitId) {
+    setLoadingTarifs(true)
+    const [{ data: achats }, { data: ventes }] = await Promise.all([
+      supabase.from('tarifs_achat').select('*').eq('produit_id', produitId).order('date_debut', { ascending: false }).limit(1),
+      supabase.from('tarifs_vente').select('*, clients(nom)').eq('produit_id', produitId).order('date_debut', { ascending: false }),
+    ])
+    if (achats && achats.length > 0) {
+      setTarifAchat({ prix_unitaire_ht: achats[0].prix_unitaire_ht ?? '', taux_tva: achats[0].taux_tva ?? 5.5 })
+    } else {
+      setTarifAchat({ prix_unitaire_ht: '', taux_tva: 5.5 })
+    }
+    const general = ventes?.find(v => !v.client_id)
+    setTarifVenteGeneral(general ? { prix_unitaire_ht: general.prix_unitaire_ht ?? '', remise_pourcent: general.remise_pourcent ?? '' } : { prix_unitaire_ht: '', remise_pourcent: '' })
+    setTarifsVenteClients(ventes?.filter(v => v.client_id) || [])
+    setLoadingTarifs(false)
+  }
+
+  async function saveTarifAchat() {
+    if (!product) return
+    if (!tarifAchat.prix_unitaire_ht && tarifAchat.prix_unitaire_ht !== 0) return toast('Saisissez un prix HT', 'error')
+    setSavingTarif(true)
+    const payload = {
+      produit_id: product.id,
+      prix_unitaire_ht: parseFloat(tarifAchat.prix_unitaire_ht),
+      taux_tva: parseFloat(tarifAchat.taux_tva),
+      date_debut: new Date().toISOString().slice(0, 10),
+    }
+    const { data: existing } = await supabase.from('tarifs_achat').select('id').eq('produit_id', product.id).order('date_debut', { ascending: false }).limit(1)
+    let error
+    if (existing && existing.length > 0) {
+      const { error: e } = await supabase.from('tarifs_achat').update(payload).eq('id', existing[0].id)
+      error = e
+    } else {
+      const { error: e } = await supabase.from('tarifs_achat').insert(payload)
+      error = e
+    }
+    setSavingTarif(false)
+    if (error) return toast('Erreur : ' + error.message, 'error')
+    toast('Prix d\'achat enregistré', 'success')
+  }
+
+  async function saveTarifVenteGeneral() {
+    if (!product) return
+    if (!tarifVenteGeneral.prix_unitaire_ht && tarifVenteGeneral.prix_unitaire_ht !== 0) return toast('Saisissez un prix HT', 'error')
+    setSavingTarif(true)
+    const payload = {
+      produit_id: product.id,
+      client_id: null,
+      prix_unitaire_ht: parseFloat(tarifVenteGeneral.prix_unitaire_ht),
+      remise_pourcent: tarifVenteGeneral.remise_pourcent ? parseFloat(tarifVenteGeneral.remise_pourcent) : null,
+      date_debut: new Date().toISOString().slice(0, 10),
+    }
+    const { data: existing } = await supabase.from('tarifs_vente').select('id').eq('produit_id', product.id).is('client_id', null).order('date_debut', { ascending: false }).limit(1)
+    let error
+    if (existing && existing.length > 0) {
+      const { error: e } = await supabase.from('tarifs_vente').update(payload).eq('id', existing[0].id)
+      error = e
+    } else {
+      const { error: e } = await supabase.from('tarifs_vente').insert(payload)
+      error = e
+    }
+    setSavingTarif(false)
+    if (error) return toast('Erreur : ' + error.message, 'error')
+    toast('Tarif général enregistré', 'success')
+  }
+
+  function set(field, val) { setForm(f => ({ ...f, [field]: val })) }
+
+  async function saveSection() {
+    if (!form.libelle?.trim()) return toast('Le libellé est obligatoire', 'error')
+    if (!form.marque_id) return toast('La marque est obligatoire', 'error')
+    setSaving(true)
+    const { marques: _m, categories: _c, fournisseurs: _f, ...payload } = { ...form }
+    ;['poids_brut_kg','poids_net_kg','volume_m3','longueur_cm','largeur_cm','hauteur_cm',
+      'dlc_duree_jours','pcb','taux_tva','pvpr',
+      'poids_colis_kg','longueur_colis_cm','largeur_colis_cm','hauteur_colis_cm',
+      'poids_produit_brut_kg','poids_produit_net_kg'].forEach(f => {
+      if (payload[f] === '') payload[f] = null
+    })
+    const { error } = await supabase.from('produits').update(payload).eq('id', product.id)
+    setSaving(false)
+    if (error) return toast('Erreur : ' + error.message, 'error')
+    toast('Produit mis à jour', 'success')
+    setEditSection(null)
+    onSaved()
+  }
+
+  if (!product) return null
+
+  const marqueName = product.marques?.nom || marques.find(m => m.id === form.marque_id)?.nom || ''
+  const categorieName = product.categories?.nom || categories.find(c => c.id === form.categorie_id)?.nom || ''
+
+  const PANEL_TABS = [
+    ['general', 'Général'],
+    ['colisage', 'Colisage'],
+    ['conservation', 'Conservation'],
+    ['ingredients', 'Ingrédients'],
+    ['douane', 'Douane'],
+    ['tarifs', 'Tarifs'],
+  ]
+
+  function SectionHeader({ section, title }) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, marginTop: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>{title}</span>
+        {editSection !== section ? (
+          <button className="btn-icon" onClick={() => setEditSection(section)} title="Modifier"><Edit2 size={14} /></button>
+        ) : (
+          <button className="btn btn-primary" onClick={saveSection} disabled={saving} style={{ fontSize: 12, padding: '4px 14px', gap: 4 }}>
+            <Save size={13} /> {saving ? '...' : 'Enregistrer'}
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.25)' }} />
+      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 201, width: '100%', maxWidth: 480, background: 'var(--surface)', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', animation: 'slideIn .2s ease' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.libelle}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{marqueName}{product.ean13 ? ` · ${product.ean13}` : ''}</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button className="btn-icon" onClick={() => { if (confirm('Supprimer ce produit ?')) { onDelete(product.id); onClose() } }} title="Supprimer"><Trash2 size={15} /></button>
+            <button className="btn-icon" onClick={onClose}><X size={18} /></button>
+          </div>
+        </div>
+
+        {/* Photo */}
+        {product.photo_url && (
+          <div style={{ padding: '16px 20px 0', display: 'flex', justifyContent: 'center' }}>
+            <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', maxHeight: 200 }}>
+              <img src={product.photo_url} alt={product.libelle} style={{ maxWidth: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 8 }} />
+            </div>
+          </div>
+        )}
+
+        {/* Tabs bar */}
+        <div style={{ padding: '0 20px', borderBottom: '1px solid var(--border)' }}>
+          <div className="tabs" style={{ marginBottom: 0 }}>
+            {PANEL_TABS.map(([key, label]) => (
+              <button key={key} className={`tab ${panelTab === key ? 'active' : ''}`} onClick={() => setPanelTab(key)}>{label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Scrollable content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 24px' }}>
+
+          {/* ── Général ── */}
+          {panelTab === 'general' && (
+            <>
+              <SectionHeader section="general" title="Informations générales" />
+              {editSection !== 'general' ? (
+                <div>
+                  <ReadRow label="Libellé" value={form.libelle} />
+                  <ReadRow label="Libellé court" value={form.libelle_court} />
+                  <ReadRow label="Marque" value={marqueName} />
+                  <ReadRow label="Catégorie" value={categorieName} />
+                  <ReadRow label="EAN13" value={form.ean13} mono />
+                  <ReadRow label="Réf. interne" value={form.ref_marque} mono />
+                  <ReadRow label="Statut" value={formatStatut(form.statut)} />
+                  <ReadRow label="Description (VO)" value={form.description} />
+                  <ReadRow label="Description (FR)" value={form.description_fr} />
+                  <ReadRow label="Photo URL" value={form.photo_url} />
+                </div>
+              ) : (
+                <div className="form-grid">
+                  <div className="form-group form-full"><label>Libellé *</label><input value={form.libelle || ''} onChange={e => set('libelle', e.target.value)} /></div>
+                  <div className="form-group"><label>Libellé court</label><input value={form.libelle_court || ''} onChange={e => set('libelle_court', e.target.value)} /></div>
+                  <div className="form-group"><label>Marque *</label>
+                    <select value={form.marque_id || ''} onChange={e => set('marque_id', e.target.value)}>
+                      <option value="">Sélectionner...</option>
+                      {marques.map(f => <option key={f.id} value={f.id}>{f.nom}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group"><label>Catégorie</label>
+                    <select value={form.categorie_id || ''} onChange={e => set('categorie_id', e.target.value)}>
+                      <option value="">Aucune</option>
+                      {categories.filter(c => {
+                        if (!form.marque_id) return true
+                        const mq = marques.find(m => m.id === form.marque_id)
+                        return mq?.nomenclature_specifique ? c.marque_id === form.marque_id : !c.marque_id
+                      }).map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group"><label>EAN13</label><input value={form.ean13 || ''} onChange={e => set('ean13', e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} /></div>
+                  <div className="form-group"><label>Référence interne</label><input value={form.ref_marque || ''} onChange={e => set('ref_marque', e.target.value)} /></div>
+                  <div className="form-group"><label>Statut</label>
+                    <select value={form.statut || 'actif'} onChange={e => set('statut', e.target.value)}>
+                      {['actif', 'inactif', 'en_référencement', 'arrêté'].map(s => <option key={s} value={s}>{formatStatut(s)}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group form-full">
+                    <label>Description (VO)</label>
+                    <textarea value={form.description || ''} onChange={e => set('description', e.target.value)} rows={3} />
+                  </div>
+                  <div className="form-group form-full">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <label style={{ margin: 0 }}>Description (FR)</label>
+                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 10px', gap: 4 }} onClick={() => toast('Traduction automatique bientôt disponible', 'info')}>
+                        <Languages size={13} /> Traduire en français
+                      </button>
+                    </div>
+                    <textarea value={form.description_fr || ''} onChange={e => set('description_fr', e.target.value)} rows={3} placeholder="Description traduite en français..." style={{ marginTop: 6 }} />
+                  </div>
+                  <div className="form-group form-full"><label>URL Photo</label><input value={form.photo_url || ''} onChange={e => set('photo_url', e.target.value)} placeholder="https://..." /></div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Colisage ── */}
+          {panelTab === 'colisage' && (
+            <>
+              <SectionHeader section="colisage" title="Colisage" />
+              {editSection !== 'colisage' ? (
+                <div>
+                  <ReadRow label="Conditionnement" value={form.pcb ? `${form.pcb}` : ''} />
+                  <ReadRow label="Unité de vente" value={form.unite_vente} />
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 16, marginBottom: 8 }}>Colis</div>
+                  <ReadRow label="Poids colis (kg)" value={form.poids_colis_kg} />
+                  <ReadRow label="Longueur (cm)" value={form.longueur_colis_cm} />
+                  <ReadRow label="Largeur (cm)" value={form.largeur_colis_cm} />
+                  <ReadRow label="Hauteur (cm)" value={form.hauteur_colis_cm} />
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 16, marginBottom: 8 }}>Produit unitaire</div>
+                  <ReadRow label="Poids brut (kg)" value={form.poids_produit_brut_kg} />
+                  <ReadRow label="Poids net (kg)" value={form.poids_produit_net_kg} />
+                </div>
+              ) : (
+                <>
+                  <div className="form-grid-3">
+                    <div className="form-group"><label>Conditionnement</label><input type="number" value={form.pcb || ''} onChange={e => set('pcb', e.target.value)} placeholder="Nb unités/colis" /></div>
+                    <div className="form-group"><label>Unité de vente</label><select value={form.unite_vente || 'unité'} onChange={e => set('unite_vente', e.target.value)}>{['unité','carton','palette','kg'].map(v => <option key={v} value={v}>{v}</option>)}</select></div>
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 16, marginBottom: 8 }}>Colis</div>
+                  <div className="form-grid-3">
+                    <div className="form-group"><label>Poids colis (kg)</label><input type="number" step="0.001" value={form.poids_colis_kg || ''} onChange={e => set('poids_colis_kg', e.target.value)} /></div>
+                    <div className="form-group"><label>Longueur (cm)</label><input type="number" step="0.1" value={form.longueur_colis_cm || ''} onChange={e => set('longueur_colis_cm', e.target.value)} /></div>
+                    <div className="form-group"><label>Largeur (cm)</label><input type="number" step="0.1" value={form.largeur_colis_cm || ''} onChange={e => set('largeur_colis_cm', e.target.value)} /></div>
+                    <div className="form-group"><label>Hauteur (cm)</label><input type="number" step="0.1" value={form.hauteur_colis_cm || ''} onChange={e => set('hauteur_colis_cm', e.target.value)} /></div>
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 16, marginBottom: 8 }}>Produit unitaire</div>
+                  <div className="form-grid-3">
+                    <div className="form-group"><label>Poids brut (kg)</label><input type="number" step="0.001" value={form.poids_produit_brut_kg || ''} onChange={e => set('poids_produit_brut_kg', e.target.value)} placeholder="Avec packaging" /></div>
+                    <div className="form-group"><label>Poids net (kg)</label><input type="number" step="0.001" value={form.poids_produit_net_kg || ''} onChange={e => set('poids_produit_net_kg', e.target.value)} placeholder="Alimentaire" /></div>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {/* ── Conservation ── */}
+          {panelTab === 'conservation' && (
+            <>
+              <SectionHeader section="conservation" title="Stockage & Conservation" />
+              {editSection !== 'conservation' ? (
+                <div>
+                  <ReadRow label="Température" value={form.temperature_stockage} />
+                  <ReadRow label="Type DLC" value={form.dlc_type} />
+                  <ReadRow label="Durée DLC (j)" value={form.dlc_duree_jours} />
+                </div>
+              ) : (
+                <div className="form-grid-3">
+                  <div className="form-group"><label>Température</label><select value={form.temperature_stockage || 'ambiant'} onChange={e => set('temperature_stockage', e.target.value)}>{['ambiant', 'frais', 'surgelé'].map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                  <div className="form-group">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <label style={{ margin: 0 }}>Type DLC</label>
+                      <div style={{ position: 'relative', display: 'inline-block' }}
+                        onMouseEnter={() => setTooltipVisible(true)}
+                        onMouseLeave={() => setTooltipVisible(false)}>
+                        <Info size={13} color="var(--text-muted)" style={{ cursor: 'help' }} />
+                        {tooltipVisible && (
+                          <div style={{ position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 6, width: 280, padding: '10px 12px', background: '#1a1a1a', color: '#fff', borderRadius: 8, fontSize: 11, lineHeight: 1.5, zIndex: 999, boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
+                            <div style={{ marginBottom: 4 }}><strong>DLC</strong> = Date Limite de Consommation (à respecter impérativement)</div>
+                            <div style={{ marginBottom: 4 }}><strong>DLUO</strong> = Date Limite d'Utilisation Optimale (peut être dépassée)</div>
+                            <div><strong>DDM</strong> = Date de Durabilité Minimale (remplace DLUO)</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <select value={form.dlc_type || 'DLC'} onChange={e => set('dlc_type', e.target.value)} style={{ marginTop: 6 }}>{['DLC', 'DLUO', 'DDM'].map(t => <option key={t} value={t}>{t}</option>)}</select>
+                  </div>
+                  <div className="form-group"><label>Durée DLC (jours)</label><input type="number" value={form.dlc_duree_jours || ''} onChange={e => set('dlc_duree_jours', e.target.value)} /></div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Ingrédients ── */}
+          {panelTab === 'ingredients' && (
+            <>
+              <SectionHeader section="ingredients" title="Ingrédients & Étiquetage" />
+              {editSection !== 'ingredients' ? (
+                <div>
+                  <ReadRow label="Ingrédients (VO)" value={form.ingredients_vo} />
+                  <ReadRow label="Langue VO" value={form.langue_vo} />
+                  <ReadRow label="Ingrédients (FR)" value={form.ingredients_fr} />
+                  <ReadRow label="Allergènes" value={form.allergenes} />
+                  <ReadRow label="Fiche technique" value={form.fiche_technique_url ? 'Voir le document' : ''} />
+                </div>
+              ) : (
+                <div className="form-grid">
+                  <div className="form-group form-full"><label>Ingrédients (VO)</label><textarea value={form.ingredients_vo || ''} onChange={e => set('ingredients_vo', e.target.value)} rows={4} placeholder="Water, Sugar, Salt..." /></div>
+                  <div className="form-group"><label>Langue originale</label><select value={form.langue_vo || 'en'} onChange={e => set('langue_vo', e.target.value)}>{[['en','Anglais'],['es','Espagnol'],['de','Allemand'],['it','Italien'],['zh','Chinois'],['ar','Arabe'],['other','Autre']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+                  <div className="form-group form-full"><label>Ingrédients (FR)</label><textarea value={form.ingredients_fr || ''} onChange={e => set('ingredients_fr', e.target.value)} rows={4} placeholder="Eau, Sucre, Sel..." /></div>
+                  <div className="form-group form-full"><label>Allergènes</label><input value={form.allergenes || ''} onChange={e => set('allergenes', e.target.value)} placeholder="Gluten, Lait, Fruits à coque..." /></div>
+                  <div className="form-group form-full"><label>URL Fiche technique</label><input value={form.fiche_technique_url || ''} onChange={e => set('fiche_technique_url', e.target.value)} placeholder="https://..." /></div>
+                  {form.fiche_technique_url && <div className="form-full"><a href={form.fiche_technique_url} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{ display: 'inline-flex' }}>Voir le document</a></div>}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Douane ── */}
+          {panelTab === 'douane' && (
+            <>
+              <SectionHeader section="douane" title="Informations douanières" />
+              {editSection !== 'douane' ? (
+                <div>
+                  <ReadRow label="Code douanier" value={form.code_douanier} mono />
+                  <ReadRow label="Pays d'origine" value={form.pays_origine} />
+                  <ReadRow label="Code Meursing" value={form.meursing_code} mono />
+                </div>
+              ) : (
+                <div className="form-grid">
+                  <div className="form-group"><label>Code douanier (SH)</label><input value={form.code_douanier || ''} onChange={e => set('code_douanier', e.target.value)} placeholder="ex: 1806310000" style={{ fontFamily: 'var(--font-mono)' }} /></div>
+                  <div className="form-group"><label>Pays d'origine</label><input value={form.pays_origine || ''} onChange={e => set('pays_origine', e.target.value)} placeholder="GB, FR, DE..." /></div>
+                  <div className="form-group"><label>Code Meursing</label><input value={form.meursing_code || ''} onChange={e => set('meursing_code', e.target.value)} placeholder="ex: 7126" style={{ fontFamily: 'var(--font-mono)' }} /></div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Tarifs ── */}
+          {panelTab === 'tarifs' && (
+            loadingTarifs ? <div className="loading">Chargement des tarifs...</div> : (
+              <>
+                <p className="section-title">Prix d'achat fournisseur</p>
+                <div className="form-grid-3">
+                  <div className="form-group">
+                    <label>Prix HT (€)</label>
+                    <input type="number" step="0.01" value={tarifAchat.prix_unitaire_ht} onChange={e => setTarifAchat(p => ({ ...p, prix_unitaire_ht: e.target.value }))} placeholder="0.00" />
+                  </div>
+                  <div className="form-group">
+                    <label>TVA (%)</label>
+                    <select value={tarifAchat.taux_tva} onChange={e => setTarifAchat(p => ({ ...p, taux_tva: parseFloat(e.target.value) }))}>
+                      <option value="0">0%</option>
+                      <option value="5.5">5.5%</option>
+                      <option value="10">10%</option>
+                      <option value="20">20%</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Prix TTC (€)</label>
+                    <input type="text" disabled value={tarifAchat.prix_unitaire_ht ? (parseFloat(tarifAchat.prix_unitaire_ht) * (1 + tarifAchat.taux_tva / 100)).toFixed(2) : '—'} style={{ background: 'var(--surface-2)' }} />
+                  </div>
+                </div>
+                <div style={{ marginTop: 8, marginBottom: 20 }}>
+                  <button className="btn btn-primary" onClick={saveTarifAchat} disabled={savingTarif} style={{ fontSize: 13 }}>
+                    {savingTarif ? 'Enregistrement...' : 'Enregistrer prix d\'achat'}
+                  </button>
+                </div>
+
+                <hr className="divider" />
+                <p className="section-title">Tarif général de vente</p>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label>Prix vente HT (€)</label>
+                    <input type="number" step="0.01" value={tarifVenteGeneral.prix_unitaire_ht} onChange={e => setTarifVenteGeneral(p => ({ ...p, prix_unitaire_ht: e.target.value }))} placeholder="0.00" />
+                  </div>
+                  <div className="form-group">
+                    <label>Remise (%)</label>
+                    <input type="number" step="0.1" value={tarifVenteGeneral.remise_pourcent} onChange={e => setTarifVenteGeneral(p => ({ ...p, remise_pourcent: e.target.value }))} placeholder="0" />
+                  </div>
+                </div>
+                <div style={{ marginTop: 8, marginBottom: 20 }}>
+                  <button className="btn btn-primary" onClick={saveTarifVenteGeneral} disabled={savingTarif} style={{ fontSize: 13 }}>
+                    {savingTarif ? 'Enregistrement...' : 'Enregistrer tarif général'}
+                  </button>
+                </div>
+
+                <hr className="divider" />
+                <p className="section-title">Prix de vente public recommandé (PVPR)</p>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label>PVPR TTC (€)</label>
+                    <input type="number" step="0.01" value={form.pvpr || ''} onChange={e => set('pvpr', e.target.value)} placeholder="0.00" />
+                  </div>
+                  <div className="form-group">
+                    <label>Marge Highway</label>
+                    <input type="text" disabled value={
+                      tarifAchat.prix_unitaire_ht && tarifVenteGeneral.prix_unitaire_ht
+                        ? `${(((parseFloat(tarifVenteGeneral.prix_unitaire_ht) - parseFloat(tarifAchat.prix_unitaire_ht)) / parseFloat(tarifAchat.prix_unitaire_ht)) * 100).toFixed(1)}%`
+                        : '—'
+                    } style={{ background: 'var(--surface-2)' }} />
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, marginBottom: 16 }}>
+                  Le PVPR est enregistré avec la fiche produit (bouton "Enregistrer" dans l'onglet Général).
+                </div>
+
+                {tarifsVenteClients.length > 0 && (
+                  <>
+                    <hr className="divider" />
+                    <p className="section-title">Tarifs spécifiques clients</p>
+                    <div className="table-container" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                      <table>
+                        <thead><tr><th>Client</th><th>Prix HT</th><th>Remise %</th><th>Depuis</th></tr></thead>
+                        <tbody>
+                          {tarifsVenteClients.map(t => (
+                            <tr key={t.id}>
+                              <td>{t.clients?.nom || '—'}</td>
+                              <td>{t.prix_unitaire_ht != null ? `${Number(t.prix_unitaire_ht).toFixed(2)} €` : '—'}</td>
+                              <td>{t.remise_pourcent != null ? `${t.remise_pourcent}%` : '—'}</td>
+                              <td>{t.date_debut || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div style={{ marginTop: 8 }}>
+                      <a href="/tarifs" style={{ fontSize: 13, color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}>Gérer les tarifs clients →</a>
+                    </div>
+                  </>
+                )}
+              </>
+            )
+          )}
+        </div>
+      </div>
+      <style>{`@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
+    </>
+  )
+}
 
 // ─── PhotoPanel ────────────────────────────────────────────────────────────────
 function PhotoPanel({ product, onClose }) {
@@ -30,12 +517,9 @@ function PhotoPanel({ product, onClose }) {
             <div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Produit</div>
               <div style={{ fontWeight: 600, fontSize: 15 }}>{product.libelle}</div>
-              {product.marque && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{product.marque}</div>}
             </div>
             {product.marques?.nom && <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Marque</div><div style={{ fontSize: 13 }}>{product.marques.nom}</div></div>}
             {product.ean13 && <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>EAN13</div><div style={{ fontSize: 13, fontFamily: 'var(--font-mono)' }}>{product.ean13}</div></div>}
-            {product.conditionnement && <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Conditionnement</div><div style={{ fontSize: 13 }}>{product.conditionnement} {product.pcb > 1 ? `(${product.pcb} pcs)` : ''}</div></div>}
-            {product.description && <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Description</div><div style={{ fontSize: 13, lineHeight: 1.5 }}>{product.description}</div></div>}
           </div>
         </div>
         <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)' }}>
@@ -52,12 +536,11 @@ const ALL_COLUMNS = [
   { key: 'photo',               label: 'Photo',           group: 'Général',  default: true,  exportKey: null },
   { key: 'libelle',             label: 'Produit',         group: 'Général',  default: true,  exportKey: 'libelle' },
   { key: 'ean13',               label: 'EAN13',           group: 'Général',  default: true,  exportKey: 'ean13' },
-  { key: 'marque_nom',          label: 'Marque',          group: 'Général',  default: true,  exportKey: r => r.marques?.nom || r.marque || '' },
+  { key: 'marque_nom',          label: 'Marque',          group: 'Général',  default: true,  exportKey: r => r.marques?.nom || '' },
   { key: 'categorie_nom',       label: 'Catégorie',       group: 'Général',  default: true,  exportKey: r => r.categories?.nom || '' },
-  { key: 'ref_marque',          label: 'Réf. marque',     group: 'Général',  default: false, exportKey: 'ref_marque' },
+  { key: 'ref_marque',          label: 'Réf. interne',    group: 'Général',  default: false, exportKey: 'ref_marque' },
   { key: 'statut',              label: 'Statut',          group: 'Général',  default: true,  exportKey: 'statut' },
-  { key: 'conditionnement',     label: 'Conditionnement', group: 'Colisage', default: true,  exportKey: 'conditionnement' },
-  { key: 'pcb',                 label: 'PCB',             group: 'Colisage', default: false, exportKey: 'pcb' },
+  { key: 'pcb',                 label: 'Cdt',             group: 'Colisage', default: true,  exportKey: 'pcb' },
   { key: 'poids_brut_kg',       label: 'Poids brut (kg)', group: 'Colisage', default: false, exportKey: 'poids_brut_kg' },
   { key: 'poids_net_kg',        label: 'Poids net (kg)',  group: 'Colisage', default: false, exportKey: 'poids_net_kg' },
   { key: 'volume_m3',           label: 'Volume (m³)',     group: 'Colisage', default: false, exportKey: 'volume_m3' },
@@ -220,12 +703,14 @@ const STATUTS   = ['actif', 'inactif', 'en_référencement', 'arrêté']
 const DLC_TYPES = ['DLC', 'DLUO', 'DDM']
 
 const emptyForm = {
-  ean13: '', libelle: '', libelle_court: '', marque: '', description: '',
+  ean13: '', libelle: '', libelle_court: '', description: '', description_fr: '',
   marque_id: '', categorie_id: '',
-  conditionnement: '', unite_vente: 'carton', pcb: 1,
+  unite_vente: 'unité', pcb: 1,
   poids_brut_kg: '', poids_net_kg: '', volume_m3: '',
   longueur_cm: '', largeur_cm: '', hauteur_cm: '',
-  temperature_stockage: 'ambiant', temperature_min_c: '', temperature_max_c: '',
+  poids_colis_kg: '', longueur_colis_cm: '', largeur_colis_cm: '', hauteur_colis_cm: '',
+  poids_produit_brut_kg: '', poids_produit_net_kg: '',
+  temperature_stockage: 'ambiant',
   dlc_type: 'DLC', dlc_duree_jours: '',
   ref_marque: '', photo_url: '', fiche_technique_url: '',
   statut: 'actif', code_douanier: '', pays_origine: '', meursing_code: '',
@@ -244,10 +729,10 @@ export default function Produits() {
   const [filterStatut, setFilterStatut]         = useState('')
   const [modal, setModal]             = useState(false)
   const [form, setForm]               = useState(emptyForm)
-  const [editing, setEditing]         = useState(null)
   const [saving, setSaving]           = useState(false)
   const [activeTab, setActiveTab]     = useState('general')
   const [photoPanel, setPhotoPanel]   = useState(null)
+  const [detailPanel, setDetailPanel] = useState(null)
   const [visibleCols, setVisibleCols] = useState(() => {
     try {
       const stored = localStorage.getItem('highway_cols')
@@ -264,13 +749,9 @@ export default function Produits() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [showExport, setShowExport]   = useState(false)
   const [showImport, setShowImport]   = useState(false)
-  const [tarifAchat, setTarifAchat]         = useState({ prix_unitaire_ht: '', taux_tva: 5.5 })
-  const [tarifVenteGeneral, setTarifVenteGeneral] = useState({ prix_unitaire_ht: '', remise_pourcent: '' })
-  const [tarifsVenteClients, setTarifsVenteClients] = useState([])
-  const [loadingTarifs, setLoadingTarifs]   = useState(false)
-  const [savingTarif, setSavingTarif]       = useState(false)
   const [sortConfig, setSortConfig]   = useState({ key: null, dir: 'asc' })
   const [colFilters, setColFilters]   = useState({})
+  const [tooltipDlc, setTooltipDlc]   = useState(false)
 
   function handleSort(key) {
     if (key === 'photo') return
@@ -281,11 +762,10 @@ export default function Produits() {
     switch (key) {
       case 'libelle':          return (row.libelle || '').toLowerCase()
       case 'ean13':            return row.ean13 || ''
-      case 'marque_nom':       return (row.marques?.nom || row.marque || '').toLowerCase()
+      case 'marque_nom':       return (row.marques?.nom || '').toLowerCase()
       case 'categorie_nom':    return (row.categories?.nom || '').toLowerCase()
       case 'ref_marque':       return (row.ref_marque || '').toLowerCase()
       case 'statut':           return row.statut || ''
-      case 'conditionnement':  return (row.conditionnement || '').toLowerCase()
       case 'pcb':              return row.pcb || 0
       case 'poids_brut_kg':   return row.poids_brut_kg || 0
       case 'poids_net_kg':    return row.poids_net_kg || 0
@@ -317,75 +797,9 @@ export default function Produits() {
     setLoading(false)
   }
 
-  async function fetchTarifs(produitId) {
-    setLoadingTarifs(true)
-    const [{ data: achats }, { data: ventes }] = await Promise.all([
-      supabase.from('tarifs_achat').select('*').eq('produit_id', produitId).order('date_debut', { ascending: false }).limit(1),
-      supabase.from('tarifs_vente').select('*, clients(nom)').eq('produit_id', produitId).order('date_debut', { ascending: false }),
-    ])
-    if (achats && achats.length > 0) {
-      setTarifAchat({ prix_unitaire_ht: achats[0].prix_unitaire_ht ?? '', taux_tva: achats[0].taux_tva ?? 5.5 })
-    } else {
-      setTarifAchat({ prix_unitaire_ht: '', taux_tva: 5.5 })
-    }
-    const general = ventes?.find(v => !v.client_id)
-    setTarifVenteGeneral(general ? { prix_unitaire_ht: general.prix_unitaire_ht ?? '', remise_pourcent: general.remise_pourcent ?? '' } : { prix_unitaire_ht: '', remise_pourcent: '' })
-    setTarifsVenteClients(ventes?.filter(v => v.client_id) || [])
-    setLoadingTarifs(false)
-  }
-
-  async function saveTarifAchat() {
-    if (!editing) return
-    if (!tarifAchat.prix_unitaire_ht && tarifAchat.prix_unitaire_ht !== 0) return toast('Saisissez un prix HT', 'error')
-    setSavingTarif(true)
-    const payload = {
-      produit_id: editing,
-      prix_unitaire_ht: parseFloat(tarifAchat.prix_unitaire_ht),
-      taux_tva: parseFloat(tarifAchat.taux_tva),
-      date_debut: new Date().toISOString().slice(0, 10),
-    }
-    const { data: existing } = await supabase.from('tarifs_achat').select('id').eq('produit_id', editing).order('date_debut', { ascending: false }).limit(1)
-    let error
-    if (existing && existing.length > 0) {
-      const { error: e } = await supabase.from('tarifs_achat').update(payload).eq('id', existing[0].id)
-      error = e
-    } else {
-      const { error: e } = await supabase.from('tarifs_achat').insert(payload)
-      error = e
-    }
-    setSavingTarif(false)
-    if (error) return toast('Erreur : ' + error.message, 'error')
-    toast('Prix d\'achat enregistré', 'success')
-  }
-
-  async function saveTarifVenteGeneral() {
-    if (!editing) return
-    if (!tarifVenteGeneral.prix_unitaire_ht && tarifVenteGeneral.prix_unitaire_ht !== 0) return toast('Saisissez un prix HT', 'error')
-    setSavingTarif(true)
-    const payload = {
-      produit_id: editing,
-      client_id: null,
-      prix_unitaire_ht: parseFloat(tarifVenteGeneral.prix_unitaire_ht),
-      remise_pourcent: tarifVenteGeneral.remise_pourcent ? parseFloat(tarifVenteGeneral.remise_pourcent) : null,
-      date_debut: new Date().toISOString().slice(0, 10),
-    }
-    const { data: existing } = await supabase.from('tarifs_vente').select('id').eq('produit_id', editing).is('client_id', null).order('date_debut', { ascending: false }).limit(1)
-    let error
-    if (existing && existing.length > 0) {
-      const { error: e } = await supabase.from('tarifs_vente').update(payload).eq('id', existing[0].id)
-      error = e
-    } else {
-      const { error: e } = await supabase.from('tarifs_vente').insert(payload)
-      error = e
-    }
-    setSavingTarif(false)
-    if (error) return toast('Erreur : ' + error.message, 'error')
-    toast('Tarif général enregistré', 'success')
-  }
-
-  function openCreate() { setForm(emptyForm); setEditing(null); setActiveTab('general'); setModal(true) }
-  function openEdit(row) { setForm({ ...emptyForm, ...row, marque_id: row.marque_id || '' }); setEditing(row.id); setActiveTab('general'); setModal(true) }
-  function close() { setModal(false); setForm(emptyForm); setEditing(null) }
+  function openCreate() { setForm(emptyForm); setActiveTab('general'); setModal(true) }
+  function openDetail(row) { setDetailPanel(row); setModal(false) }
+  function closeModal() { setModal(false); setForm(emptyForm) }
   function set(field, val) { setForm(f => ({ ...f, [field]: val })) }
 
   async function save() {
@@ -394,16 +808,16 @@ export default function Produits() {
     setSaving(true)
     const { marques: _m, categories: _c, fournisseurs: _f, ...payload } = { ...form }
     ;['poids_brut_kg','poids_net_kg','volume_m3','longueur_cm','largeur_cm','hauteur_cm',
-      'temperature_min_c','temperature_max_c','dlc_duree_jours','pcb','taux_tva','pvpr'].forEach(f => {
+      'dlc_duree_jours','pcb','taux_tva','pvpr',
+      'poids_colis_kg','longueur_colis_cm','largeur_colis_cm','hauteur_colis_cm',
+      'poids_produit_brut_kg','poids_produit_net_kg'].forEach(f => {
       if (payload[f] === '') payload[f] = null
     })
-    let error
-    if (editing) { const { error: e } = await supabase.from('produits').update(payload).eq('id', editing); error = e }
-    else         { const { error: e } = await supabase.from('produits').insert(payload); error = e }
+    const { error } = await supabase.from('produits').insert(payload)
     setSaving(false)
     if (error) return toast('Erreur : ' + error.message, 'error')
-    toast(editing ? 'Produit mis à jour' : 'Produit créé', 'success')
-    close(); fetchAll()
+    toast('Produit créé', 'success')
+    closeModal(); fetchAll()
   }
 
   async function remove(id) {
@@ -423,7 +837,7 @@ export default function Produits() {
 
   const filtered = rows.filter(r => {
     const s = search.toLowerCase()
-    const matchSearch    = r.libelle.toLowerCase().includes(s) || (r.ean13||'').includes(s) || (r.marque||'').toLowerCase().includes(s)
+    const matchSearch    = r.libelle.toLowerCase().includes(s) || (r.ean13||'').includes(s) || (r.marques?.nom||'').toLowerCase().includes(s)
     const matchMarque    = !filterMarque    || r.marque_id    === filterMarque
     const matchCategorie = !filterCategorie || r.categorie_id === filterCategorie
     const matchStatut    = !filterStatut    || r.statut       === filterStatut
@@ -448,11 +862,10 @@ export default function Produits() {
       switch (key) {
         case 'libelle':          return (row.libelle || '').toLowerCase().includes(v)
         case 'ean13':            return (row.ean13 || '').includes(v)
-        case 'marque_nom':       return (row.marques?.nom || row.marque || '').toLowerCase().includes(v)
+        case 'marque_nom':       return (row.marques?.nom || '').toLowerCase().includes(v)
         case 'categorie_nom':    return (row.categories?.nom || '').toLowerCase().includes(v)
         case 'ref_marque':       return (row.ref_marque || '').toLowerCase().includes(v)
-        case 'statut':           return (row.statut || '').toLowerCase().includes(v)
-        case 'conditionnement':  return (row.conditionnement || '').toLowerCase().includes(v)
+        case 'statut':           return (row.statut || '').toLowerCase().includes(v) || formatStatut(row.statut).toLowerCase().includes(v)
         case 'code_douanier':    return (row.code_douanier || '').toLowerCase().includes(v)
         case 'pays_origine':     return (row.pays_origine || '').toLowerCase().includes(v)
         case 'meursing_code':    return (row.meursing_code || '').toLowerCase().includes(v)
@@ -479,8 +892,7 @@ export default function Produits() {
       case 'marque_nom':     return row.marques?.nom || '—'
       case 'categorie_nom':  return row.categories?.nom ? <span className="badge badge-gray">{row.categories.nom}</span> : '—'
       case 'ref_marque':     return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{row.ref_marque || '—'}</span>
-      case 'statut':         return <span className={`badge ${statutBadge(row.statut)}`}>{row.statut}</span>
-      case 'conditionnement':return `${row.conditionnement || '—'} ${row.pcb > 1 ? `(${row.pcb} pcs)` : ''}`
+      case 'statut':         return <span className={`badge ${statutBadge(row.statut)}`}>{formatStatut(row.statut)}</span>
       case 'pcb':            return row.pcb || '—'
       case 'poids_brut_kg':  return row.poids_brut_kg  ? `${row.poids_brut_kg} kg`  : '—'
       case 'poids_net_kg':   return row.poids_net_kg   ? `${row.poids_net_kg} kg`   : '—'
@@ -536,7 +948,7 @@ export default function Produits() {
           </select>
           <select className="filter-select" value={filterStatut} onChange={e => setFilterStatut(e.target.value)}>
             <option value="">Tous les statuts</option>
-            {STATUTS.map(s => <option key={s} value={s}>{s}</option>)}
+            {STATUTS.map(s => <option key={s} value={s}>{formatStatut(s)}</option>)}
           </select>
         </div>
 
@@ -596,7 +1008,7 @@ export default function Produits() {
                   ) : displayed.map(row => {
                     const isSel = selectedIds.has(row.id)
                     return (
-                      <tr key={row.id} onClick={() => openEdit(row)} style={{ background: isSel ? '#e8f0eb' : undefined }}>
+                      <tr key={row.id} onClick={() => openDetail(row)} style={{ background: isSel ? '#e8f0eb' : undefined }}>
                         <td style={{ padding: '10px 8px' }} onClick={e => toggleSelect(row.id, e)}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                             {isSel ? <CheckSquare size={16} color="var(--primary)" /> : <Square size={16} color="var(--text-muted)" />}
@@ -605,7 +1017,7 @@ export default function Produits() {
                         {activeCols.map(col => <td key={col.key}>{renderCell(col, row)}</td>)}
                         <td onClick={e => e.stopPropagation()}>
                           <div style={{ display: 'flex', gap: 4 }}>
-                            <button className="btn-icon" onClick={() => openEdit(row)}><Edit2 size={14} /></button>
+                            <button className="btn-icon" onClick={() => openDetail(row)}><Edit2 size={14} /></button>
                             <button className="btn-icon" onClick={() => remove(row.id)}><Trash2 size={14} /></button>
                           </div>
                         </td>
@@ -619,18 +1031,18 @@ export default function Produits() {
         </div>
       </div>
 
-      {/* Modal fiche produit */}
+      {/* Modal création produit uniquement */}
       {modal && (
-        <div className="modal-overlay" onClick={close}>
+        <div className="modal-overlay" onClick={closeModal}>
           <div className="modal" style={{ maxWidth: 780 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>{editing ? 'Modifier le produit' : 'Nouveau produit'}</h3>
-              <button className="btn-icon" onClick={close}><X size={18} /></button>
+              <h3>Nouveau produit</h3>
+              <button className="btn-icon" onClick={closeModal}><X size={18} /></button>
             </div>
             <div style={{ padding: '0 24px' }}>
               <div className="tabs">
-                {[['general','Général'],['colisage','Colisage & Stockage'],['ingredients','Ingrédients'],['import','Import / Douane'], ...(editing ? [['tarifs','Tarifs']] : [])].map(([key, label]) => (
-                  <button key={key} className={`tab ${activeTab === key ? 'active' : ''}`} onClick={() => { setActiveTab(key); if (key === 'tarifs' && editing && !loadingTarifs && !tarifAchat.prix_unitaire_ht && !tarifVenteGeneral.prix_unitaire_ht) fetchTarifs(editing) }}>{label}</button>
+                {[['general','Général'],['colisage','Colisage'],['conservation','Conservation'],['ingredients','Ingrédients'],['import','Douane']].map(([key, label]) => (
+                  <button key={key} className={`tab ${activeTab === key ? 'active' : ''}`} onClick={() => setActiveTab(key)}>{label}</button>
                 ))}
               </div>
             </div>
@@ -639,21 +1051,42 @@ export default function Produits() {
                 <div className="form-grid">
                   <div className="form-group form-full"><label>Libellé *</label><input value={form.libelle} onChange={e => set('libelle', e.target.value)} placeholder="Nom complet du produit" /></div>
                   <div className="form-group"><label>Libellé court</label><input value={form.libelle_court || ''} onChange={e => set('libelle_court', e.target.value)} /></div>
-                  <div className="form-group"><label>Marque (texte)</label><input value={form.marque || ''} onChange={e => set('marque', e.target.value)} /></div>
                   <div className="form-group"><label>Marque *</label>
                     <select value={form.marque_id} onChange={e => set('marque_id', e.target.value)}>
                       <option value="">Sélectionner...</option>
                       {marques.map(f => <option key={f.id} value={f.id}>{f.nom}</option>)}
                     </select>
                   </div>
-                  <div className="form-group"><label>EAN13</label><input value={form.ean13 || ''} onChange={e => set('ean13', e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} /></div>
-                  <div className="form-group"><label>Référence marque</label><input value={form.ref_marque || ''} onChange={e => set('ref_marque', e.target.value)} /></div>
-                  <div className="form-group"><label>Statut</label>
-                    <select value={form.statut} onChange={e => set('statut', e.target.value)}>
-                      {STATUTS.map(s => <option key={s} value={s}>{s}</option>)}
+                  <div className="form-group"><label>Catégorie</label>
+                    <select value={form.categorie_id || ''} onChange={e => set('categorie_id', e.target.value)}>
+                      <option value="">Aucune</option>
+                      {categories.filter(c => {
+                        if (!form.marque_id) return true
+                        const mq = marques.find(m => m.id === form.marque_id)
+                        return mq?.nomenclature_specifique ? c.marque_id === form.marque_id : !c.marque_id
+                      }).map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
                     </select>
                   </div>
-                  <div className="form-group form-full"><label>Description</label><textarea value={form.description || ''} onChange={e => set('description', e.target.value)} rows={3} /></div>
+                  <div className="form-group"><label>EAN13</label><input value={form.ean13 || ''} onChange={e => set('ean13', e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} /></div>
+                  <div className="form-group"><label>Référence interne</label><input value={form.ref_marque || ''} onChange={e => set('ref_marque', e.target.value)} /></div>
+                  <div className="form-group"><label>Statut</label>
+                    <select value={form.statut} onChange={e => set('statut', e.target.value)}>
+                      {STATUTS.map(s => <option key={s} value={s}>{formatStatut(s)}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group form-full">
+                    <label>Description (VO)</label>
+                    <textarea value={form.description || ''} onChange={e => set('description', e.target.value)} rows={3} />
+                  </div>
+                  <div className="form-group form-full">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <label style={{ margin: 0 }}>Description (FR)</label>
+                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 10px', gap: 4 }} onClick={() => toast('Traduction automatique bientôt disponible', 'info')}>
+                        <Languages size={13} /> Traduire en français
+                      </button>
+                    </div>
+                    <textarea value={form.description_fr || ''} onChange={e => set('description_fr', e.target.value)} rows={3} placeholder="Description traduite en français..." style={{ marginTop: 6 }} />
+                  </div>
                   <div className="form-group form-full"><label>URL Photo</label><input value={form.photo_url || ''} onChange={e => set('photo_url', e.target.value)} placeholder="https://..." /></div>
                   {form.photo_url && (
                     <div className="form-full" style={{ marginTop: 4 }}>
@@ -667,23 +1100,46 @@ export default function Produits() {
                 <>
                   <p className="section-title">Colisage</p>
                   <div className="form-grid-3">
-                    <div className="form-group"><label>Conditionnement</label><input value={form.conditionnement || ''} onChange={e => set('conditionnement', e.target.value)} placeholder="6x1L, 12x500g..." /></div>
-                    <div className="form-group"><label>Unité de vente</label><select value={form.unite_vente} onChange={e => set('unite_vente', e.target.value)}>{['carton','palette','unité','kg'].map(v => <option key={v} value={v}>{v}</option>)}</select></div>
-                    <div className="form-group"><label>PCB</label><input type="number" value={form.pcb} onChange={e => set('pcb', +e.target.value)} /></div>
-                    <div className="form-group"><label>Poids brut (kg)</label><input type="number" step="0.001" value={form.poids_brut_kg || ''} onChange={e => set('poids_brut_kg', e.target.value)} /></div>
-                    <div className="form-group"><label>Poids net (kg)</label><input type="number" step="0.001" value={form.poids_net_kg || ''} onChange={e => set('poids_net_kg', e.target.value)} /></div>
-                    <div className="form-group"><label>Volume (m³)</label><input type="number" step="0.0001" value={form.volume_m3 || ''} onChange={e => set('volume_m3', e.target.value)} /></div>
-                    <div className="form-group"><label>Longueur (cm)</label><input type="number" step="0.1" value={form.longueur_cm || ''} onChange={e => set('longueur_cm', e.target.value)} /></div>
-                    <div className="form-group"><label>Largeur (cm)</label><input type="number" step="0.1" value={form.largeur_cm || ''} onChange={e => set('largeur_cm', e.target.value)} /></div>
-                    <div className="form-group"><label>Hauteur (cm)</label><input type="number" step="0.1" value={form.hauteur_cm || ''} onChange={e => set('hauteur_cm', e.target.value)} /></div>
+                    <div className="form-group"><label>Conditionnement</label><input type="number" value={form.pcb || ''} onChange={e => set('pcb', e.target.value)} placeholder="Nb unités/colis" /></div>
+                    <div className="form-group"><label>Unité de vente</label><select value={form.unite_vente} onChange={e => set('unite_vente', e.target.value)}>{['unité','carton','palette','kg'].map(v => <option key={v} value={v}>{v}</option>)}</select></div>
                   </div>
-                  <hr className="divider" />
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 16, marginBottom: 8 }}>Colis</div>
+                  <div className="form-grid-3">
+                    <div className="form-group"><label>Poids colis (kg)</label><input type="number" step="0.001" value={form.poids_colis_kg || ''} onChange={e => set('poids_colis_kg', e.target.value)} /></div>
+                    <div className="form-group"><label>Longueur (cm)</label><input type="number" step="0.1" value={form.longueur_colis_cm || ''} onChange={e => set('longueur_colis_cm', e.target.value)} /></div>
+                    <div className="form-group"><label>Largeur (cm)</label><input type="number" step="0.1" value={form.largeur_colis_cm || ''} onChange={e => set('largeur_colis_cm', e.target.value)} /></div>
+                    <div className="form-group"><label>Hauteur (cm)</label><input type="number" step="0.1" value={form.hauteur_colis_cm || ''} onChange={e => set('hauteur_colis_cm', e.target.value)} /></div>
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 16, marginBottom: 8 }}>Produit unitaire</div>
+                  <div className="form-grid-3">
+                    <div className="form-group"><label>Poids brut (kg)</label><input type="number" step="0.001" value={form.poids_produit_brut_kg || ''} onChange={e => set('poids_produit_brut_kg', e.target.value)} placeholder="Avec packaging" /></div>
+                    <div className="form-group"><label>Poids net (kg)</label><input type="number" step="0.001" value={form.poids_produit_net_kg || ''} onChange={e => set('poids_produit_net_kg', e.target.value)} placeholder="Alimentaire" /></div>
+                  </div>
+                </>
+              )}
+              {activeTab === 'conservation' && (
+                <>
                   <p className="section-title">Stockage & Conservation</p>
                   <div className="form-grid-3">
                     <div className="form-group"><label>Température</label><select value={form.temperature_stockage} onChange={e => set('temperature_stockage', e.target.value)}>{TEMP.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                    <div className="form-group"><label>Temp. min (°C)</label><input type="number" step="0.5" value={form.temperature_min_c || ''} onChange={e => set('temperature_min_c', e.target.value)} /></div>
-                    <div className="form-group"><label>Temp. max (°C)</label><input type="number" step="0.5" value={form.temperature_max_c || ''} onChange={e => set('temperature_max_c', e.target.value)} /></div>
-                    <div className="form-group"><label>Type DLC</label><select value={form.dlc_type} onChange={e => set('dlc_type', e.target.value)}>{DLC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                    <div className="form-group">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <label style={{ margin: 0 }}>Type DLC</label>
+                        <div style={{ position: 'relative', display: 'inline-block' }}
+                          onMouseEnter={() => setTooltipDlc(true)}
+                          onMouseLeave={() => setTooltipDlc(false)}>
+                          <Info size={13} color="var(--text-muted)" style={{ cursor: 'help' }} />
+                          {tooltipDlc && (
+                            <div style={{ position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 6, width: 280, padding: '10px 12px', background: '#1a1a1a', color: '#fff', borderRadius: 8, fontSize: 11, lineHeight: 1.5, zIndex: 999, boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
+                              <div style={{ marginBottom: 4 }}><strong>DLC</strong> = Date Limite de Consommation (à respecter impérativement)</div>
+                              <div style={{ marginBottom: 4 }}><strong>DLUO</strong> = Date Limite d'Utilisation Optimale (peut être dépassée)</div>
+                              <div><strong>DDM</strong> = Date de Durabilité Minimale (remplace DLUO)</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <select value={form.dlc_type} onChange={e => set('dlc_type', e.target.value)} style={{ marginTop: 6 }}>{DLC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                    </div>
                     <div className="form-group"><label>Durée DLC (jours)</label><input type="number" value={form.dlc_duree_jours || ''} onChange={e => set('dlc_duree_jours', e.target.value)} /></div>
                   </div>
                 </>
@@ -711,104 +1167,10 @@ export default function Produits() {
                   </div>
                 </>
               )}
-              {activeTab === 'tarifs' && (
-                loadingTarifs ? <div className="loading">Chargement des tarifs...</div> : (
-                  <>
-                    <p className="section-title">Prix d'achat fournisseur</p>
-                    <div className="form-grid-3">
-                      <div className="form-group">
-                        <label>Prix HT (€)</label>
-                        <input type="number" step="0.01" value={tarifAchat.prix_unitaire_ht} onChange={e => setTarifAchat(p => ({ ...p, prix_unitaire_ht: e.target.value }))} placeholder="0.00" />
-                      </div>
-                      <div className="form-group">
-                        <label>TVA (%)</label>
-                        <select value={tarifAchat.taux_tva} onChange={e => setTarifAchat(p => ({ ...p, taux_tva: parseFloat(e.target.value) }))}>
-                          <option value="0">0%</option>
-                          <option value="5.5">5.5%</option>
-                          <option value="10">10%</option>
-                          <option value="20">20%</option>
-                        </select>
-                      </div>
-                      <div className="form-group">
-                        <label>Prix TTC (€)</label>
-                        <input type="text" disabled value={tarifAchat.prix_unitaire_ht ? (parseFloat(tarifAchat.prix_unitaire_ht) * (1 + tarifAchat.taux_tva / 100)).toFixed(2) : '—'} style={{ background: 'var(--surface-2)' }} />
-                      </div>
-                    </div>
-                    <div style={{ marginTop: 8, marginBottom: 20 }}>
-                      <button className="btn btn-primary" onClick={saveTarifAchat} disabled={savingTarif} style={{ fontSize: 13 }}>
-                        {savingTarif ? 'Enregistrement...' : 'Enregistrer prix d\'achat'}
-                      </button>
-                    </div>
-
-                    <hr className="divider" />
-                    <p className="section-title">Tarif général de vente</p>
-                    <div className="form-grid">
-                      <div className="form-group">
-                        <label>Prix vente HT (€)</label>
-                        <input type="number" step="0.01" value={tarifVenteGeneral.prix_unitaire_ht} onChange={e => setTarifVenteGeneral(p => ({ ...p, prix_unitaire_ht: e.target.value }))} placeholder="0.00" />
-                      </div>
-                      <div className="form-group">
-                        <label>Remise (%)</label>
-                        <input type="number" step="0.1" value={tarifVenteGeneral.remise_pourcent} onChange={e => setTarifVenteGeneral(p => ({ ...p, remise_pourcent: e.target.value }))} placeholder="0" />
-                      </div>
-                    </div>
-                    <div style={{ marginTop: 8, marginBottom: 20 }}>
-                      <button className="btn btn-primary" onClick={saveTarifVenteGeneral} disabled={savingTarif} style={{ fontSize: 13 }}>
-                        {savingTarif ? 'Enregistrement...' : 'Enregistrer tarif général'}
-                      </button>
-                    </div>
-
-                    <hr className="divider" />
-                    <p className="section-title">Prix de vente public recommandé (PVPR)</p>
-                    <div className="form-grid">
-                      <div className="form-group">
-                        <label>PVPR TTC (€)</label>
-                        <input type="number" step="0.01" value={form.pvpr || ''} onChange={e => set('pvpr', e.target.value)} placeholder="0.00" />
-                      </div>
-                      <div className="form-group">
-                        <label>Marge Highway</label>
-                        <input type="text" disabled value={
-                          tarifAchat.prix_unitaire_ht && tarifVenteGeneral.prix_unitaire_ht
-                            ? `${(((parseFloat(tarifVenteGeneral.prix_unitaire_ht) - parseFloat(tarifAchat.prix_unitaire_ht)) / parseFloat(tarifAchat.prix_unitaire_ht)) * 100).toFixed(1)}%`
-                            : '—'
-                        } style={{ background: 'var(--surface-2)' }} />
-                      </div>
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, marginBottom: 16 }}>
-                      Le PVPR est enregistré avec la fiche produit (bouton "Mettre à jour" en bas).
-                    </div>
-
-                    {tarifsVenteClients.length > 0 && (
-                      <>
-                        <hr className="divider" />
-                        <p className="section-title">Tarifs spécifiques clients</p>
-                        <div className="table-container" style={{ maxHeight: 200, overflowY: 'auto' }}>
-                          <table>
-                            <thead><tr><th>Client</th><th>Prix HT</th><th>Remise %</th><th>Depuis</th></tr></thead>
-                            <tbody>
-                              {tarifsVenteClients.map(t => (
-                                <tr key={t.id}>
-                                  <td>{t.clients?.nom || '—'}</td>
-                                  <td>{t.prix_unitaire_ht != null ? `${Number(t.prix_unitaire_ht).toFixed(2)} €` : '—'}</td>
-                                  <td>{t.remise_pourcent != null ? `${t.remise_pourcent}%` : '—'}</td>
-                                  <td>{t.date_debut || '—'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                        <div style={{ marginTop: 8 }}>
-                          <a href="/tarifs" style={{ fontSize: 13, color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}>Gérer les tarifs clients →</a>
-                        </div>
-                      </>
-                    )}
-                  </>
-                )
-              )}
             </div>
             <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={close}>Annuler</button>
-              <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Enregistrement...' : editing ? 'Mettre à jour' : 'Créer le produit'}</button>
+              <button className="btn btn-secondary" onClick={closeModal}>Annuler</button>
+              <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Enregistrement...' : 'Créer le produit'}</button>
             </div>
           </div>
         </div>
@@ -818,6 +1180,7 @@ export default function Produits() {
       {showColPanel && <ColumnPanel visibleCols={visibleCols} onChange={updateVisibleCols} onClose={() => setShowColPanel(false)} />}
       {showExport   && <ExportModal products={selectedRows} allProducts={filtered} onClose={() => setShowExport(false)} />}
       {photoPanel   && <PhotoPanel  product={photoPanel} onClose={() => setPhotoPanel(null)} />}
+      {detailPanel  && <DetailPanel product={detailPanel} marques={marques} categories={categories} onClose={() => setDetailPanel(null)} onSaved={() => { fetchAll(); setDetailPanel(null) }} onDelete={(id) => { remove(id); setDetailPanel(null) }} />}
     </div>
   )
 }

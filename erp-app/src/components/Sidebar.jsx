@@ -29,7 +29,7 @@ export default function Sidebar({ user, onLogout }) {
     ]},
     { section: 'Catalogue', show: !isComptable, items: [
       { to: '/marques',  icon: Building2, label: 'Marques',  show: !isComptable },
-      { to: '/produits', icon: Package,   label: 'Produits', show: !isComptable },
+      { to: '/produits', icon: Package,   label: 'Catalogue', show: !isComptable },
     ]},
     { section: 'Commercial', show: !isComptable, items: [
       { to: '/clients',         icon: Users,        label: 'Clients',         show: !isComptable },
