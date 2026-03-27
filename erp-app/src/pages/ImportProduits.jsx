@@ -313,7 +313,7 @@ export default function ImportProduits({ onClose, onImported }) {
                   <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #fcd34d', borderRadius: 8, marginBottom: 16 }}>
                     {validation.toUpdate.map((p, i) => (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid #fef3c7', fontSize: 12 }}>
-                        <span style={{ fontFamily: 'monospace', color: 'var(--text-muted)', minWidth: 100 }}>{p.ean13}</span>
+                        <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', minWidth: 100 }}>{p.ean13}</span>
                         <span style={{ color: 'var(--text-muted)' }}>"{p._existing}"</span>
                         <ChevronRight size={12} />
                         <span style={{ fontWeight: 500 }}>"{p.libelle}"</span>
@@ -348,7 +348,7 @@ export default function ImportProduits({ onClose, onImported }) {
                   <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
                     {validation.toCreate.slice(0, 20).map((p, i) => (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
-                        {p.ean13 && <span style={{ fontFamily: 'monospace', color: 'var(--text-muted)', minWidth: 100 }}>{p.ean13}</span>}
+                        {p.ean13 && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', minWidth: 100 }}>{p.ean13}</span>}
                         <span style={{ fontWeight: 500 }}>{p.libelle}</span>
                         {p.marque && <span style={{ color: 'var(--text-muted)' }}>— {p.marque}</span>}
                       </div>
