@@ -23,6 +23,7 @@ export default function Marques() {
   // Contacts
   const [contacts, setContacts] = useState([])
   const [deletedContactIds, setDeletedContactIds] = useState([])
+  const [editingContact, setEditingContact] = useState(null) // idx du contact en édition
 
   // Catégories
   const [categories, setCategories] = useState([])
@@ -90,7 +91,10 @@ export default function Marques() {
   function setContact(idx, field, val) {
     setContacts(prev => prev.map((c, i) => i === idx ? { ...c, [field]: val } : c))
   }
-  function addContact() { setContacts(prev => [...prev, { ...emptyContact }]) }
+  function addContact() {
+    setContacts(prev => [...prev, { ...emptyContact }])
+    setEditingContact(contacts.length)
+  }
   function removeContact(idx) {
     const c = contacts[idx]
     if (c.id) setDeletedContactIds(prev => [...prev, c.id])
@@ -429,12 +433,10 @@ export default function Marques() {
                       Aucun contact.
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {contacts.map((c, idx) => (
-                        <div key={idx} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '10px 12px', background: 'var(--surface-2)', position: 'relative' }}>
-                          <button className="btn-icon" onClick={() => removeContact(idx)} style={{ position: 'absolute', top: 6, right: 6 }} title="Supprimer">
-                            <Trash2 size={13} />
-                          </button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {contacts.map((c, idx) => editingContact === idx ? (
+                        /* ── Mode édition ── */
+                        <div key={idx} style={{ border: '1px solid var(--primary-mid)', borderRadius: 'var(--radius)', padding: '10px 12px', background: 'var(--primary-light)' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 10px' }}>
                             <div className="form-group" style={{ marginBottom: 0 }}>
                               <label style={{ fontSize: 11 }}>Prénom</label>
@@ -452,6 +454,24 @@ export default function Marques() {
                               <label style={{ fontSize: 11 }}>Email</label>
                               <input type="email" value={c.email || ''} onChange={e => setContact(idx, 'email', e.target.value)} style={{ padding: '5px 8px', fontSize: 13 }} />
                             </div>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                            <button className="btn btn-secondary" onClick={() => setEditingContact(null)} style={{ fontSize: 11, padding: '3px 10px' }}>OK</button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* ── Mode lecture ── */
+                        <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderBottom: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+                            <span style={{ fontSize: 13, fontWeight: 500 }}>
+                              {[c.prenom, c.nom].filter(Boolean).join(' ') || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Sans nom</span>}
+                              {c.fonction && <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> — {c.fonction}</span>}
+                            </span>
+                            {c.email && <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.email}</span>}
+                          </div>
+                          <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                            <button className="btn-icon" onClick={() => setEditingContact(idx)} title="Modifier"><Edit2 size={13} /></button>
+                            <button className="btn-icon" onClick={() => removeContact(idx)} title="Supprimer"><Trash2 size={13} /></button>
                           </div>
                         </div>
                       ))}
