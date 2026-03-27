@@ -49,7 +49,7 @@ export default function Sidebar({ user, onLogout }) {
     ]},
   ]
 
-  const font = "'Calibri', 'Segoe UI', sans-serif"
+  const font = "'Poppins', sans-serif"
 
   const SidebarContent = () => (
     <aside style={{

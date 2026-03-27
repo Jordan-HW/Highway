@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 
 :root {
   /* Palette Highway — violet profond */
@@ -36,8 +37,8 @@
 
   --radius: 8px;
   --radius-lg: 12px;
-  --font: 'Calibri', 'Segoe UI', sans-serif;
-  --font-mono: 'Calibri', 'Segoe UI', sans-serif;
+  --font: 'Poppins', sans-serif;
+  --font-mono: 'Poppins', sans-serif;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

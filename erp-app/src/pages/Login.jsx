@@ -35,7 +35,7 @@ export default function Login({ onLogin }) {
     background: 'rgba(255,255,255,0.06)',
     border: '1px solid rgba(255,255,255,0.10)',
     borderRadius: 8, color: 'white', fontSize: 13,
-    outline: 'none', fontFamily: "'Calibri', 'Segoe UI', sans-serif",
+    outline: 'none', fontFamily: "'Poppins', sans-serif",
     boxSizing: 'border-box', transition: 'border-color .15s',
   }
 
@@ -45,7 +45,7 @@ export default function Login({ onLogin }) {
       background: 'linear-gradient(135deg, #2E3240 0%, #3A3F4A 45%, #2A2E38 100%)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 20, position: 'relative', overflow: 'hidden',
-      fontFamily: "'Calibri', 'Segoe UI', sans-serif",
+      fontFamily: "'Poppins', sans-serif",
     }}>
       {/* Halos lumineux */}
       <div style={{ position:'absolute', top:'-15%', left:'25%', width:700, height:700, borderRadius:'50%', background:'radial-gradient(circle, rgba(90,140,255,0.09) 0%, transparent 65%)', pointerEvents:'none' }}/>
@@ -120,7 +120,7 @@ export default function Login({ onLogin }) {
             background: loading ? 'rgba(90,140,255,0.35)' : 'linear-gradient(135deg, #5A8CFF 0%, #AA5AFF 100%)',
             border: 'none', borderRadius: 9, color: 'white',
             fontSize: 13, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
-            fontFamily: "'Calibri', 'Segoe UI', sans-serif",
+            fontFamily: "'Poppins', sans-serif",
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             boxShadow: '0 4px 20px rgba(90,140,255,0.35)',
             transition: 'opacity 0.2s, transform 0.15s',
