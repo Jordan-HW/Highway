@@ -9,8 +9,9 @@ Highway est une application ERP custom pour une activité d'import/distribution 
 - **Frontend** : React 18 + Vite + React Router + Lucide React + xlsx (export/import Excel)
 - **Backend/BDD** : Supabase (PostgreSQL) — projet ID : `igybgbodxfnngstllnre`
 - **Hébergement** : Vercel — repo GitHub : `Jordan-HW/Highway`, dossier racine `erp-app/`
-- **Design** : fond gris clair #F5F4F8, accent violet #5A4A7A, sidebar violet foncé #2A1F40, font DM Sans
+- **Design** : fond gris clair #F5F4F8, accent violet #5A4A7A, sidebar violet foncé #2A1F40, font Poppins
 - **Logo** : texte "HIGHWAY" en violet clair #D4B8F0, slogan "ROAD TO THE FINEST"
+- **Traduction** : Google Translate API (gratuit, détection auto de la langue source → FR)
 
 ---
 
@@ -37,7 +38,7 @@ Highway/
     └── src/
         ├── main.jsx
         ├── App.jsx                (auth localStorage + routes par rôle)
-        ├── index.css              (palette Highway + responsive mobile)
+        ├── index.css              (palette Highway + responsive mobile, font Poppins)
         ├── lib/supabase.js
         ├── components/
         │   ├── Sidebar.jsx        (responsive : fixe desktop / hamburger mobile)
@@ -45,13 +46,13 @@ Highway/
         └── pages/
             ├── Login.jsx          ✅ auth via RPC sécurisé
             ├── Dashboard.jsx      ✅ stats globales
-            ├── Marques.jsx        ✅ CRUD marques
-            ├── Produits.jsx       ✅ CRUD complet
+            ├── Marques.jsx        ✅ CRUD marques + contacts multiples + catégories par marque
+            ├── Produits.jsx       ✅ Catalogue — volet droit fiche produit + CRUD
             ├── ImportProduits.jsx ✅ import Excel avec mapping colonnes
             ├── Clients.jsx        ✅ CRUD complet
             ├── Stock.jsx          ✅ lots + alertes DLC
+            ├── Tarifs.jsx         ✅ gestion tarifs achat/vente/clients
             ├── Utilisateurs.jsx   ✅ gestion via RPC sécurisé
-            ├── Tarifs.jsx         ✅ gestion tarifs (achat/vente/client) + import Excel + modification en masse
             ├── Fournisseurs.jsx   ✅ gestion fournisseurs
             └── Placeholders.jsx   ⏳ CommandesVente, CommandesAchat, Expeditions, Factures
 ```
@@ -68,6 +69,7 @@ Highway/
 | `produits` | RLS + policy "allow all" |
 | `marques` | RLS + policy "allow all" |
 | `categories` | RLS + policy "allow all" |
+| `marque_contacts` | RLS + policy "allow all" |
 | `clients` | RLS + policy "allow all" |
 | `lots` | RLS + policy "allow all" |
 | `portail_acces` | RLS + policy "allow all" |
@@ -107,11 +109,15 @@ Highway/
 - **Tables** : scroll horizontal avec min-width
 - **Modals** : pleine largeur, footer en colonne
 - **Tabs** : scroll horizontal
-- **PhotoPanel / ColumnPanel** : max-width responsive
+- **Volet détail produit** : pleine largeur mobile
 
 ---
 
 ## Design System
+
+### Font
+- **Poppins** (Google Fonts) partout — titres, corps, sidebar, login, codes
+- Tailles harmonisées : 13px base, 12px labels/sous-titres, 11px headers table/badges, 18px titres page
 
 ### Couleurs CSS (index.css)
 ```css
@@ -148,16 +154,42 @@ logo color: #D4B8F0          /* violet clair */
 
 ---
 
+## UX Patterns
+
+### Fiches (Marques, Produits)
+- **Mode lecture** par défaut : lignes compactes label (120px, muted) / valeur
+- **Crayon** pour basculer en mode édition par section
+- **Onglets** dans les modales/volets pour organiser les données
+
+### Marques
+- Modale 640px avec onglets : Infos, Contacts, Catégories (si nomenclature spécifique)
+- **Contacts multiples** : ligne compacte en lecture (nom — fonction · email · tél), crayon pour éditer
+- **Nomenclature catégories** : choix par marque entre générale ou spécifique
+- **Catégories générales** : gérées via bouton dédié dans le header de la page
+
+### Catalogue (Produits)
+- **Clic sur ligne** → volet droit 620px (pas de modal) avec fiche complète
+- **6 onglets** : Général, Colisage, Conservation, Ingrédients, Douane, Tarifs
+- **Traduction auto** : description et ingrédients VO → FR via Google Translate
+- **Type conditionnement** : unités (PCB) ou kg (poids colis)
+- **Tooltip DLC** : icone info expliquant DLC/DLUO/DDM
+- **Photo** : cliquable pour zoom plein écran
+- **Modal création** séparée (nouveau produit uniquement)
+- **Statuts** affichés avec majuscule (Actif, En référencement, Arrêté, Inactif)
+
+---
+
 ## Tables Supabase
 | Table | Description |
 |---|---|
 | `admin_users` | Utilisateurs ERP (protégé par RPC) |
-| `marques` | Marques distribuées (M&S, etc.) |
-| `categories` | Catégories produits |
-| `produits` | 103 produits M&S importés |
+| `marques` | Marques distribuées — champs : nom, code, pays, devise, delai_livraison_jours, conditions_paiement, adresse, notes, actif, **nomenclature_specifique** |
+| `marque_contacts` | Contacts par marque — champs : marque_id (FK), prenom, nom, fonction, email, telephone |
+| `categories` | Catégories produits — champs : nom, parent_id, **marque_id** (FK nullable, null = générale) |
+| `produits` | Catalogue produits — champs classiques + **description_fr**, **type_conditionnement** (unites/kg), **poids_colis_kg**, **longueur/largeur/hauteur_colis_cm**, **poids_produit_brut_kg**, **poids_produit_net_kg** |
 | `clients` | Clients (centrale/indépendant/grossiste) |
-| `tarifs_achat` | Prix achat HT par produit (206 enregistrements) |
-| `tarifs_vente` | Prix vente HT général ou par client (204 enregistrements) |
+| `tarifs_achat` | Prix achat HT par produit/marque |
+| `tarifs_vente` | Prix vente HT général ou par client |
 | `lots` | Lots avec DLC, localisation, statut |
 | `mouvements_stock` | Entrées/sorties stock |
 | `portail_acces` | Accès portail client |
@@ -170,22 +202,14 @@ logo color: #D4B8F0          /* violet clair */
 
 ---
 
-## Fonctionnalités réalisées (tarifs)
-- ✅ **Page Tarifs** (`/tarifs`) — vue par produit (marges) + vue par client (écarts)
-- ✅ **Onglet Tarifs** dans le modal produit — prix achat HT/TTC, tarif général, PVPR, tarifs clients
-- ✅ **Import tarifs Excel** — clé EAN13, supporte achat HT, TVA, vente HT, PVPR, tarifs clients
-- ✅ **Modification en masse** — sélection par marque ou individuelle, pourcentage +/-, aperçu avant application
-- ✅ **PVPR** — prix public recommandé stocké sur `produits.pvpr`
-- ✅ **Marges** — Marge Highway = (vente - achat) / achat, Marge Client = (PVPR - vente) / vente
-- ✅ Colonnes ajoutées : `produits.taux_tva` (default 5.5), `produits.pvpr`
-
 ## Fonctionnalités à construire (par priorité)
 1. ⏳ **Commandes vente** — saisie, suivi, statuts
 2. ⏳ **Commandes achat** — vers marques/fournisseurs
 3. ⏳ **Expéditions** — préparation + envoi
 4. ⏳ **Factures** — génération PDF
 5. ⏳ **Portail client** — app séparée, login client, catalogue filtré, commandes
-6. ⏳ **Intégration EDI** — Carrefour, Franprix
+6. ⏳ **Tarification client** — prix spécifiques par client
+7. ⏳ **Intégration EDI** — Carrefour, Franprix
 
 ---
 
