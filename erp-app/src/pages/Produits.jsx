@@ -40,13 +40,17 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
   const [savingTarif, setSavingTarif] = useState(false)
   const [tooltipVisible, setTooltipVisible] = useState(false)
 
+  const prevIdRef = useRef(null)
   useEffect(() => {
     if (product) {
       setForm({ ...product })
-      setPanelTab('general')
-      setEditSection(null)
+      if (prevIdRef.current !== product.id) {
+        setPanelTab('general')
+        setEditSection(null)
+      }
+      prevIdRef.current = product.id
     }
-  }, [product?.id])
+  }, [product])
 
   useEffect(() => {
     if (product && panelTab === 'tarifs') fetchTarifs(product.id)
@@ -136,7 +140,44 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
     if (error) return toast('Erreur : ' + error.message, 'error')
     toast('Produit mis à jour', 'success')
     setEditSection(null)
-    onSaved()
+    onSaved(panelTab)
+  }
+
+  const [photoZoom, setPhotoZoom] = useState(false)
+  const [translating, setTranslating] = useState(false)
+
+  async function translateText(sourceField, targetField) {
+    const text = form[sourceField]
+    if (!text?.trim()) return toast('Rien à traduire', 'error')
+    const apiKey = import.meta.env.VITE_ANTHROPIC_KEY
+    if (!apiKey) return toast('Clé API Anthropic manquante (VITE_ANTHROPIC_KEY)', 'error')
+    setTranslating(true)
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1024,
+          messages: [{ role: 'user', content: `Traduis ce texte en français. Renvoie uniquement la traduction, sans explication ni commentaire :\n\n${text}` }],
+        }),
+      })
+      const data = await res.json()
+      if (data.content?.[0]?.text) {
+        set(targetField, data.content[0].text.trim())
+        toast('Traduction effectuée', 'success')
+      } else {
+        toast('Erreur de traduction', 'error')
+      }
+    } catch (err) {
+      toast('Erreur : ' + err.message, 'error')
+    }
+    setTranslating(false)
   }
 
   if (!product) return null
@@ -187,17 +228,28 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
         {/* Photo */}
         {product.photo_url && (
           <div style={{ padding: '16px 20px 0', display: 'flex', justifyContent: 'center' }}>
-            <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', maxHeight: 200 }}>
+            <div onClick={() => setPhotoZoom(true)} style={{ background: 'var(--surface-2)', borderRadius: 12, padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', maxHeight: 200, cursor: 'zoom-in' }}>
               <img src={product.photo_url} alt={product.libelle} style={{ maxWidth: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 8 }} />
             </div>
           </div>
         )}
+        {photoZoom && product.photo_url && (
+          <div onClick={() => setPhotoZoom(false)} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
+            <img src={product.photo_url} alt={product.libelle} style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
+          </div>
+        )}
 
         {/* Tabs bar */}
-        <div style={{ padding: '0 20px', borderBottom: '1px solid var(--border)' }}>
-          <div className="tabs" style={{ marginBottom: 0 }}>
+        <div style={{ padding: '0 16px', borderBottom: '1px solid var(--border)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <div style={{ display: 'flex', gap: 0, minWidth: 'max-content' }}>
             {PANEL_TABS.map(([key, label]) => (
-              <button key={key} className={`tab ${panelTab === key ? 'active' : ''}`} onClick={() => setPanelTab(key)}>{label}</button>
+              <button key={key} onClick={() => setPanelTab(key)} style={{
+                padding: '9px 12px', fontSize: 12, fontWeight: panelTab === key ? 600 : 400,
+                color: panelTab === key ? 'var(--primary)' : 'var(--text-secondary)',
+                background: 'none', border: 'none', fontFamily: 'var(--font)',
+                borderBottom: panelTab === key ? '2px solid var(--primary)' : '2px solid transparent',
+                cursor: 'pointer', marginBottom: -1, whiteSpace: 'nowrap',
+              }}>{label}</button>
             ))}
           </div>
         </div>
@@ -256,8 +308,8 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
                   <div className="form-group form-full">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <label style={{ margin: 0 }}>Description (FR)</label>
-                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 10px', gap: 4 }} onClick={() => toast('Traduction automatique bientôt disponible', 'info')}>
-                        <Languages size={13} /> Traduire en français
+                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 10px', gap: 4 }} disabled={translating} onClick={() => translateText('description', 'description_fr')}>
+                        <Languages size={13} /> {translating ? 'Traduction...' : 'Traduire'}
                       </button>
                     </div>
                     <textarea value={form.description_fr || ''} onChange={e => set('description_fr', e.target.value)} rows={3} placeholder="Description traduite en français..." style={{ marginTop: 6 }} />
@@ -274,10 +326,12 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
               <SectionHeader section="colisage" title="Colisage" />
               {editSection !== 'colisage' ? (
                 <div>
-                  <ReadRow label="Conditionnement" value={form.pcb ? `${form.pcb}` : ''} />
-                  <ReadRow label="Unité de vente" value={form.unite_vente} />
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 16, marginBottom: 8 }}>Colis</div>
-                  <ReadRow label="Poids colis (kg)" value={form.poids_colis_kg} />
+                  <ReadRow label="Type cdt" value={form.type_conditionnement === 'kg' ? 'Au poids (kg)' : 'À l\'unité'} />
+                  {form.type_conditionnement === 'kg'
+                    ? <ReadRow label="Poids colis (kg)" value={form.poids_colis_kg} />
+                    : <ReadRow label="PCB" value={form.pcb ? `${form.pcb} unités` : ''} />
+                  }
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 16, marginBottom: 8 }}>Dimensions colis</div>
                   <ReadRow label="Longueur (cm)" value={form.longueur_colis_cm} />
                   <ReadRow label="Largeur (cm)" value={form.largeur_colis_cm} />
                   <ReadRow label="Hauteur (cm)" value={form.hauteur_colis_cm} />
@@ -287,19 +341,28 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
                 </div>
               ) : (
                 <>
-                  <div className="form-grid-3">
-                    <div className="form-group"><label>Conditionnement</label><input type="number" value={form.pcb || ''} onChange={e => set('pcb', e.target.value)} placeholder="Nb unités/colis" /></div>
-                    <div className="form-group"><label>Unité de vente</label><select value={form.unite_vente || 'unité'} onChange={e => set('unite_vente', e.target.value)}>{['unité','carton','palette','kg'].map(v => <option key={v} value={v}>{v}</option>)}</select></div>
+                  <div className="form-grid">
+                    <div className="form-group">
+                      <label>Type de conditionnement</label>
+                      <select value={form.type_conditionnement || 'unites'} onChange={e => set('type_conditionnement', e.target.value)}>
+                        <option value="unites">À l'unité</option>
+                        <option value="kg">Au poids (kg)</option>
+                      </select>
+                    </div>
+                    {(form.type_conditionnement || 'unites') === 'unites' ? (
+                      <div className="form-group"><label>PCB (unités par colis)</label><input type="number" value={form.pcb || ''} onChange={e => set('pcb', e.target.value)} placeholder="Ex: 6, 12, 24..." /></div>
+                    ) : (
+                      <div className="form-group"><label>Poids d'un colis (kg)</label><input type="number" step="0.001" value={form.poids_colis_kg || ''} onChange={e => set('poids_colis_kg', e.target.value)} /></div>
+                    )}
                   </div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 16, marginBottom: 8 }}>Colis</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 16, marginBottom: 8 }}>Dimensions colis</div>
                   <div className="form-grid-3">
-                    <div className="form-group"><label>Poids colis (kg)</label><input type="number" step="0.001" value={form.poids_colis_kg || ''} onChange={e => set('poids_colis_kg', e.target.value)} /></div>
                     <div className="form-group"><label>Longueur (cm)</label><input type="number" step="0.1" value={form.longueur_colis_cm || ''} onChange={e => set('longueur_colis_cm', e.target.value)} /></div>
                     <div className="form-group"><label>Largeur (cm)</label><input type="number" step="0.1" value={form.largeur_colis_cm || ''} onChange={e => set('largeur_colis_cm', e.target.value)} /></div>
                     <div className="form-group"><label>Hauteur (cm)</label><input type="number" step="0.1" value={form.hauteur_colis_cm || ''} onChange={e => set('hauteur_colis_cm', e.target.value)} /></div>
                   </div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 16, marginBottom: 8 }}>Produit unitaire</div>
-                  <div className="form-grid-3">
+                  <div className="form-grid">
                     <div className="form-group"><label>Poids brut (kg)</label><input type="number" step="0.001" value={form.poids_produit_brut_kg || ''} onChange={e => set('poids_produit_brut_kg', e.target.value)} placeholder="Avec packaging" /></div>
                     <div className="form-group"><label>Poids net (kg)</label><input type="number" step="0.001" value={form.poids_produit_net_kg || ''} onChange={e => set('poids_produit_net_kg', e.target.value)} placeholder="Alimentaire" /></div>
                   </div>
@@ -361,7 +424,15 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
                 <div className="form-grid">
                   <div className="form-group form-full"><label>Ingrédients (VO)</label><textarea value={form.ingredients_vo || ''} onChange={e => set('ingredients_vo', e.target.value)} rows={4} placeholder="Water, Sugar, Salt..." /></div>
                   <div className="form-group"><label>Langue originale</label><select value={form.langue_vo || 'en'} onChange={e => set('langue_vo', e.target.value)}>{[['en','Anglais'],['es','Espagnol'],['de','Allemand'],['it','Italien'],['zh','Chinois'],['ar','Arabe'],['other','Autre']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
-                  <div className="form-group form-full"><label>Ingrédients (FR)</label><textarea value={form.ingredients_fr || ''} onChange={e => set('ingredients_fr', e.target.value)} rows={4} placeholder="Eau, Sucre, Sel..." /></div>
+                  <div className="form-group form-full">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <label style={{ margin: 0 }}>Ingrédients (FR)</label>
+                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 10px', gap: 4 }} disabled={translating} onClick={() => translateText('ingredients_vo', 'ingredients_fr')}>
+                        <Languages size={13} /> {translating ? 'Traduction...' : 'Traduire'}
+                      </button>
+                    </div>
+                    <textarea value={form.ingredients_fr || ''} onChange={e => set('ingredients_fr', e.target.value)} rows={4} placeholder="Eau, Sucre, Sel..." style={{ marginTop: 6 }} />
+                  </div>
                   <div className="form-group form-full"><label>Allergènes</label><input value={form.allergenes || ''} onChange={e => set('allergenes', e.target.value)} placeholder="Gluten, Lait, Fruits à coque..." /></div>
                   <div className="form-group form-full"><label>URL Fiche technique</label><input value={form.fiche_technique_url || ''} onChange={e => set('fiche_technique_url', e.target.value)} placeholder="https://..." /></div>
                   {form.fiche_technique_url && <div className="form-full"><a href={form.fiche_technique_url} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{ display: 'inline-flex' }}>Voir le document</a></div>}
@@ -752,6 +823,26 @@ export default function Produits() {
   const [sortConfig, setSortConfig]   = useState({ key: null, dir: 'asc' })
   const [colFilters, setColFilters]   = useState({})
   const [tooltipDlc, setTooltipDlc]   = useState(false)
+  const [translatingMain, setTranslatingMain] = useState(false)
+
+  async function translateTextMain(sourceField, targetField) {
+    const text = form[sourceField]
+    if (!text?.trim()) return toast('Rien à traduire', 'error')
+    const apiKey = import.meta.env.VITE_ANTHROPIC_KEY
+    if (!apiKey) return toast('Clé API Anthropic manquante (VITE_ANTHROPIC_KEY)', 'error')
+    setTranslatingMain(true)
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+        body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1024, messages: [{ role: 'user', content: `Traduis ce texte en français. Renvoie uniquement la traduction, sans explication ni commentaire :\n\n${text}` }] }),
+      })
+      const data = await res.json()
+      if (data.content?.[0]?.text) { set(targetField, data.content[0].text.trim()); toast('Traduction effectuée', 'success') }
+      else toast('Erreur de traduction', 'error')
+    } catch (err) { toast('Erreur : ' + err.message, 'error') }
+    setTranslatingMain(false)
+  }
 
   function handleSort(key) {
     if (key === 'photo') return
@@ -1081,8 +1172,8 @@ export default function Produits() {
                   <div className="form-group form-full">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <label style={{ margin: 0 }}>Description (FR)</label>
-                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 10px', gap: 4 }} onClick={() => toast('Traduction automatique bientôt disponible', 'info')}>
-                        <Languages size={13} /> Traduire en français
+                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 10px', gap: 4 }} disabled={translatingMain} onClick={() => translateTextMain('description', 'description_fr')}>
+                        <Languages size={13} /> {translatingMain ? 'Traduction...' : 'Traduire'}
                       </button>
                     </div>
                     <textarea value={form.description_fr || ''} onChange={e => set('description_fr', e.target.value)} rows={3} placeholder="Description traduite en français..." style={{ marginTop: 6 }} />
@@ -1180,7 +1271,7 @@ export default function Produits() {
       {showColPanel && <ColumnPanel visibleCols={visibleCols} onChange={updateVisibleCols} onClose={() => setShowColPanel(false)} />}
       {showExport   && <ExportModal products={selectedRows} allProducts={filtered} onClose={() => setShowExport(false)} />}
       {photoPanel   && <PhotoPanel  product={photoPanel} onClose={() => setPhotoPanel(null)} />}
-      {detailPanel  && <DetailPanel product={detailPanel} marques={marques} categories={categories} onClose={() => setDetailPanel(null)} onSaved={() => { fetchAll(); setDetailPanel(null) }} onDelete={(id) => { remove(id); setDetailPanel(null) }} />}
+      {detailPanel  && <DetailPanel product={detailPanel} marques={marques} categories={categories} onClose={() => setDetailPanel(null)} onSaved={async (currentTab) => { await fetchAll(); const { data } = await supabase.from('produits').select('*, marques(nom), categories(nom)').eq('id', detailPanel.id).single(); if (data) setDetailPanel(data) }} onDelete={(id) => { remove(id); setDetailPanel(null) }} />}
     </div>
   )
 }
