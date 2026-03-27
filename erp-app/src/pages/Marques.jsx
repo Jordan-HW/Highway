@@ -46,7 +46,7 @@ export default function Marques() {
     setLoading(true)
     const { data } = await supabase
       .from('marques')
-      .select('*, marque_contacts(id, prenom, nom, fonction, email), categories(id, nom)')
+      .select('*, marque_contacts(id, prenom, nom, fonction, email, telephone), categories(id, nom)')
       .order('nom')
     setRows(data || [])
     setLoading(false)
@@ -318,6 +318,7 @@ export default function Marques() {
                     borderBottom: tab === t.key ? '2px solid var(--primary)' : '2px solid transparent',
                     cursor: 'pointer',
                     marginBottom: -1,
+                    fontFamily: 'var(--font)',
                   }}
                 >
                   {t.label}
@@ -454,6 +455,10 @@ export default function Marques() {
                               <label style={{ fontSize: 11 }}>Email</label>
                               <input type="email" value={c.email || ''} onChange={e => setContact(idx, 'email', e.target.value)} style={{ padding: '5px 8px', fontSize: 13 }} />
                             </div>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label style={{ fontSize: 11 }}>Téléphone</label>
+                              <input value={c.telephone || ''} onChange={e => setContact(idx, 'telephone', e.target.value)} placeholder="+33..." style={{ padding: '5px 8px', fontSize: 13 }} />
+                            </div>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
                             <button className="btn btn-secondary" onClick={() => setEditingContact(null)} style={{ fontSize: 11, padding: '3px 10px' }}>OK</button>
@@ -467,7 +472,11 @@ export default function Marques() {
                               {[c.prenom, c.nom].filter(Boolean).join(' ') || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Sans nom</span>}
                               {c.fonction && <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> — {c.fonction}</span>}
                             </span>
-                            {c.email && <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.email}</span>}
+                            {(c.email || c.telephone) && (
+                              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                                {[c.email, c.telephone].filter(Boolean).join(' · ')}
+                              </span>
+                            )}
                           </div>
                           <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
                             <button className="btn-icon" onClick={() => setEditingContact(idx)} title="Modifier"><Edit2 size={13} /></button>
