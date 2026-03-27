@@ -149,27 +149,13 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
   async function translateText(sourceField, targetField) {
     const text = form[sourceField]
     if (!text?.trim()) return toast('Rien à traduire', 'error')
-    const apiKey = import.meta.env.VITE_ANTHROPIC_KEY
-    if (!apiKey) return toast('Clé API Anthropic manquante (VITE_ANTHROPIC_KEY)', 'error')
     setTranslating(true)
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 1024,
-          messages: [{ role: 'user', content: `Traduis ce texte en français. Renvoie uniquement la traduction, sans explication ni commentaire :\n\n${text}` }],
-        }),
-      })
+      const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=fr&dt=t&q=${encodeURIComponent(text)}`)
       const data = await res.json()
-      if (data.content?.[0]?.text) {
-        set(targetField, data.content[0].text.trim())
+      const translated = data[0].map(s => s[0]).join('')
+      if (translated) {
+        set(targetField, translated)
         toast('Traduction effectuée', 'success')
       } else {
         toast('Erreur de traduction', 'error')
@@ -824,17 +810,12 @@ export default function Produits() {
   async function translateTextMain(sourceField, targetField) {
     const text = form[sourceField]
     if (!text?.trim()) return toast('Rien à traduire', 'error')
-    const apiKey = import.meta.env.VITE_ANTHROPIC_KEY
-    if (!apiKey) return toast('Clé API Anthropic manquante (VITE_ANTHROPIC_KEY)', 'error')
     setTranslatingMain(true)
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-        body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1024, messages: [{ role: 'user', content: `Traduis ce texte en français. Renvoie uniquement la traduction, sans explication ni commentaire :\n\n${text}` }] }),
-      })
+      const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=fr&dt=t&q=${encodeURIComponent(text)}`)
       const data = await res.json()
-      if (data.content?.[0]?.text) { set(targetField, data.content[0].text.trim()); toast('Traduction effectuée', 'success') }
+      const translated = data[0].map(s => s[0]).join('')
+      if (translated) { set(targetField, translated); toast('Traduction effectuée', 'success') }
       else toast('Erreur de traduction', 'error')
     } catch (err) { toast('Erreur : ' + err.message, 'error') }
     setTranslatingMain(false)
