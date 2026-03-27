@@ -32,6 +32,12 @@ export default function Marques() {
   // Onglet actif dans la modale
   const [tab, setTab] = useState('infos')
 
+  // Modale catégories générales
+  const [catModal, setCatModal] = useState(false)
+  const [globalCats, setGlobalCats] = useState([])
+  const [newGlobalCatName, setNewGlobalCatName] = useState('')
+  const [savingCats, setSavingCats] = useState(false)
+
   useEffect(() => { fetchMarques() }, [])
 
   async function fetchMarques() {
@@ -165,6 +171,35 @@ export default function Marques() {
     fetchMarques()
   }
 
+  // ── Catégories générales ──
+  async function openGlobalCats() {
+    const { data } = await supabase.from('categories').select('id, nom').is('marque_id', null).order('nom')
+    setGlobalCats(data || [])
+    setNewGlobalCatName('')
+    setCatModal(true)
+  }
+
+  async function addGlobalCat() {
+    const name = newGlobalCatName.trim()
+    if (!name) return
+    if (globalCats.some(c => c.nom.toLowerCase() === name.toLowerCase())) {
+      return toast('Cette catégorie existe déjà', 'error')
+    }
+    setSavingCats(true)
+    const { data, error } = await supabase.from('categories').insert({ nom: name }).select('id, nom').single()
+    setSavingCats(false)
+    if (error) return toast('Erreur : ' + error.message, 'error')
+    setGlobalCats(prev => [...prev, data].sort((a, b) => a.nom.localeCompare(b.nom)))
+    setNewGlobalCatName('')
+  }
+
+  async function removeGlobalCat(cat) {
+    if (!confirm(`Supprimer la catégorie "${cat.nom}" ?`)) return
+    const { error } = await supabase.from('categories').delete().eq('id', cat.id)
+    if (error) return toast('Erreur : ' + error.message, 'error')
+    setGlobalCats(prev => prev.filter(c => c.id !== cat.id))
+  }
+
   const filtered = rows.filter(r =>
     r.nom.toLowerCase().includes(search.toLowerCase()) ||
     (r.pays || '').toLowerCase().includes(search.toLowerCase())
@@ -177,9 +212,14 @@ export default function Marques() {
           <h2>Marques</h2>
           <p>{rows.length} marque{rows.length > 1 ? 's' : ''}</p>
         </div>
-        <button className="btn btn-primary" onClick={openCreate}>
-          <Plus size={15} /> Nouvelle marque
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary" onClick={openGlobalCats}>
+            <Tag size={15} /> Catégories générales
+          </button>
+          <button className="btn btn-primary" onClick={openCreate}>
+            <Plus size={15} /> Nouvelle marque
+          </button>
+        </div>
       </div>
 
       <div className="page-body">
@@ -470,6 +510,69 @@ export default function Marques() {
               <button className="btn btn-primary" onClick={save} disabled={saving}>
                 {saving ? 'Enregistrement...' : editing ? 'Mettre à jour' : 'Créer'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {catModal && (
+        <div className="modal-overlay" onClick={() => setCatModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
+            <div className="modal-header">
+              <h3>Catégories générales</h3>
+              <button className="btn-icon" onClick={() => setCatModal(false)}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
+                Ces catégories sont utilisées par les marques qui n'ont pas de nomenclature spécifique.
+              </p>
+
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                <input
+                  value={newGlobalCatName}
+                  onChange={e => setNewGlobalCatName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addGlobalCat()}
+                  placeholder="Nom de la catégorie..."
+                  style={{ flex: 1 }}
+                />
+                <button className="btn btn-primary" onClick={addGlobalCat} disabled={savingCats} style={{ fontSize: 12, padding: '6px 14px', whiteSpace: 'nowrap' }}>
+                  <Plus size={14} /> Ajouter
+                </button>
+              </div>
+
+              {globalCats.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)' }}>
+                  <Tag size={32} style={{ marginBottom: 8, opacity: 0.4 }} />
+                  <p>Aucune catégorie générale.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {globalCats.map(c => (
+                    <div
+                      key={c.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 14px',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius)',
+                        background: 'var(--surface-2)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Tag size={14} style={{ color: 'var(--text-muted)' }} />
+                        <span style={{ fontSize: 13, fontWeight: 500 }}>{c.nom}</span>
+                      </div>
+                      <button className="btn-icon" onClick={() => removeGlobalCat(c)} title="Supprimer">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setCatModal(false)}>Fermer</button>
             </div>
           </div>
         </div>
