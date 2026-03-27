@@ -212,7 +212,7 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
   return (
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.25)' }} />
-      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 201, width: '100%', maxWidth: 480, background: 'var(--surface)', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', animation: 'slideIn .2s ease' }}>
+      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 201, width: '100%', maxWidth: 620, background: 'var(--surface)', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', animation: 'slideIn .2s ease' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -240,18 +240,16 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
         )}
 
         {/* Tabs bar */}
-        <div style={{ padding: '0 16px', borderBottom: '1px solid var(--border)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <div style={{ display: 'flex', gap: 0, minWidth: 'max-content' }}>
-            {PANEL_TABS.map(([key, label]) => (
-              <button key={key} onClick={() => setPanelTab(key)} style={{
-                padding: '9px 12px', fontSize: 12, fontWeight: panelTab === key ? 600 : 400,
-                color: panelTab === key ? 'var(--primary)' : 'var(--text-secondary)',
-                background: 'none', border: 'none', fontFamily: 'var(--font)',
-                borderBottom: panelTab === key ? '2px solid var(--primary)' : '2px solid transparent',
-                cursor: 'pointer', marginBottom: -1, whiteSpace: 'nowrap',
-              }}>{label}</button>
-            ))}
-          </div>
+        <div style={{ display: 'flex', padding: '0 20px', borderBottom: '1px solid var(--border)' }}>
+          {PANEL_TABS.map(([key, label]) => (
+            <button key={key} onClick={() => setPanelTab(key)} style={{
+              padding: '9px 14px', fontSize: 12, fontWeight: panelTab === key ? 600 : 400,
+              color: panelTab === key ? 'var(--primary)' : 'var(--text-secondary)',
+              background: 'none', border: 'none', fontFamily: 'var(--font)',
+              borderBottom: panelTab === key ? '2px solid var(--primary)' : '2px solid transparent',
+              cursor: 'pointer', marginBottom: -1, whiteSpace: 'nowrap',
+            }}>{label}</button>
+          ))}
         </div>
 
         {/* Scrollable content */}
@@ -465,7 +463,13 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
           {panelTab === 'tarifs' && (
             loadingTarifs ? <div className="loading">Chargement des tarifs...</div> : (
               <>
-                <p className="section-title">Prix d'achat fournisseur</p>
+                {/* Prix d'achat */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, marginTop: 4 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Prix d'achat</span>
+                  <button className="btn btn-primary" onClick={saveTarifAchat} disabled={savingTarif} style={{ fontSize: 11, padding: '4px 12px', gap: 4 }}>
+                    <Save size={13} /> {savingTarif ? '...' : 'Enregistrer'}
+                  </button>
+                </div>
                 <div className="form-grid-3">
                   <div className="form-group">
                     <label>Prix HT (€)</label>
@@ -474,10 +478,7 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
                   <div className="form-group">
                     <label>TVA (%)</label>
                     <select value={tarifAchat.taux_tva} onChange={e => setTarifAchat(p => ({ ...p, taux_tva: parseFloat(e.target.value) }))}>
-                      <option value="0">0%</option>
-                      <option value="5.5">5.5%</option>
-                      <option value="10">10%</option>
-                      <option value="20">20%</option>
+                      <option value="0">0%</option><option value="5.5">5.5%</option><option value="10">10%</option><option value="20">20%</option>
                     </select>
                   </div>
                   <div className="form-group">
@@ -485,15 +486,17 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
                     <input type="text" disabled value={tarifAchat.prix_unitaire_ht ? (parseFloat(tarifAchat.prix_unitaire_ht) * (1 + tarifAchat.taux_tva / 100)).toFixed(2) : '—'} style={{ background: 'var(--surface-2)' }} />
                   </div>
                 </div>
-                <div style={{ marginTop: 8, marginBottom: 20 }}>
-                  <button className="btn btn-primary" onClick={saveTarifAchat} disabled={savingTarif} style={{ fontSize: 13 }}>
-                    {savingTarif ? 'Enregistrement...' : 'Enregistrer prix d\'achat'}
-                  </button>
-                </div>
 
                 <hr className="divider" />
-                <p className="section-title">Tarif général de vente</p>
-                <div className="form-grid">
+
+                {/* Tarif vente général */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Tarif vente général</span>
+                  <button className="btn btn-primary" onClick={saveTarifVenteGeneral} disabled={savingTarif} style={{ fontSize: 11, padding: '4px 12px', gap: 4 }}>
+                    <Save size={13} /> {savingTarif ? '...' : 'Enregistrer'}
+                  </button>
+                </div>
+                <div className="form-grid-3">
                   <div className="form-group">
                     <label>Prix vente HT (€)</label>
                     <input type="number" step="0.01" value={tarifVenteGeneral.prix_unitaire_ht} onChange={e => setTarifVenteGeneral(p => ({ ...p, prix_unitaire_ht: e.target.value }))} placeholder="0.00" />
@@ -501,20 +504,6 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
                   <div className="form-group">
                     <label>Remise (%)</label>
                     <input type="number" step="0.1" value={tarifVenteGeneral.remise_pourcent} onChange={e => setTarifVenteGeneral(p => ({ ...p, remise_pourcent: e.target.value }))} placeholder="0" />
-                  </div>
-                </div>
-                <div style={{ marginTop: 8, marginBottom: 20 }}>
-                  <button className="btn btn-primary" onClick={saveTarifVenteGeneral} disabled={savingTarif} style={{ fontSize: 13 }}>
-                    {savingTarif ? 'Enregistrement...' : 'Enregistrer tarif général'}
-                  </button>
-                </div>
-
-                <hr className="divider" />
-                <p className="section-title">Prix de vente public recommandé (PVPR)</p>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>PVPR TTC (€)</label>
-                    <input type="number" step="0.01" value={form.pvpr || ''} onChange={e => set('pvpr', e.target.value)} placeholder="0.00" />
                   </div>
                   <div className="form-group">
                     <label>Marge Highway</label>
@@ -525,31 +514,38 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
                     } style={{ background: 'var(--surface-2)' }} />
                   </div>
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, marginBottom: 16 }}>
-                  Le PVPR est enregistré avec la fiche produit (bouton "Enregistrer" dans l'onglet Général).
+
+                <hr className="divider" />
+
+                {/* PVPR */}
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 12 }}>PVPR</span>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label>PVPR TTC (€)</label>
+                    <input type="number" step="0.01" value={form.pvpr || ''} onChange={e => set('pvpr', e.target.value)} placeholder="0.00" />
+                  </div>
                 </div>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                  Enregistré avec la fiche produit (onglet Général).
+                </p>
 
                 {tarifsVenteClients.length > 0 && (
                   <>
                     <hr className="divider" />
-                    <p className="section-title">Tarifs spécifiques clients</p>
-                    <div className="table-container" style={{ maxHeight: 200, overflowY: 'auto' }}>
-                      <table>
-                        <thead><tr><th>Client</th><th>Prix HT</th><th>Remise %</th><th>Depuis</th></tr></thead>
-                        <tbody>
-                          {tarifsVenteClients.map(t => (
-                            <tr key={t.id}>
-                              <td>{t.clients?.nom || '—'}</td>
-                              <td>{t.prix_unitaire_ht != null ? `${Number(t.prix_unitaire_ht).toFixed(2)} €` : '—'}</td>
-                              <td>{t.remise_pourcent != null ? `${t.remise_pourcent}%` : '—'}</td>
-                              <td>{t.date_debut || '—'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 12 }}>Tarifs clients</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                      {tarifsVenteClients.map(t => (
+                        <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                          <span style={{ fontWeight: 500 }}>{t.clients?.nom || '—'}</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>
+                            {t.prix_unitaire_ht != null ? `${Number(t.prix_unitaire_ht).toFixed(2)} €` : '—'}
+                            {t.remise_pourcent != null ? ` · -${t.remise_pourcent}%` : ''}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                    <div style={{ marginTop: 8 }}>
-                      <a href="/tarifs" style={{ fontSize: 13, color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}>Gérer les tarifs clients →</a>
+                    <div style={{ marginTop: 10 }}>
+                      <a href="/tarifs" style={{ fontSize: 12, color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}>Gérer les tarifs clients →</a>
                     </div>
                   </>
                 )}
