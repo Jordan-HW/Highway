@@ -483,8 +483,9 @@ export default function Tarifs() {
                                         <thead>
                                           <tr>
                                             <th style={{ fontSize: 11, padding: '6px 10px' }}>Client</th>
-                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 110 }}>Prix client HT</th>
                                             <th style={{ fontSize: 11, padding: '6px 10px', width: 100 }}>Après remises</th>
+                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 110 }}>Prix fixé</th>
+                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 80 }}>Prix effectif</th>
                                             <th style={{ fontSize: 11, padding: '6px 10px', width: 40 }}></th>
                                           </tr>
                                         </thead>
@@ -492,18 +493,28 @@ export default function Tarifs() {
                                           {accClientTarifs
                                             .filter(ct => !accClientSearch || ct.nom.toLowerCase().includes(accClientSearch.toLowerCase()))
                                             .map(ct => {
-                                              const basePrice = ct.prix_vente_ht !== '' ? parseFloat(ct.prix_vente_ht) : (accVenteGen.prix_vente_ht ? parseFloat(accVenteGen.prix_vente_ht) : null)
+                                              const genPrice = accVenteGen.prix_vente_ht ? parseFloat(accVenteGen.prix_vente_ht) : null
                                               const remisesClient = allRemises.filter(r => r.client_id === ct.client_id)
-                                              const afterRemises = basePrice ? applyRemisesCascade(basePrice, remisesClient, p.id, p.marque_id) : null
-                                              const hasRemises = remisesClient.length > 0 && afterRemises !== basePrice
+                                              const afterRemises = genPrice ? applyRemisesCascade(genPrice, remisesClient, p.id, p.marque_id) : null
+                                              const hasRemises = remisesClient.length > 0 && afterRemises !== genPrice
+                                              const isFixed = ct.prix_vente_ht !== '' && ct.prix_vente_ht !== null
+                                              const effectif = isFixed ? parseFloat(ct.prix_vente_ht) : afterRemises
                                               return (
-                                                <tr key={ct.client_id} style={{ background: ct.prix_vente_ht !== '' ? 'var(--primary-light)' : undefined }}>
-                                                  <td style={{ fontSize: 12, padding: '4px 10px', fontWeight: ct.prix_vente_ht !== '' ? 500 : 400 }}>{ct.nom}</td>
-                                                  <td style={{ padding: '4px 6px' }}>
-                                                    <input type="number" step="0.01" value={ct.prix_vente_ht} onChange={e => updateClientTarif(ct.client_id, 'prix_vente_ht', e.target.value)} placeholder={accVenteGen.prix_vente_ht ? `${Number(accVenteGen.prix_vente_ht).toFixed(2)}` : '—'} style={{ padding: '3px 6px', fontSize: 12, width: '100%' }} />
-                                                  </td>
-                                                  <td style={{ padding: '4px 10px', fontSize: 12, fontWeight: hasRemises ? 600 : 400, color: hasRemises ? 'var(--primary)' : 'var(--text-muted)' }}>
+                                                <tr key={ct.client_id} style={{ background: isFixed ? '#FFF8E7' : undefined }}>
+                                                  <td style={{ fontSize: 12, padding: '4px 10px', fontWeight: 500 }}>{ct.nom}</td>
+                                                  <td style={{ padding: '4px 10px', fontSize: 12, color: hasRemises ? 'var(--primary)' : 'var(--text-muted)' }}>
                                                     {afterRemises != null ? `${afterRemises.toFixed(2)} €` : '—'}
+                                                  </td>
+                                                  <td style={{ padding: '4px 6px' }}>
+                                                    <input type="number" step="0.01" value={ct.prix_vente_ht} onChange={e => updateClientTarif(ct.client_id, 'prix_vente_ht', e.target.value)} placeholder="—" style={{ padding: '3px 6px', fontSize: 12, width: '100%', background: isFixed ? '#FFF8E7' : undefined, border: isFixed ? '1px solid #E6C547' : undefined }} />
+                                                  </td>
+                                                  <td style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600 }}>
+                                                    {effectif != null ? (
+                                                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                        {effectif.toFixed(2)} €
+                                                        {isFixed && <span style={{ fontSize: 9, background: '#E6C547', color: '#5C4B00', padding: '1px 5px', borderRadius: 3, fontWeight: 700 }}>FIXÉ</span>}
+                                                      </span>
+                                                    ) : '—'}
                                                   </td>
                                                   <td style={{ padding: '4px 6px' }}>
                                                     <button className="btn-icon" onClick={() => saveAccClientTarif(p.id, ct)} disabled={accSaving} title="Enregistrer"><Save size={13} /></button>
@@ -728,9 +739,9 @@ export default function Tarifs() {
                           <th>Produit</th>
                           <th>Marque</th>
                           <th>Vente HT</th>
-                          <th>Prix client</th>
                           <th>Après remises</th>
-                          <th>PVPR</th>
+                          <th>Prix fixé</th>
+                          <th>Prix effectif</th>
                           <th>Marge</th>
                         </tr>
                       </thead>
@@ -738,14 +749,17 @@ export default function Tarifs() {
                         {filteredProduits.map(p => {
                           const isRef = clientRefs.has(p.id)
                           const general = getGeneralVente(p.id)
+                          const genPrice = general?.prix_vente_ht || null
                           const ct = clientTarifsMap[p.id]
-                          const basePrice = ct?.prix_vente_ht || general?.prix_vente_ht || null
-                          const afterRemises = basePrice ? applyRemisesCascade(basePrice, clientRemises, p.id, p.marque_id) : null
+                          const afterRemises = genPrice ? applyRemisesCascade(genPrice, clientRemises, p.id, p.marque_id) : null
+                          const hasRemises = clientRemises.length > 0 && afterRemises !== genPrice
+                          const isFixed = ct?.prix_vente_ht != null && ct?.prix_vente_ht !== ''
+                          const effectif = isFixed ? parseFloat(ct.prix_vente_ht) : afterRemises
                           const achat = getLastAchat(p.id)
-                          const marge = calcMarge(achat?.prix_achat_ht, afterRemises || basePrice)
+                          const marge = calcMarge(achat?.prix_achat_ht, effectif)
 
                           return (
-                            <tr key={p.id} style={{ opacity: isRef ? 1 : 0.5 }}>
+                            <tr key={p.id} style={{ opacity: isRef ? 1 : 0.5, background: isFixed ? '#FFF8E7' : undefined }}>
                               <td><Thumb url={p.photo_url} /></td>
                               <td>
                                 <button onClick={() => toggleRef(p.id)} disabled={savingRef === p.id} style={{
@@ -761,20 +775,27 @@ export default function Tarifs() {
                                 {p.ean13 && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.ean13}</div>}
                               </td>
                               <td>{p.marques?.nom || '—'}</td>
-                              <td>{general?.prix_vente_ht != null ? `${Number(general.prix_vente_ht).toFixed(2)} €` : '—'}</td>
+                              <td>{genPrice != null ? `${Number(genPrice).toFixed(2)} €` : '—'}</td>
+                              <td style={{ color: hasRemises ? 'var(--primary)' : 'var(--text-muted)' }}>
+                                {afterRemises != null ? `${afterRemises.toFixed(2)} €` : '—'}
+                              </td>
                               <td>
                                 <input type="number" step="0.01"
                                   value={ct?.prix_vente_ht ?? ''}
                                   onChange={e => setClientTarifsMap(prev => ({ ...prev, [p.id]: { ...prev[p.id], prix_vente_ht: e.target.value, produit_id: p.id, client_id: selectedClient.id } }))}
                                   onBlur={e => saveClientPrix(p.id, 'prix_vente_ht', e.target.value)}
-                                  placeholder={general?.prix_vente_ht ? `${Number(general.prix_vente_ht).toFixed(2)}` : '—'}
-                                  style={{ width: 90, padding: '3px 6px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4, background: ct?.prix_vente_ht ? 'var(--primary-light)' : 'var(--surface)' }}
+                                  placeholder="—"
+                                  style={{ width: 90, padding: '3px 6px', fontSize: 12, borderRadius: 4, border: isFixed ? '1px solid #E6C547' : '1px solid var(--border)', background: isFixed ? '#FFF8E7' : 'var(--surface)' }}
                                 />
                               </td>
-                              <td style={{ fontWeight: 500, color: afterRemises !== basePrice ? 'var(--primary)' : undefined }}>
-                                {afterRemises != null ? `${afterRemises.toFixed(2)} €` : '—'}
+                              <td style={{ fontWeight: 600 }}>
+                                {effectif != null ? (
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    {effectif.toFixed(2)} €
+                                    {isFixed && <span style={{ fontSize: 9, background: '#E6C547', color: '#5C4B00', padding: '1px 5px', borderRadius: 3, fontWeight: 700 }}>FIXÉ</span>}
+                                  </span>
+                                ) : '—'}
                               </td>
-                              <td>{p.pvpr != null ? `${Number(p.pvpr).toFixed(2)} €` : '—'}</td>
                               <td>{margeBadge(marge)}</td>
                             </tr>
                           )
