@@ -27,7 +27,7 @@ export default function Sidebar({ user, onLogout }) {
     { section: 'Principal', items: [
       { to: '/', icon: LayoutDashboard, label: 'Tableau de bord', show: true }
     ]},
-    { section: 'Catalogue', show: !isComptable, items: [
+    { section: 'Référencement', show: !isComptable, items: [
       { to: '/marques',  icon: Building2, label: 'Marques',  show: !isComptable },
       { to: '/produits', icon: Package,   label: 'Catalogue', show: !isComptable },
     ]},
