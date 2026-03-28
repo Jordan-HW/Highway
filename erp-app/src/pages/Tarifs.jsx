@@ -146,8 +146,19 @@ export default function Tarifs() {
   }
 
   async function saveAccClientTarif(produitId, ct) {
-    if (!ct.prix_vente_ht && ct.prix_vente_ht !== 0) return
     setAccSaving(true)
+    // Si le prix est vidé et qu'un tarif existait, on le supprime
+    if ((!ct.prix_vente_ht && ct.prix_vente_ht !== 0) || ct.prix_vente_ht === '') {
+      if (ct._existing && ct._id) {
+        const { error } = await supabase.from('tarifs_vente').delete().eq('id', ct._id)
+        setAccSaving(false)
+        if (error) return toast('Erreur : ' + error.message, 'error')
+        toast(`Prix fixé ${ct.nom} supprimé`, 'success'); fetchAll()
+        return
+      }
+      setAccSaving(false)
+      return
+    }
     const payload = { produit_id: produitId, client_id: ct.client_id, prix_vente_ht: parseFloat(ct.prix_vente_ht), remise_pct: ct.remise_pct ? parseFloat(ct.remise_pct) : null, date_debut: new Date().toISOString().slice(0, 10) }
     const { error } = ct._existing && ct._id
       ? await supabase.from('tarifs_vente').update(payload).eq('id', ct._id)
@@ -198,14 +209,22 @@ export default function Tarifs() {
   async function saveClientPrix(produitId, field, value) {
     if (!selectedClient) return
     const existing = clientTarifsMap[produitId]
+    const isEmpty = !value || value === ''
+    // Si vidé et tarif existant → supprimer
+    if (isEmpty && existing?.id) {
+      const { error } = await supabase.from('tarifs_vente').delete().eq('id', existing.id)
+      if (error) return toast('Erreur : ' + error.message, 'error')
+      setClientTarifsMap(prev => { const n = { ...prev }; delete n[produitId]; return n })
+      return
+    }
+    if (isEmpty) return
     const payload = {
       produit_id: produitId, client_id: selectedClient.id,
-      prix_vente_ht: field === 'prix_vente_ht' ? (parseFloat(value) || null) : (existing?.prix_vente_ht || null),
+      prix_vente_ht: field === 'prix_vente_ht' ? parseFloat(value) : (existing?.prix_vente_ht || null),
       remise_pct: field === 'remise_pct' ? (parseFloat(value) || null) : (existing?.remise_pct || null),
       date_debut: new Date().toISOString().slice(0, 10),
     }
-    if (!payload.prix_vente_ht && !payload.remise_pct) return
-    const { data, error } = existing
+    const { data, error } = existing?.id
       ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id).select().single()
       : await supabase.from('tarifs_vente').insert(payload).select().single()
     if (error) return toast('Erreur : ' + error.message, 'error')
