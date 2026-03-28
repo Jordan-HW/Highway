@@ -218,6 +218,7 @@ export default function Tarifs() {
       const { error } = await supabase.from('tarifs_vente').delete().eq('id', existing.id)
       if (error) return toast('Erreur : ' + error.message, 'error')
       setClientTarifsMap(prev => { const n = { ...prev }; delete n[produitId]; return n })
+      fetchAll()
       return
     }
     if (isEmpty) return
@@ -231,6 +232,7 @@ export default function Tarifs() {
       : await supabase.from('tarifs_vente').insert(payload).select().single()
     if (error) return toast('Erreur : ' + error.message, 'error')
     setClientTarifsMap(prev => ({ ...prev, [produitId]: data }))
+    fetchAll()
   }
 
   async function clearFixedPrice(produitId) {
@@ -240,6 +242,7 @@ export default function Tarifs() {
     const { error } = await supabase.from('tarifs_vente').delete().eq('id', existing.id)
     if (error) return toast('Erreur : ' + error.message, 'error')
     setClientTarifsMap(prev => { const n = { ...prev }; delete n[produitId]; return n })
+    fetchAll()
   }
 
   async function clearAllFixedPrices() {
@@ -251,6 +254,7 @@ export default function Tarifs() {
     if (error) return toast('Erreur : ' + error.message, 'error')
     setClientTarifsMap({})
     toast(`${ids.length} prix fixé(s) supprimé(s)`, 'success')
+    fetchAll()
   }
 
   // ── Remises CRUD ──
