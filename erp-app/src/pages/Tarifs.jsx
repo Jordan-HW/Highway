@@ -1,13 +1,24 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { Search, X, Edit2, TrendingUp, Package, Users, Upload, FileSpreadsheet, ChevronRight, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Search, X, Edit2, TrendingUp, Package, Users, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 const TVA_OPTIONS = [0, 5.5, 10, 20]
 
+// ── Helpers ──
+function applyRemisesCascade(basePrice, remises, produitId) {
+  let price = basePrice
+  for (const r of [...remises].sort((a, b) => a.ordre - b.ordre)) {
+    if (!r.produit_ids || r.produit_ids.includes(produitId)) {
+      price = price * (1 - r.pourcentage / 100)
+    }
+  }
+  return Math.round(price * 100) / 100
+}
+
 export default function Tarifs() {
-  const [view, setView] = useState('produit') // 'produit' | 'client'
+  const [view, setView] = useState('produit')
   const [produits, setProduits] = useState([])
   const [marques, setMarques] = useState([])
   const [clients, setClients] = useState([])
@@ -16,21 +27,29 @@ export default function Tarifs() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterMarque, setFilterMarque] = useState('')
-  const [selectedClient, setSelectedClient] = useState(null)
 
-  // Modal edit
-  const [editModal, setEditModal] = useState(null) // { produit, clientId? }
-  const [editPvpr, setEditPvpr] = useState('')
-  const [editAchat, setEditAchat] = useState({ prix_unitaire_ht: '', taux_tva: 5.5 })
-  const [editVenteGeneral, setEditVenteGeneral] = useState({ prix_unitaire_ht: '', remise_pourcent: '' })
-  const [editVenteClient, setEditVenteClient] = useState({ prix_unitaire_ht: '', remise_pourcent: '' })
-  const [savingEdit, setSavingEdit] = useState(false)
+  // Vue par produit — accordion
+  const [expandedId, setExpandedId] = useState(null)
+  const [accAchat, setAccAchat] = useState({ prix_achat_ht: '', taux_tva: 5.5 })
+  const [accVenteGen, setAccVenteGen] = useState({ prix_vente_ht: '', remise_pct: '' })
+  const [accClientTarifs, setAccClientTarifs] = useState([]) // { client_id, nom, prix_vente_ht, remise_pct, _existing }
+  const [accClientSearch, setAccClientSearch] = useState('')
+  const [accSaving, setAccSaving] = useState(false)
+
+  // Vue par client
+  const [selectedClient, setSelectedClient] = useState(null)
+  const [clientRefs, setClientRefs] = useState(new Set())
+  const [clientRemises, setClientRemises] = useState([])
+  const [clientTarifsMap, setClientTarifsMap] = useState({})
+  const [showRemises, setShowRemises] = useState(false)
+  const [savingRemise, setSavingRemise] = useState(false)
+  const [savingRef, setSavingRef] = useState(null)
 
   // Bulk uplift modal
   const [bulkModal, setBulkModal] = useState(false)
   const [bulkStep, setBulkStep] = useState(1)
   const [bulkClient, setBulkClient] = useState('')
-  const [bulkMode, setBulkMode] = useState('marque') // 'marque' | 'individuel'
+  const [bulkMode, setBulkMode] = useState('marque')
   const [bulkMarque, setBulkMarque] = useState('')
   const [bulkSelectedIds, setBulkSelectedIds] = useState(new Set())
   const [bulkPourcent, setBulkPourcent] = useState('')
@@ -39,8 +58,8 @@ export default function Tarifs() {
 
   // Import modal
   const [importModal, setImportModal] = useState(false)
-  const [importStep, setImportStep] = useState('upload') // 'upload' | 'mapping' | 'validation' | 'done'
-  const [importFile, setImportFile] = useState(null) // { cols, rows, filename }
+  const [importStep, setImportStep] = useState('upload')
+  const [importFile, setImportFile] = useState(null)
   const [importMapping, setImportMapping] = useState({})
   const [importValidation, setImportValidation] = useState(null)
   const [importingData, setImportingData] = useState(false)
@@ -53,9 +72,9 @@ export default function Tarifs() {
     const [{ data: prods }, { data: mqs }, { data: cls }, { data: ta }, { data: tv }] = await Promise.all([
       supabase.from('produits').select('*, marques(nom)').eq('statut', 'actif').order('libelle'),
       supabase.from('marques').select('id, nom').eq('actif', true).order('nom'),
-      supabase.from('clients').select('id, nom').order('nom'),
+      supabase.from('clients').select('id, nom, type').order('nom'),
       supabase.from('tarifs_achat').select('*').order('date_debut', { ascending: false }),
-      supabase.from('tarifs_vente').select('*, clients(nom)').order('date_debut', { ascending: false }),
+      supabase.from('tarifs_vente').select('*').order('date_debut', { ascending: false }),
     ])
     setProduits(prods || [])
     setMarques(mqs || [])
@@ -65,7 +84,7 @@ export default function Tarifs() {
     setLoading(false)
   }
 
-  // Helpers
+  // ── Tarif helpers ──
   function getLastAchat(produitId) {
     return tarifsAchat.find(t => t.produit_id === produitId)
   }
@@ -78,11 +97,19 @@ export default function Tarifs() {
   function countClientTarifs(produitId) {
     return tarifsVente.filter(t => t.produit_id === produitId && t.client_id).length
   }
-  function countClientTarifsForClient(clientId) {
-    return tarifsVente.filter(t => t.client_id === clientId).length
+
+  // ── Margin helpers ──
+  function calcMarge(cost, sell) {
+    if (!cost || !sell || cost === 0) return null
+    return ((sell - cost) / cost) * 100
+  }
+  function margeBadge(val) {
+    if (val == null) return '—'
+    const color = val > 20 ? 'badge-green' : val > 10 ? 'badge-orange' : 'badge-red'
+    return <span className={`badge ${color}`}>{val.toFixed(1)}%</span>
   }
 
-  // Filtered products
+  // ── Filtered products ──
   const filteredProduits = produits.filter(p => {
     const s = search.toLowerCase()
     const matchSearch = p.libelle.toLowerCase().includes(s) || (p.ean13 || '').includes(s) || (p.marques?.nom || '').toLowerCase().includes(s)
@@ -90,127 +117,217 @@ export default function Tarifs() {
     return matchSearch && matchMarque
   })
 
-  // ── Edit modal logic ──
-  function openEditModal(produit, clientId = null) {
-    const achat = getLastAchat(produit.id)
-    const general = getGeneralVente(produit.id)
-    setEditPvpr(produit.pvpr ?? '')
-    setEditAchat(achat ? { prix_unitaire_ht: achat.prix_unitaire_ht ?? '', taux_tva: achat.taux_tva ?? 5.5 } : { prix_unitaire_ht: '', taux_tva: 5.5 })
-    setEditVenteGeneral(general ? { prix_unitaire_ht: general.prix_unitaire_ht ?? '', remise_pourcent: general.remise_pourcent ?? '' } : { prix_unitaire_ht: '', remise_pourcent: '' })
-    if (clientId) {
-      const cv = getClientVente(produit.id, clientId)
-      setEditVenteClient(cv ? { prix_unitaire_ht: cv.prix_unitaire_ht ?? '', remise_pourcent: cv.remise_pourcent ?? '' } : { prix_unitaire_ht: '', remise_pourcent: '' })
-    }
-    setEditModal({ produit, clientId })
+  // ════════════════════════════════════════════════════════════
+  // VUE PAR PRODUIT — Accordion
+  // ════════════════════════════════════════════════════════════
+
+  async function toggleAccordion(produitId) {
+    if (expandedId === produitId) { setExpandedId(null); return }
+    setExpandedId(produitId)
+    setAccClientSearch('')
+
+    // Load achat
+    const achat = getLastAchat(produitId)
+    setAccAchat(achat ? { prix_achat_ht: achat.prix_achat_ht ?? '', taux_tva: achat.taux_tva ?? 5.5 } : { prix_achat_ht: '', taux_tva: 5.5 })
+
+    // Load vente general
+    const gen = getGeneralVente(produitId)
+    setAccVenteGen(gen ? { prix_vente_ht: gen.prix_vente_ht ?? '', remise_pct: gen.remise_pct ?? '' } : { prix_vente_ht: '', remise_pct: '' })
+
+    // Build client tarifs list (all clients)
+    const clientList = clients.map(c => {
+      const tv = getClientVente(produitId, c.id)
+      return {
+        client_id: c.id,
+        nom: c.nom,
+        prix_vente_ht: tv?.prix_vente_ht ?? '',
+        remise_pct: tv?.remise_pct ?? '',
+        _existing: !!tv,
+        _id: tv?.id,
+      }
+    })
+    setAccClientTarifs(clientList)
   }
 
-  async function saveEditAchat() {
-    if (!editModal) return
-    if (!editAchat.prix_unitaire_ht && editAchat.prix_unitaire_ht !== 0) return toast('Saisissez un prix HT', 'error')
-    setSavingEdit(true)
+  async function saveAccAchat(produitId) {
+    if (!accAchat.prix_achat_ht && accAchat.prix_achat_ht !== 0) return toast('Saisissez un prix', 'error')
+    setAccSaving(true)
     const payload = {
-      produit_id: editModal.produit.id,
-      prix_unitaire_ht: parseFloat(editAchat.prix_unitaire_ht),
-      taux_tva: parseFloat(editAchat.taux_tva),
+      produit_id: produitId,
+      prix_achat_ht: parseFloat(accAchat.prix_achat_ht),
       date_debut: new Date().toISOString().slice(0, 10),
     }
-    const existing = getLastAchat(editModal.produit.id)
-    let error
-    if (existing) {
-      const { error: e } = await supabase.from('tarifs_achat').update(payload).eq('id', existing.id)
-      error = e
-    } else {
-      const { error: e } = await supabase.from('tarifs_achat').insert(payload)
-      error = e
-    }
-    setSavingEdit(false)
+    const existing = getLastAchat(produitId)
+    const { error } = existing
+      ? await supabase.from('tarifs_achat').update(payload).eq('id', existing.id)
+      : await supabase.from('tarifs_achat').insert(payload)
+    setAccSaving(false)
     if (error) return toast('Erreur : ' + error.message, 'error')
-    toast('Prix d\'achat enregistré', 'success')
+    toast('Prix achat enregistré', 'success')
     fetchAll()
   }
 
-  async function saveEditVenteGeneral() {
-    if (!editModal) return
-    if (!editVenteGeneral.prix_unitaire_ht && editVenteGeneral.prix_unitaire_ht !== 0) return toast('Saisissez un prix HT', 'error')
-    setSavingEdit(true)
+  async function saveAccVenteGen(produitId) {
+    if (!accVenteGen.prix_vente_ht && accVenteGen.prix_vente_ht !== 0) return toast('Saisissez un prix', 'error')
+    setAccSaving(true)
     const payload = {
-      produit_id: editModal.produit.id,
+      produit_id: produitId,
       client_id: null,
-      prix_unitaire_ht: parseFloat(editVenteGeneral.prix_unitaire_ht),
-      remise_pourcent: editVenteGeneral.remise_pourcent ? parseFloat(editVenteGeneral.remise_pourcent) : null,
+      prix_vente_ht: parseFloat(accVenteGen.prix_vente_ht),
+      remise_pct: accVenteGen.remise_pct ? parseFloat(accVenteGen.remise_pct) : null,
       date_debut: new Date().toISOString().slice(0, 10),
     }
-    const existing = getGeneralVente(editModal.produit.id)
-    let error
-    if (existing) {
-      const { error: e } = await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
-      error = e
-    } else {
-      const { error: e } = await supabase.from('tarifs_vente').insert(payload)
-      error = e
-    }
-    setSavingEdit(false)
+    const existing = getGeneralVente(produitId)
+    const { error } = existing
+      ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
+      : await supabase.from('tarifs_vente').insert(payload)
+    setAccSaving(false)
     if (error) return toast('Erreur : ' + error.message, 'error')
     toast('Tarif général enregistré', 'success')
     fetchAll()
   }
 
-  async function saveEditVenteClient() {
-    if (!editModal || !editModal.clientId) return
-    if (!editVenteClient.prix_unitaire_ht && editVenteClient.prix_unitaire_ht !== 0) return toast('Saisissez un prix HT', 'error')
-    setSavingEdit(true)
+  async function saveAccClientTarif(produitId, ct) {
+    if (!ct.prix_vente_ht && ct.prix_vente_ht !== 0) return
+    setAccSaving(true)
     const payload = {
-      produit_id: editModal.produit.id,
-      client_id: editModal.clientId,
-      prix_unitaire_ht: parseFloat(editVenteClient.prix_unitaire_ht),
-      remise_pourcent: editVenteClient.remise_pourcent ? parseFloat(editVenteClient.remise_pourcent) : null,
+      produit_id: produitId,
+      client_id: ct.client_id,
+      prix_vente_ht: parseFloat(ct.prix_vente_ht),
+      remise_pct: ct.remise_pct ? parseFloat(ct.remise_pct) : null,
       date_debut: new Date().toISOString().slice(0, 10),
     }
-    const existing = getClientVente(editModal.produit.id, editModal.clientId)
-    let error
-    if (existing) {
-      const { error: e } = await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
-      error = e
-    } else {
-      const { error: e } = await supabase.from('tarifs_vente').insert(payload)
-      error = e
-    }
-    setSavingEdit(false)
+    const { error } = ct._existing && ct._id
+      ? await supabase.from('tarifs_vente').update(payload).eq('id', ct._id)
+      : await supabase.from('tarifs_vente').insert(payload)
+    setAccSaving(false)
     if (error) return toast('Erreur : ' + error.message, 'error')
-    toast('Tarif client enregistré', 'success')
+    toast(`Tarif ${ct.nom} enregistré`, 'success')
     fetchAll()
   }
 
-  // ── Bulk uplift logic ──
+  function updateClientTarif(clientId, field, val) {
+    setAccClientTarifs(prev => prev.map(ct =>
+      ct.client_id === clientId ? { ...ct, [field]: val } : ct
+    ))
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // VUE PAR CLIENT — Référencement + Remises
+  // ════════════════════════════════════════════════════════════
+
+  async function selectClient(client) {
+    setSelectedClient(client)
+    setShowRemises(false)
+
+    // Fetch references, remises, and client tarifs
+    const [{ data: refs }, { data: remises }, { data: tvClient }] = await Promise.all([
+      supabase.from('client_produit_references').select('produit_id').eq('client_id', client.id),
+      supabase.from('client_remises').select('*').eq('client_id', client.id).order('ordre'),
+      supabase.from('tarifs_vente').select('*').eq('client_id', client.id),
+    ])
+
+    setClientRefs(new Set((refs || []).map(r => r.produit_id)))
+    setClientRemises(remises || [])
+
+    const map = {}
+    ;(tvClient || []).forEach(t => { map[t.produit_id] = t })
+    setClientTarifsMap(map)
+  }
+
+  async function toggleRef(produitId) {
+    if (!selectedClient) return
+    setSavingRef(produitId)
+    const isRef = clientRefs.has(produitId)
+
+    if (isRef) {
+      await supabase.from('client_produit_references').delete()
+        .eq('client_id', selectedClient.id).eq('produit_id', produitId)
+      setClientRefs(prev => { const n = new Set(prev); n.delete(produitId); return n })
+    } else {
+      await supabase.from('client_produit_references').insert({
+        client_id: selectedClient.id, produit_id: produitId
+      })
+      setClientRefs(prev => new Set([...prev, produitId]))
+    }
+    setSavingRef(null)
+  }
+
+  async function saveClientPrix(produitId, field, value) {
+    if (!selectedClient) return
+    const existing = clientTarifsMap[produitId]
+    const payload = {
+      produit_id: produitId,
+      client_id: selectedClient.id,
+      prix_vente_ht: field === 'prix_vente_ht' ? (parseFloat(value) || null) : (existing?.prix_vente_ht || null),
+      remise_pct: field === 'remise_pct' ? (parseFloat(value) || null) : (existing?.remise_pct || null),
+      date_debut: new Date().toISOString().slice(0, 10),
+    }
+    if (!payload.prix_vente_ht && !payload.remise_pct) return
+
+    const { data, error } = existing
+      ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id).select().single()
+      : await supabase.from('tarifs_vente').insert(payload).select().single()
+    if (error) return toast('Erreur : ' + error.message, 'error')
+    setClientTarifsMap(prev => ({ ...prev, [produitId]: data }))
+  }
+
+  // ── Remises CRUD ──
+  async function addRemise() {
+    if (!selectedClient) return
+    setSavingRemise(true)
+    const ordre = clientRemises.length
+    const { data, error } = await supabase.from('client_remises').insert({
+      client_id: selectedClient.id,
+      label: 'Nouvelle remise',
+      pourcentage: 0,
+      produit_ids: null,
+      ordre,
+    }).select().single()
+    setSavingRemise(false)
+    if (error) return toast('Erreur : ' + error.message, 'error')
+    setClientRemises(prev => [...prev, data])
+  }
+
+  async function updateRemise(id, field, value) {
+    setClientRemises(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r))
+  }
+
+  async function saveRemise(remise) {
+    setSavingRemise(true)
+    const { id, created_at, ...payload } = remise
+    const { error } = await supabase.from('client_remises').update(payload).eq('id', id)
+    setSavingRemise(false)
+    if (error) return toast('Erreur : ' + error.message, 'error')
+    toast('Remise enregistrée', 'success')
+  }
+
+  async function deleteRemise(id) {
+    const { error } = await supabase.from('client_remises').delete().eq('id', id)
+    if (error) return toast('Erreur : ' + error.message, 'error')
+    setClientRemises(prev => prev.filter(r => r.id !== id))
+  }
+
+  // ── Bulk uplift ──
   function openBulkModal() {
-    setBulkStep(1)
-    setBulkClient('')
-    setBulkMode('marque')
-    setBulkMarque('')
-    setBulkSelectedIds(new Set())
-    setBulkPourcent('')
-    setBulkPreview([])
-    setBulkModal(true)
+    setBulkStep(1); setBulkClient(''); setBulkMode('marque'); setBulkMarque('')
+    setBulkSelectedIds(new Set()); setBulkPourcent(''); setBulkPreview([]); setBulkModal(true)
   }
 
   function computeBulkPreview() {
-    let selectedProduits
-    if (bulkMode === 'marque') {
-      selectedProduits = produits.filter(p => p.marque_id === bulkMarque)
-    } else {
-      selectedProduits = produits.filter(p => bulkSelectedIds.has(p.id))
-    }
+    let sel = bulkMode === 'marque'
+      ? produits.filter(p => p.marque_id === bulkMarque)
+      : produits.filter(p => bulkSelectedIds.has(p.id))
     const pct = parseFloat(bulkPourcent)
-    const preview = selectedProduits.map(p => {
+    const preview = sel.map(p => {
       const general = getGeneralVente(p.id)
       if (!general) return null
-      const oldClient = getClientVente(p.id, bulkClient)
-      const newPrice = Math.round(general.prix_unitaire_ht * (1 + pct / 100) * 100) / 100
+      const old = getClientVente(p.id, bulkClient)
       return {
         produit: p,
-        tarifGeneral: general.prix_unitaire_ht,
-        ancienPrixClient: oldClient?.prix_unitaire_ht ?? null,
-        nouveauPrixClient: newPrice,
+        tarifGeneral: general.prix_vente_ht,
+        ancienPrix: old?.prix_vente_ht ?? null,
+        nouveauPrix: Math.round(general.prix_vente_ht * (1 + pct / 100) * 100) / 100,
       }
     }).filter(Boolean)
     setBulkPreview(preview)
@@ -218,83 +335,62 @@ export default function Tarifs() {
   }
 
   async function applyBulk() {
-    if (bulkPreview.length === 0) return
     setApplyingBulk(true)
-    const pct = bulkPourcent
     const today = new Date().toISOString().slice(0, 10)
     let errors = 0
-
     for (const item of bulkPreview) {
       const existing = getClientVente(item.produit.id, bulkClient)
       const payload = {
-        produit_id: item.produit.id,
-        client_id: bulkClient,
-        prix_unitaire_ht: item.nouveauPrixClient,
-        date_debut: today,
-        note: `Majoration en masse ${pct >= 0 ? '+' : ''}${pct}%`,
+        produit_id: item.produit.id, client_id: bulkClient,
+        prix_vente_ht: item.nouveauPrix, date_debut: today,
+        notes: `Majoration ${bulkPourcent >= 0 ? '+' : ''}${bulkPourcent}%`,
       }
-      if (existing) {
-        const { error } = await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
-        if (error) errors++
-      } else {
-        const { error } = await supabase.from('tarifs_vente').insert(payload)
-        if (error) errors++
-      }
+      const { error } = existing
+        ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
+        : await supabase.from('tarifs_vente').insert(payload)
+      if (error) errors++
     }
-
-    setApplyingBulk(false)
-    setBulkModal(false)
-    if (errors > 0) {
-      toast(`Appliqué avec ${errors} erreur(s)`, 'error')
-    } else {
-      toast(`Majoration appliquée à ${bulkPreview.length} produit(s)`, 'success')
-    }
+    setApplyingBulk(false); setBulkModal(false)
+    if (errors) toast(`Appliqué avec ${errors} erreur(s)`, 'error')
+    else toast(`Majoration appliquée à ${bulkPreview.length} produit(s)`, 'success')
     fetchAll()
   }
 
   const bulkCanPreview = bulkClient && bulkPourcent && (bulkMode === 'marque' ? bulkMarque : bulkSelectedIds.size > 0)
 
-  // ── Import tarifs logic ──
+  // ── Import tarifs ──
   const IMPORT_FIELDS = [
     { key: '__ignore__', label: '— Ignorer —' },
     { key: 'ean13', label: 'EAN13 (clé) *' },
     { key: 'prix_achat_ht', label: 'Prix achat HT' },
     { key: 'taux_tva', label: 'Taux TVA (%)' },
     { key: 'prix_vente_ht', label: 'Tarif vente général HT' },
-    { key: 'remise_pourcent', label: 'Remise vente (%)' },
+    { key: 'remise_pct', label: 'Remise vente (%)' },
     { key: 'pvpr', label: 'PVPR TTC' },
     { key: 'client_nom', label: 'Client (nom)' },
     { key: 'prix_client_ht', label: 'Tarif client HT' },
-    { key: 'remise_client_pourcent', label: 'Remise client (%)' },
+    { key: 'remise_client_pct', label: 'Remise client (%)' },
   ]
 
   function autoMapTarifs(cols) {
     const map = {}
     const hints = {
-      ean: 'ean13', ean13: 'ean13', 'code barre': 'ean13', 'code-barres': 'ean13', barcode: 'ean13',
-      'prix achat': 'prix_achat_ht', 'achat ht': 'prix_achat_ht', 'prix achat ht': 'prix_achat_ht', 'purchase price': 'prix_achat_ht',
-      tva: 'taux_tva', 'taux tva': 'taux_tva', 'vat': 'taux_tva',
-      'prix vente': 'prix_vente_ht', 'vente ht': 'prix_vente_ht', 'tarif general': 'prix_vente_ht', 'prix vente ht': 'prix_vente_ht', 'tarif général': 'prix_vente_ht', 'selling price': 'prix_vente_ht',
-      remise: 'remise_pourcent', 'remise %': 'remise_pourcent', discount: 'remise_pourcent',
-      pvpr: 'pvpr', 'prix public': 'pvpr', 'pvp': 'pvpr', 'rrp': 'pvpr', 'prix recommandé': 'pvpr', 'prix recommande': 'pvpr',
+      ean: 'ean13', ean13: 'ean13', 'code barre': 'ean13', barcode: 'ean13',
+      'prix achat': 'prix_achat_ht', 'achat ht': 'prix_achat_ht',
+      tva: 'taux_tva', 'taux tva': 'taux_tva',
+      'prix vente': 'prix_vente_ht', 'vente ht': 'prix_vente_ht', 'tarif general': 'prix_vente_ht',
+      remise: 'remise_pct', 'remise %': 'remise_pct',
+      pvpr: 'pvpr', 'prix public': 'pvpr',
       client: 'client_nom', 'nom client': 'client_nom',
-      'prix client': 'prix_client_ht', 'tarif client': 'prix_client_ht', 'prix client ht': 'prix_client_ht',
-      'remise client': 'remise_client_pourcent',
+      'prix client': 'prix_client_ht', 'tarif client': 'prix_client_ht',
+      'remise client': 'remise_client_pct',
     }
-    cols.forEach(col => {
-      const key = col.toLowerCase().trim().replace(/_/g, ' ')
-      map[col] = hints[key] || '__ignore__'
-    })
+    cols.forEach(col => { map[col] = hints[col.toLowerCase().trim().replace(/_/g, ' ')] || '__ignore__' })
     return map
   }
 
   function openImportModal() {
-    setImportStep('upload')
-    setImportFile(null)
-    setImportMapping({})
-    setImportValidation(null)
-    setImportResult(null)
-    setImportModal(true)
+    setImportStep('upload'); setImportFile(null); setImportMapping({}); setImportValidation(null); setImportResult(null); setImportModal(true)
   }
 
   function handleImportFile(file) {
@@ -303,173 +399,104 @@ export default function Tarifs() {
     reader.onload = e => {
       try {
         const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true })
-        const ws = wb.Sheets[wb.SheetNames[0]]
-        const raw = XLSX.utils.sheet_to_json(ws, { defval: '' })
-        if (!raw.length) return toast('Fichier vide ou non reconnu', 'error')
+        const raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
+        if (!raw.length) return toast('Fichier vide', 'error')
         const cols = Object.keys(raw[0])
         setImportFile({ cols, rows: raw, filename: file.name })
         setImportMapping(autoMapTarifs(cols))
         setImportStep('mapping')
-      } catch {
-        toast('Impossible de lire ce fichier', 'error')
-      }
+      } catch { toast('Impossible de lire ce fichier', 'error') }
     }
     reader.readAsArrayBuffer(file)
   }
 
   function validateImportMapping() {
-    if (!Object.values(importMapping).includes('ean13')) {
-      return toast('Vous devez mapper au moins la colonne EAN13', 'error')
-    }
-
-    const eanIndex = new Map()
-    produits.forEach(p => { if (p.ean13) eanIndex.set(p.ean13, p) })
-
-    const clientIndex = new Map()
-    clients.forEach(c => clientIndex.set(c.nom.toLowerCase(), c))
-
-    const toProcess = []
-    const errors = []
+    if (!Object.values(importMapping).includes('ean13')) return toast('Mappez la colonne EAN13', 'error')
+    const eanIdx = new Map(); produits.forEach(p => { if (p.ean13) eanIdx.set(p.ean13, p) })
+    const clientIdx = new Map(); clients.forEach(c => clientIdx.set(c.nom.toLowerCase(), c))
+    const toProcess = [], errors = []
 
     importFile.rows.forEach((row, i) => {
       const obj = {}
       Object.entries(importMapping).forEach(([col, field]) => {
         if (field === '__ignore__') return
-        let val = row[col]
-        if (val === null || val === undefined) val = ''
-        obj[field] = String(val).trim()
+        obj[field] = String(row[col] ?? '').trim()
       })
-
       if (!obj.ean13) { errors.push({ row: i + 2, msg: 'EAN13 manquant' }); return }
-      const produit = eanIndex.get(obj.ean13)
-      if (!produit) { errors.push({ row: i + 2, msg: `EAN ${obj.ean13} non trouvé en base` }); return }
-
-      // Résoudre le client si spécifié
+      const produit = eanIdx.get(obj.ean13)
+      if (!produit) { errors.push({ row: i + 2, msg: `EAN ${obj.ean13} non trouvé` }); return }
       let resolvedClient = null
       if (obj.client_nom) {
-        resolvedClient = clientIndex.get(obj.client_nom.toLowerCase())
+        resolvedClient = clientIdx.get(obj.client_nom.toLowerCase())
         if (!resolvedClient) { errors.push({ row: i + 2, msg: `Client "${obj.client_nom}" non trouvé` }); return }
       }
-
       toProcess.push({ ...obj, _row: i + 2, _produit: produit, _client: resolvedClient })
     })
-
-    setImportValidation({ toProcess, errors })
-    setImportStep('validation')
+    setImportValidation({ toProcess, errors }); setImportStep('validation')
   }
 
   async function doImportTarifs() {
     setImportingData(true)
     const today = new Date().toISOString().slice(0, 10)
     let updated = 0, failed = 0
-
     for (const item of importValidation.toProcess) {
       const prodId = item._produit.id
-
-      // Update PVPR on produit if provided
       if (item.pvpr) {
         const { error } = await supabase.from('produits').update({ pvpr: parseFloat(item.pvpr) || null }).eq('id', prodId)
         if (error) failed++
       }
-
-      // Upsert tarif achat if provided
       if (item.prix_achat_ht) {
-        const payload = {
-          produit_id: prodId,
-          prix_unitaire_ht: parseFloat(item.prix_achat_ht),
-          taux_tva: item.taux_tva ? parseFloat(item.taux_tva) : 5.5,
-          date_debut: today,
-        }
-        const existing = getLastAchat(prodId)
-        const { error } = existing
-          ? await supabase.from('tarifs_achat').update(payload).eq('id', existing.id)
-          : await supabase.from('tarifs_achat').insert(payload)
+        const payload = { produit_id: prodId, prix_achat_ht: parseFloat(item.prix_achat_ht), date_debut: today }
+        const ex = getLastAchat(prodId)
+        const { error } = ex ? await supabase.from('tarifs_achat').update(payload).eq('id', ex.id) : await supabase.from('tarifs_achat').insert(payload)
         if (error) { failed++; continue }
       }
-
-      // Upsert tarif vente général if provided
       if (item.prix_vente_ht) {
-        const payload = {
-          produit_id: prodId,
-          client_id: null,
-          prix_unitaire_ht: parseFloat(item.prix_vente_ht),
-          remise_pourcent: item.remise_pourcent ? parseFloat(item.remise_pourcent) : null,
-          date_debut: today,
-        }
-        const existing = getGeneralVente(prodId)
-        const { error } = existing
-          ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
-          : await supabase.from('tarifs_vente').insert(payload)
+        const payload = { produit_id: prodId, client_id: null, prix_vente_ht: parseFloat(item.prix_vente_ht), remise_pct: item.remise_pct ? parseFloat(item.remise_pct) : null, date_debut: today }
+        const ex = getGeneralVente(prodId)
+        const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload)
         if (error) { failed++; continue }
       }
-
-      // Upsert tarif client if provided
       if (item.prix_client_ht && item._client) {
-        const payload = {
-          produit_id: prodId,
-          client_id: item._client.id,
-          prix_unitaire_ht: parseFloat(item.prix_client_ht),
-          remise_pourcent: item.remise_client_pourcent ? parseFloat(item.remise_client_pourcent) : null,
-          date_debut: today,
-          note: 'Import Excel',
-        }
-        const existing = getClientVente(prodId, item._client.id)
-        const { error } = existing
-          ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
-          : await supabase.from('tarifs_vente').insert(payload)
+        const payload = { produit_id: prodId, client_id: item._client.id, prix_vente_ht: parseFloat(item.prix_client_ht), remise_pct: item.remise_client_pct ? parseFloat(item.remise_client_pct) : null, date_debut: today, notes: 'Import Excel' }
+        const ex = getClientVente(prodId, item._client.id)
+        const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload)
         if (error) { failed++; continue }
       }
-
       updated++
     }
-
-    setImportResult({ updated, failed })
-    setImportingData(false)
-    setImportStep('done')
-    fetchAll()
+    setImportResult({ updated, failed }); setImportingData(false); setImportStep('done'); fetchAll()
   }
 
-  // ── Margin helpers ──
-  function margeBadge(val) {
-    if (val == null) return '—'
-    const color = val > 20 ? 'badge-green' : val > 10 ? 'badge-orange' : 'badge-red'
-    return <span className={`badge ${color}`}>{val.toFixed(1)}%</span>
-  }
-  function calcMargeHighway(achatHT, venteClientHT) {
-    if (!achatHT || !venteClientHT || achatHT === 0) return null
-    return ((venteClientHT - achatHT) / achatHT) * 100
-  }
-  function calcMargeClient(venteClientHT, pvpr) {
-    if (!venteClientHT || !pvpr || venteClientHT === 0) return null
-    return ((pvpr - venteClientHT) / venteClientHT) * 100
-  }
+  // ── Photo thumbnail ──
+  const Thumb = ({ url }) => url
+    ? <img src={url} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />
+    : <div style={{ width: 36, height: 36, borderRadius: 6, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Package size={16} color="var(--text-muted)" /></div>
 
-  // ── Clients with tarif count ──
-  const clientsWithTarifs = clients.map(c => ({
-    ...c,
-    nbTarifs: countClientTarifsForClient(c.id),
-  })).filter(c => c.nbTarifs > 0 || !selectedClient)
+  // ════════════════════════════════════════════════════════════
+  // RENDER
+  // ════════════════════════════════════════════════════════════
 
   return (
     <div>
       <div className="page-header">
         <div>
-          <h2>Gestion des Tarifs</h2>
-          <p>{view === 'produit' ? `${filteredProduits.length} produit(s)` : selectedClient ? 'Tarifs du client' : `${clients.length} client(s)`}</p>
+          <h2>Référencement et Tarifs</h2>
+          <p>{view === 'produit' ? `${filteredProduits.length} produit(s)` : selectedClient ? selectedClient.nom : `${clients.length} client(s)`}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-secondary" onClick={openImportModal}><Upload size={15} /> Importer</button>
-          <button className="btn btn-secondary" onClick={openBulkModal}><TrendingUp size={15} /> Modification en masse</button>
+          <button className="btn btn-secondary" onClick={openBulkModal}><TrendingUp size={15} /> Masse</button>
         </div>
       </div>
 
       <div className="page-body">
         {/* Toggle vue */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button className={`btn ${view === 'produit' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setView('produit'); setSelectedClient(null) }}>
+          <button className={`btn ${view === 'produit' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setView('produit'); setSelectedClient(null); setExpandedId(null) }}>
             <Package size={15} /> Vue par produit
           </button>
-          <button className={`btn ${view === 'client' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setView('client'); setSelectedClient(null) }}>
+          <button className={`btn ${view === 'client' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setView('client'); setSelectedClient(null); setExpandedId(null) }}>
             <Users size={15} /> Vue par client
           </button>
         </div>
@@ -488,7 +515,7 @@ export default function Tarifs() {
           )}
           {view === 'client' && selectedClient && (
             <button className="btn btn-secondary" onClick={() => setSelectedClient(null)} style={{ fontSize: 13 }}>
-              <X size={14} /> Retour à la liste clients
+              <X size={14} /> Retour
             </button>
           )}
         </div>
@@ -497,75 +524,159 @@ export default function Tarifs() {
           <div className="table-container">
             {loading ? <div className="loading">Chargement...</div> : (
               <>
-                {/* ── Vue par produit ── */}
+                {/* ══════════ VUE PAR PRODUIT ══════════ */}
                 {view === 'produit' && (
                   <table>
                     <thead>
                       <tr>
+                        <th style={{ width: 44 }}></th>
                         <th>Produit</th>
                         <th>Marque</th>
                         <th>Achat HT</th>
-                        <th>Tarif Général HT</th>
-                        <th>PVPR TTC</th>
-                        <th>Marge Highway</th>
-                        <th>Marge Client</th>
-                        <th>Tarifs clients</th>
-                        <th></th>
+                        <th>Vente HT</th>
+                        <th>PVPR</th>
+                        <th>Marge</th>
+                        <th>Clients</th>
+                        <th style={{ width: 30 }}></th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredProduits.length === 0 ? (
-                        <tr><td colSpan={9}><div className="empty-state"><Package /><p>Aucun produit trouvé</p></div></td></tr>
+                        <tr><td colSpan={9}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
                       ) : filteredProduits.map(p => {
                         const achat = getLastAchat(p.id)
                         const vente = getGeneralVente(p.id)
+                        const achatHT = achat?.prix_achat_ht
+                        const venteHT = vente?.prix_vente_ht
+                        const marge = calcMarge(achatHT, venteHT)
                         const nbClients = countClientTarifs(p.id)
-                        const achatHT = achat?.prix_unitaire_ht
-                        const venteHT = vente?.prix_unitaire_ht
-                        const pvpr = p.pvpr
-                        const margeHW = calcMargeHighway(achatHT, venteHT)
-                        const margeCl = calcMargeClient(venteHT, pvpr)
-                        return (
-                          <tr key={p.id} onClick={() => openEditModal(p)} style={{ cursor: 'pointer' }}>
-                            <td><div style={{ fontWeight: 500 }}>{p.libelle}</div></td>
+                        const isExpanded = expandedId === p.id
+
+                        return [
+                          <tr key={p.id} onClick={() => toggleAccordion(p.id)} style={{ cursor: 'pointer', background: isExpanded ? 'var(--primary-light)' : undefined }}>
+                            <td><Thumb url={p.photo_url} /></td>
+                            <td>
+                              <div style={{ fontWeight: 500 }}>{p.libelle}</div>
+                              {p.ean13 && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.ean13}</div>}
+                            </td>
                             <td>{p.marques?.nom || '—'}</td>
                             <td>{achatHT != null ? `${Number(achatHT).toFixed(2)} €` : '—'}</td>
                             <td style={{ fontWeight: 500 }}>{venteHT != null ? `${Number(venteHT).toFixed(2)} €` : '—'}</td>
-                            <td>{pvpr != null ? `${Number(pvpr).toFixed(2)} €` : '—'}</td>
-                            <td>{margeBadge(margeHW)}</td>
-                            <td>{margeBadge(margeCl)}</td>
+                            <td>{p.pvpr != null ? `${Number(p.pvpr).toFixed(2)} €` : '—'}</td>
+                            <td>{margeBadge(marge)}</td>
                             <td>{nbClients > 0 ? <span className="badge badge-blue">{nbClients}</span> : '—'}</td>
-                            <td>
-                              <button className="btn-icon" onClick={e => { e.stopPropagation(); openEditModal(p) }}><Edit2 size={14} /></button>
-                            </td>
-                          </tr>
-                        )
+                            <td>{isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</td>
+                          </tr>,
+
+                          isExpanded && (
+                            <tr key={`${p.id}-acc`}>
+                              <td colSpan={9} style={{ padding: 0, background: 'var(--surface-2)' }}>
+                                <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                                  {/* Prix d'achat */}
+                                  <div>
+                                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 8 }}>Prix d'achat</div>
+                                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                                      <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+                                        <label style={{ fontSize: 11 }}>Prix HT (€)</label>
+                                        <input type="number" step="0.01" value={accAchat.prix_achat_ht} onChange={e => setAccAchat(a => ({ ...a, prix_achat_ht: e.target.value }))} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
+                                      </div>
+                                      <button className="btn btn-primary" onClick={() => saveAccAchat(p.id)} disabled={accSaving} style={{ fontSize: 11, padding: '6px 12px', whiteSpace: 'nowrap' }}>
+                                        <Save size={13} /> Enregistrer
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Prix vente général */}
+                                  <div>
+                                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 8 }}>Tarif vente général</div>
+                                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                                      <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+                                        <label style={{ fontSize: 11 }}>Prix HT (€)</label>
+                                        <input type="number" step="0.01" value={accVenteGen.prix_vente_ht} onChange={e => setAccVenteGen(v => ({ ...v, prix_vente_ht: e.target.value }))} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
+                                      </div>
+                                      <div className="form-group" style={{ marginBottom: 0, width: 80 }}>
+                                        <label style={{ fontSize: 11 }}>Remise %</label>
+                                        <input type="number" step="0.1" value={accVenteGen.remise_pct} onChange={e => setAccVenteGen(v => ({ ...v, remise_pct: e.target.value }))} placeholder="0" style={{ padding: '5px 8px', fontSize: 13 }} />
+                                      </div>
+                                      <button className="btn btn-primary" onClick={() => saveAccVenteGen(p.id)} disabled={accSaving} style={{ fontSize: 11, padding: '6px 12px', whiteSpace: 'nowrap' }}>
+                                        <Save size={13} /> Enregistrer
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Tarifs clients */}
+                                  <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                      <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)' }}>Tarifs par client</span>
+                                      <div className="search-input" style={{ width: 200, height: 28 }}>
+                                        <Search size={13} />
+                                        <input placeholder="Filtrer clients..." value={accClientSearch} onChange={e => setAccClientSearch(e.target.value)} style={{ fontSize: 11, padding: '3px 6px' }} />
+                                      </div>
+                                    </div>
+                                    <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)' }}>
+                                      <table style={{ margin: 0 }}>
+                                        <thead>
+                                          <tr>
+                                            <th style={{ fontSize: 11, padding: '6px 10px' }}>Client</th>
+                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 110 }}>Prix HT (€)</th>
+                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 80 }}>Remise %</th>
+                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 50 }}></th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {accClientTarifs
+                                            .filter(ct => !accClientSearch || ct.nom.toLowerCase().includes(accClientSearch.toLowerCase()))
+                                            .map(ct => (
+                                              <tr key={ct.client_id} style={{ background: ct.prix_vente_ht !== '' ? 'var(--primary-light)' : undefined }}>
+                                                <td style={{ fontSize: 12, padding: '4px 10px', fontWeight: ct.prix_vente_ht !== '' ? 500 : 400 }}>{ct.nom}</td>
+                                                <td style={{ padding: '4px 6px' }}>
+                                                  <input type="number" step="0.01" value={ct.prix_vente_ht} onChange={e => updateClientTarif(ct.client_id, 'prix_vente_ht', e.target.value)} placeholder="—" style={{ padding: '3px 6px', fontSize: 12, width: '100%' }} />
+                                                </td>
+                                                <td style={{ padding: '4px 6px' }}>
+                                                  <input type="number" step="0.1" value={ct.remise_pct} onChange={e => updateClientTarif(ct.client_id, 'remise_pct', e.target.value)} placeholder="—" style={{ padding: '3px 6px', fontSize: 12, width: '100%' }} />
+                                                </td>
+                                                <td style={{ padding: '4px 6px' }}>
+                                                  <button className="btn-icon" onClick={() => saveAccClientTarif(p.id, ct)} disabled={accSaving} title="Enregistrer"><Save size={13} /></button>
+                                                </td>
+                                              </tr>
+                                            ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ),
+                        ]
                       })}
                     </tbody>
                   </table>
                 )}
 
-                {/* ── Vue par client — liste clients ── */}
+                {/* ══════════ VUE PAR CLIENT — Liste ══════════ */}
                 {view === 'client' && !selectedClient && (
                   <table>
                     <thead>
                       <tr>
                         <th>Client</th>
-                        <th>Nb tarifs spécifiques</th>
+                        <th>Type</th>
+                        <th>Produits référencés</th>
+                        <th>Tarifs spécifiques</th>
                       </tr>
                     </thead>
                     <tbody>
                       {clients.length === 0 ? (
-                        <tr><td colSpan={2}><div className="empty-state"><Users /><p>Aucun client</p></div></td></tr>
-                      ) : clients.filter(c => {
-                        if (!search) return true
-                        return c.nom.toLowerCase().includes(search.toLowerCase())
-                      }).map(c => {
-                        const nb = countClientTarifsForClient(c.id)
+                        <tr><td colSpan={4}><div className="empty-state"><Users /><p>Aucun client</p></div></td></tr>
+                      ) : clients.filter(c => !search || c.nom.toLowerCase().includes(search.toLowerCase())).map(c => {
+                        const nbTarifs = tarifsVente.filter(t => t.client_id === c.id).length
                         return (
-                          <tr key={c.id} onClick={() => setSelectedClient(c)} style={{ cursor: 'pointer' }}>
+                          <tr key={c.id} onClick={() => selectClient(c)} style={{ cursor: 'pointer' }}>
                             <td style={{ fontWeight: 500 }}>{c.nom}</td>
-                            <td>{nb > 0 ? <span className="badge badge-blue">{nb}</span> : <span style={{ color: 'var(--text-muted)' }}>0</span>}</td>
+                            <td><span className={`badge ${c.type === 'centrale' ? 'badge-blue' : c.type === 'grossiste' ? 'badge-orange' : 'badge-gray'}`}>{c.type}</span></td>
+                            <td>—</td>
+                            <td>{nbTarifs > 0 ? <span className="badge badge-blue">{nbTarifs}</span> : <span style={{ color: 'var(--text-muted)' }}>0</span>}</td>
                           </tr>
                         )
                       })}
@@ -573,60 +684,162 @@ export default function Tarifs() {
                   </table>
                 )}
 
-                {/* ── Vue par client — tarifs du client ── */}
+                {/* ══════════ VUE PAR CLIENT — Détail ══════════ */}
                 {view === 'client' && selectedClient && (
                   <>
-                    <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <Users size={16} color="var(--primary)" />
-                      <span style={{ fontWeight: 600, fontSize: 15 }}>{selectedClient.nom}</span>
+                    {/* Header client + remises */}
+                    <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <Users size={16} color="var(--primary)" />
+                          <span style={{ fontWeight: 600, fontSize: 15 }}>{selectedClient.nom}</span>
+                          <span className="badge badge-blue" style={{ fontSize: 11 }}>{clientRefs.size} référencé(s)</span>
+                        </div>
+                        <button className={`btn ${showRemises ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowRemises(!showRemises)} style={{ fontSize: 12 }}>
+                          <Percent size={14} /> Remises ({clientRemises.length})
+                        </button>
+                      </div>
+
+                      {/* Panel remises cascade */}
+                      {showRemises && (
+                        <div style={{ marginTop: 12, padding: '12px 14px', background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)' }}>Remises en cascade</span>
+                            <button className="btn btn-secondary" onClick={addRemise} disabled={savingRemise} style={{ fontSize: 11, padding: '3px 10px' }}>
+                              <Plus size={13} /> Ajouter
+                            </button>
+                          </div>
+
+                          {clientRemises.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-muted)', fontSize: 13 }}>Aucune remise configurée.</div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {clientRemises.map((r, idx) => (
+                                <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 10px', background: 'var(--surface)', borderRadius: 6, border: '1px solid var(--border)' }}>
+                                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, width: 20, textAlign: 'center' }}>{idx + 1}</span>
+                                  <input
+                                    value={r.label}
+                                    onChange={e => updateRemise(r.id, 'label', e.target.value)}
+                                    onBlur={() => saveRemise(r)}
+                                    placeholder="Nom de la remise"
+                                    style={{ flex: 1, padding: '4px 8px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4 }}
+                                  />
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      value={r.pourcentage}
+                                      onChange={e => updateRemise(r.id, 'pourcentage', parseFloat(e.target.value) || 0)}
+                                      onBlur={() => saveRemise(r)}
+                                      style={{ width: 60, padding: '4px 6px', fontSize: 12, textAlign: 'right', border: '1px solid var(--border)', borderRadius: 4 }}
+                                    />
+                                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>%</span>
+                                  </div>
+                                  <select
+                                    value={r.produit_ids === null ? 'all' : 'selection'}
+                                    onChange={e => {
+                                      const val = e.target.value === 'all' ? null : []
+                                      updateRemise(r.id, 'produit_ids', val)
+                                      saveRemise({ ...r, produit_ids: val })
+                                    }}
+                                    style={{ padding: '4px 6px', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4 }}
+                                  >
+                                    <option value="all">Tous les produits</option>
+                                    <option value="selection">Sélection</option>
+                                  </select>
+                                  {r.produit_ids !== null && (
+                                    <span style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 500 }}>
+                                      {r.produit_ids.length} prod.
+                                    </span>
+                                  )}
+                                  <button className="btn-icon" onClick={() => deleteRemise(r.id)} title="Supprimer"><Trash2 size={13} /></button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {clientRemises.length > 0 && (
+                            <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--primary-light)', borderRadius: 6, fontSize: 12 }}>
+                              <strong>Effet cascade (base 100 €) :</strong>{' '}
+                              {applyRemisesCascade(100, clientRemises, null).toFixed(2)} €
+                              <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>
+                                ({clientRemises.map(r => `-${r.pourcentage}%`).join(' puis ')})
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
+
+                    {/* Produits table */}
                     <table>
                       <thead>
                         <tr>
+                          <th style={{ width: 44 }}></th>
+                          <th style={{ width: 40 }}>Réf.</th>
                           <th>Produit</th>
                           <th>Marque</th>
-                          <th>Tarif Général HT</th>
-                          <th>Tarif Client HT</th>
-                          <th>Écart</th>
-                          <th>PVPR TTC</th>
-                          <th>Marge Highway</th>
-                          <th>Marge Client</th>
-                          <th></th>
+                          <th>Vente HT</th>
+                          <th>Prix client</th>
+                          <th>Après remises</th>
+                          <th>PVPR</th>
+                          <th>Marge</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredProduits.map(p => {
+                          const isRef = clientRefs.has(p.id)
                           const general = getGeneralVente(p.id)
-                          const client = getClientVente(p.id, selectedClient.id)
-                          if (!general && !client) return null
+                          const ct = clientTarifsMap[p.id]
+                          const basePrice = ct?.prix_vente_ht || general?.prix_vente_ht || null
+                          const afterRemises = basePrice ? applyRemisesCascade(basePrice, clientRemises, p.id) : null
                           const achat = getLastAchat(p.id)
-                          const gHT = general?.prix_unitaire_ht
-                          const cHT = client?.prix_unitaire_ht
-                          const pvpr = p.pvpr
-                          let ecart = null
-                          let ecartColor = 'var(--text-muted)'
-                          if (gHT && cHT) {
-                            ecart = ((cHT - gHT) / gHT * 100).toFixed(1)
-                            ecartColor = ecart > 0 ? '#e74c3c' : ecart < 0 ? '#27ae60' : 'var(--text-muted)'
-                          }
-                          const margeHW = calcMargeHighway(achat?.prix_unitaire_ht, cHT || gHT)
-                          const margeCl = calcMargeClient(cHT || gHT, pvpr)
+                          const marge = calcMarge(achat?.prix_achat_ht, afterRemises || basePrice)
+
                           return (
-                            <tr key={p.id}>
-                              <td style={{ fontWeight: 500 }}>{p.libelle}</td>
-                              <td>{p.marques?.nom || '—'}</td>
-                              <td>{gHT != null ? `${Number(gHT).toFixed(2)} €` : '—'}</td>
-                              <td style={{ fontWeight: 500 }}>{cHT != null ? `${Number(cHT).toFixed(2)} €` : '—'}</td>
-                              <td>{ecart != null ? <span style={{ fontWeight: 600, color: ecartColor }}>{ecart > 0 ? '+' : ''}{ecart}%</span> : '—'}</td>
-                              <td>{pvpr != null ? `${Number(pvpr).toFixed(2)} €` : '—'}</td>
-                              <td>{margeBadge(margeHW)}</td>
-                              <td>{margeBadge(margeCl)}</td>
+                            <tr key={p.id} style={{ opacity: isRef ? 1 : 0.5 }}>
+                              <td><Thumb url={p.photo_url} /></td>
                               <td>
-                                <button className="btn-icon" onClick={() => openEditModal(p, selectedClient.id)}><Edit2 size={14} /></button>
+                                <button
+                                  onClick={() => toggleRef(p.id)}
+                                  disabled={savingRef === p.id}
+                                  style={{
+                                    width: 28, height: 28, borderRadius: 6, border: `2px solid ${isRef ? 'var(--primary)' : 'var(--border)'}`,
+                                    background: isRef ? 'var(--primary)' : 'var(--surface)', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s',
+                                  }}
+                                >
+                                  {isRef && <Check size={14} color="#fff" strokeWidth={3} />}
+                                </button>
                               </td>
+                              <td>
+                                <div style={{ fontWeight: 500 }}>{p.libelle}</div>
+                                {p.ean13 && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.ean13}</div>}
+                              </td>
+                              <td>{p.marques?.nom || '—'}</td>
+                              <td>{general?.prix_vente_ht != null ? `${Number(general.prix_vente_ht).toFixed(2)} €` : '—'}</td>
+                              <td>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={ct?.prix_vente_ht ?? ''}
+                                  onChange={e => setClientTarifsMap(prev => ({
+                                    ...prev,
+                                    [p.id]: { ...prev[p.id], prix_vente_ht: e.target.value, produit_id: p.id, client_id: selectedClient.id }
+                                  }))}
+                                  onBlur={e => saveClientPrix(p.id, 'prix_vente_ht', e.target.value)}
+                                  placeholder={general?.prix_vente_ht ? `${Number(general.prix_vente_ht).toFixed(2)}` : '—'}
+                                  style={{ width: 90, padding: '3px 6px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4, background: ct?.prix_vente_ht ? 'var(--primary-light)' : 'var(--surface)' }}
+                                />
+                              </td>
+                              <td style={{ fontWeight: 500, color: 'var(--primary)' }}>
+                                {afterRemises != null ? `${afterRemises.toFixed(2)} €` : '—'}
+                              </td>
+                              <td>{p.pvpr != null ? `${Number(p.pvpr).toFixed(2)} €` : '—'}</td>
+                              <td>{margeBadge(marge)}</td>
                             </tr>
                           )
-                        }).filter(Boolean)}
+                        })}
                       </tbody>
                     </table>
                   </>
@@ -636,122 +849,6 @@ export default function Tarifs() {
           </div>
         </div>
       </div>
-
-      {/* ── Modal édition prix ── */}
-      {editModal && (
-        <div className="modal-overlay" onClick={() => setEditModal(null)}>
-          <div className="modal" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Tarifs — {editModal.produit.libelle}</h3>
-              <button className="btn-icon" onClick={() => setEditModal(null)}><X size={18} /></button>
-            </div>
-            <div className="modal-body">
-              <p className="section-title">Prix d'achat fournisseur</p>
-              <div className="form-grid-3">
-                <div className="form-group">
-                  <label>Prix HT (€)</label>
-                  <input type="number" step="0.01" value={editAchat.prix_unitaire_ht} onChange={e => setEditAchat(p => ({ ...p, prix_unitaire_ht: e.target.value }))} placeholder="0.00" />
-                </div>
-                <div className="form-group">
-                  <label>TVA (%)</label>
-                  <select value={editAchat.taux_tva} onChange={e => setEditAchat(p => ({ ...p, taux_tva: parseFloat(e.target.value) }))}>
-                    {TVA_OPTIONS.map(v => <option key={v} value={v}>{v}%</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>Prix TTC (€)</label>
-                  <input type="text" disabled value={editAchat.prix_unitaire_ht ? (parseFloat(editAchat.prix_unitaire_ht) * (1 + editAchat.taux_tva / 100)).toFixed(2) : '—'} style={{ background: 'var(--surface-2)' }} />
-                </div>
-              </div>
-              <div style={{ marginTop: 8, marginBottom: 20 }}>
-                <button className="btn btn-primary" onClick={saveEditAchat} disabled={savingEdit} style={{ fontSize: 13 }}>
-                  {savingEdit ? 'Enregistrement...' : 'Enregistrer prix d\'achat'}
-                </button>
-              </div>
-
-              <hr className="divider" />
-              <p className="section-title">Tarif général de vente</p>
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>Prix vente HT (€)</label>
-                  <input type="number" step="0.01" value={editVenteGeneral.prix_unitaire_ht} onChange={e => setEditVenteGeneral(p => ({ ...p, prix_unitaire_ht: e.target.value }))} placeholder="0.00" />
-                </div>
-                <div className="form-group">
-                  <label>Remise (%)</label>
-                  <input type="number" step="0.1" value={editVenteGeneral.remise_pourcent} onChange={e => setEditVenteGeneral(p => ({ ...p, remise_pourcent: e.target.value }))} placeholder="0" />
-                </div>
-              </div>
-              <div style={{ marginTop: 8, marginBottom: 20 }}>
-                <button className="btn btn-primary" onClick={saveEditVenteGeneral} disabled={savingEdit} style={{ fontSize: 13 }}>
-                  {savingEdit ? 'Enregistrement...' : 'Enregistrer tarif général'}
-                </button>
-              </div>
-
-              <hr className="divider" />
-              <p className="section-title">PVPR & Marges</p>
-              <div className="form-grid-3">
-                <div className="form-group">
-                  <label>PVPR TTC (€)</label>
-                  <input type="number" step="0.01" value={editPvpr} onChange={e => setEditPvpr(e.target.value)} placeholder="0.00" />
-                </div>
-                <div className="form-group">
-                  <label>Marge Highway</label>
-                  <input type="text" disabled value={
-                    editAchat.prix_unitaire_ht && editVenteGeneral.prix_unitaire_ht
-                      ? `${calcMargeHighway(parseFloat(editAchat.prix_unitaire_ht), parseFloat(editVenteGeneral.prix_unitaire_ht)).toFixed(1)}%`
-                      : '—'
-                  } style={{ background: 'var(--surface-2)', fontWeight: 600 }} />
-                </div>
-                <div className="form-group">
-                  <label>Marge Client</label>
-                  <input type="text" disabled value={
-                    editVenteGeneral.prix_unitaire_ht && editPvpr
-                      ? `${calcMargeClient(parseFloat(editVenteGeneral.prix_unitaire_ht), parseFloat(editPvpr)).toFixed(1)}%`
-                      : '—'
-                  } style={{ background: 'var(--surface-2)', fontWeight: 600 }} />
-                </div>
-              </div>
-              <div style={{ marginTop: 8, marginBottom: 20 }}>
-                <button className="btn btn-primary" onClick={async () => {
-                  setSavingEdit(true)
-                  const { error } = await supabase.from('produits').update({ pvpr: editPvpr ? parseFloat(editPvpr) : null }).eq('id', editModal.produit.id)
-                  setSavingEdit(false)
-                  if (error) return toast('Erreur : ' + error.message, 'error')
-                  toast('PVPR enregistré', 'success')
-                  fetchAll()
-                }} disabled={savingEdit} style={{ fontSize: 13 }}>
-                  {savingEdit ? 'Enregistrement...' : 'Enregistrer PVPR'}
-                </button>
-              </div>
-
-              {editModal.clientId && (
-                <>
-                  <hr className="divider" />
-                  <p className="section-title">Tarif client spécifique</p>
-                  <div className="form-grid">
-                    <div className="form-group">
-                      <label>Prix client HT (€)</label>
-                      <input type="number" step="0.01" value={editVenteClient.prix_unitaire_ht} onChange={e => setEditVenteClient(p => ({ ...p, prix_unitaire_ht: e.target.value }))} placeholder="0.00" />
-                    </div>
-                    <div className="form-group">
-                      <label>Remise (%)</label>
-                      <input type="number" step="0.1" value={editVenteClient.remise_pourcent} onChange={e => setEditVenteClient(p => ({ ...p, remise_pourcent: e.target.value }))} placeholder="0" />
-                    </div>
-                  </div>
-                  <div style={{ marginTop: 8 }}>
-                    <button className="btn btn-primary" onClick={saveEditVenteClient} disabled={savingEdit} style={{ fontSize: 13 }}>
-                      {savingEdit ? 'Enregistrement...' : 'Enregistrer tarif client'}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setEditModal(null)}>Fermer</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Modal majoration en masse ── */}
       {bulkModal && (
@@ -774,12 +871,10 @@ export default function Tarifs() {
                       </select>
                     </div>
                   </div>
-
                   <div style={{ display: 'flex', gap: 8, margin: '16px 0 12px' }}>
                     <button className={`btn ${bulkMode === 'marque' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setBulkMode('marque')} style={{ fontSize: 13 }}>Par marque</button>
                     <button className={`btn ${bulkMode === 'individuel' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setBulkMode('individuel')} style={{ fontSize: 13 }}>Sélection individuelle</button>
                   </div>
-
                   {bulkMode === 'marque' && (
                     <div className="form-group" style={{ marginBottom: 16 }}>
                       <label>Marque</label>
@@ -789,17 +884,12 @@ export default function Tarifs() {
                       </select>
                     </div>
                   )}
-
                   {bulkMode === 'individuel' && (
                     <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8, marginBottom: 16 }}>
                       {produits.map(p => {
                         const checked = bulkSelectedIds.has(p.id)
                         return (
-                          <div key={p.id} onClick={() => setBulkSelectedIds(prev => {
-                            const n = new Set(prev)
-                            n.has(p.id) ? n.delete(p.id) : n.add(p.id)
-                            return n
-                          })} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', cursor: 'pointer', borderRadius: 5, background: checked ? '#e8f0eb' : 'transparent' }}>
+                          <div key={p.id} onClick={() => setBulkSelectedIds(prev => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n })} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', cursor: 'pointer', borderRadius: 5, background: checked ? '#e8f0eb' : 'transparent' }}>
                             <input type="checkbox" checked={checked} readOnly style={{ accentColor: 'var(--primary)' }} />
                             <span style={{ fontSize: 13 }}>{p.libelle}</span>
                             <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>{p.marques?.nom || ''}</span>
@@ -808,40 +898,28 @@ export default function Tarifs() {
                       })}
                     </div>
                   )}
-
                   <div className="form-group" style={{ maxWidth: 200 }}>
                     <label>Pourcentage (%)</label>
                     <input type="number" step="0.1" value={bulkPourcent} onChange={e => setBulkPourcent(e.target.value)} placeholder="ex: +5 ou -3" />
                   </div>
                 </>
               )}
-
               {bulkStep === 2 && (
                 <>
-                  <p className="section-title">2. Aperçu de la majoration ({bulkPourcent >= 0 ? '+' : ''}{bulkPourcent}%)</p>
+                  <p className="section-title">2. Aperçu ({bulkPourcent >= 0 ? '+' : ''}{bulkPourcent}%)</p>
                   {bulkPreview.length === 0 ? (
-                    <div className="empty-state" style={{ padding: 24 }}>
-                      <Package />
-                      <p>Aucun produit avec tarif général trouvé pour cette sélection</p>
-                    </div>
+                    <div className="empty-state" style={{ padding: 24 }}><Package /><p>Aucun produit avec tarif général</p></div>
                   ) : (
                     <div className="table-container" style={{ maxHeight: 350, overflowY: 'auto' }}>
                       <table>
-                        <thead>
-                          <tr>
-                            <th>Produit</th>
-                            <th>Tarif Général HT</th>
-                            <th>Ancien prix client</th>
-                            <th>Nouveau prix client</th>
-                          </tr>
-                        </thead>
+                        <thead><tr><th>Produit</th><th>Tarif Général</th><th>Ancien</th><th>Nouveau</th></tr></thead>
                         <tbody>
                           {bulkPreview.map(item => (
                             <tr key={item.produit.id}>
                               <td style={{ fontWeight: 500 }}>{item.produit.libelle}</td>
                               <td>{Number(item.tarifGeneral).toFixed(2)} €</td>
-                              <td>{item.ancienPrixClient != null ? `${Number(item.ancienPrixClient).toFixed(2)} €` : '—'}</td>
-                              <td style={{ fontWeight: 600, color: 'var(--primary)' }}>{item.nouveauPrixClient.toFixed(2)} €</td>
+                              <td>{item.ancienPrix != null ? `${Number(item.ancienPrix).toFixed(2)} €` : '—'}</td>
+                              <td style={{ fontWeight: 600, color: 'var(--primary)' }}>{item.nouveauPrix.toFixed(2)} €</td>
                             </tr>
                           ))}
                         </tbody>
@@ -855,9 +933,7 @@ export default function Tarifs() {
               {bulkStep === 1 && (
                 <>
                   <button className="btn btn-secondary" onClick={() => setBulkModal(false)}>Annuler</button>
-                  <button className="btn btn-primary" onClick={computeBulkPreview} disabled={!bulkCanPreview}>
-                    Aperçu
-                  </button>
+                  <button className="btn btn-primary" onClick={computeBulkPreview} disabled={!bulkCanPreview}>Aperçu</button>
                 </>
               )}
               {bulkStep === 2 && (
@@ -872,6 +948,7 @@ export default function Tarifs() {
           </div>
         </div>
       )}
+
       {/* ── Modal import tarifs ── */}
       {importModal && (
         <div className="modal-overlay" onClick={() => setImportModal(false)}>
@@ -893,7 +970,6 @@ export default function Tarifs() {
               </div>
               <button className="btn-icon" onClick={() => setImportModal(false)}><X size={18} /></button>
             </div>
-
             <div className="modal-body" style={{ flex: 1, overflowY: 'auto' }}>
               {importStep === 'upload' && (
                 <div
@@ -904,14 +980,10 @@ export default function Tarifs() {
                 >
                   <FileSpreadsheet size={40} color="var(--text-muted)" style={{ marginBottom: 16 }} />
                   <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>Glissez un fichier Excel ici</div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>ou cliquez pour choisir un fichier .xlsx / .xls / .csv</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--surface-2)', borderRadius: 8, padding: '10px 16px', display: 'inline-block', textAlign: 'left' }}>
-                    <strong>Colonnes reconnues :</strong> EAN13 (obligatoire), Prix achat HT, Taux TVA, Prix vente HT, Remise %, PVPR, Client, Prix client HT, Remise client %
-                  </div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>ou cliquez pour choisir</div>
                   <input id="tarif-file-input" type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={e => handleImportFile(e.target.files[0])} />
                 </div>
               )}
-
               {importStep === 'mapping' && importFile && (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 8 }}>
@@ -919,7 +991,7 @@ export default function Tarifs() {
                     <span style={{ fontSize: 13, fontWeight: 500 }}>{importFile.filename}</span>
                     <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 'auto' }}>{importFile.rows.length} lignes</span>
                   </div>
-                  <p className="section-title">Associez les colonnes aux champs tarifs</p>
+                  <p className="section-title">Associez les colonnes</p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {importFile.cols.map(col => {
                       const preview = importFile.rows.slice(0, 2).map(r => r[col]).filter(Boolean).join(', ')
@@ -930,11 +1002,7 @@ export default function Tarifs() {
                             {preview && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>ex: {preview.slice(0, 60)}</div>}
                           </div>
                           <ChevronRight size={16} color="var(--text-muted)" />
-                          <select
-                            value={importMapping[col] || '__ignore__'}
-                            onChange={e => setImportMapping(p => ({ ...p, [col]: e.target.value }))}
-                            style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: importMapping[col] && importMapping[col] !== '__ignore__' ? '#e8f0eb' : 'var(--surface)', fontSize: 12, color: 'var(--text)' }}
-                          >
+                          <select value={importMapping[col] || '__ignore__'} onChange={e => setImportMapping(p => ({ ...p, [col]: e.target.value }))} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: importMapping[col] && importMapping[col] !== '__ignore__' ? '#e8f0eb' : 'var(--surface)', fontSize: 12 }}>
                             {IMPORT_FIELDS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
                           </select>
                         </div>
@@ -943,76 +1011,49 @@ export default function Tarifs() {
                   </div>
                 </>
               )}
-
               {importStep === 'validation' && importValidation && (
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
                     <div style={{ padding: '14px 16px', borderRadius: 10, background: '#e8f0eb', textAlign: 'center' }}>
                       <div style={{ fontSize: 28, fontWeight: 700, color: '#2D5A3D' }}>{importValidation.toProcess.length}</div>
-                      <div style={{ fontSize: 12, color: '#2D5A3D' }}>Tarifs à importer</div>
+                      <div style={{ fontSize: 12, color: '#2D5A3D' }}>À importer</div>
                     </div>
                     <div style={{ padding: '14px 16px', borderRadius: 10, background: '#fee2e2', textAlign: 'center' }}>
                       <div style={{ fontSize: 28, fontWeight: 700, color: '#dc2626' }}>{importValidation.errors.length}</div>
-                      <div style={{ fontSize: 12, color: '#dc2626' }}>Erreurs ignorées</div>
+                      <div style={{ fontSize: 12, color: '#dc2626' }}>Erreurs</div>
                     </div>
                   </div>
-
                   {importValidation.errors.length > 0 && (
-                    <>
-                      <p className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <AlertTriangle size={14} color="#dc2626" /> Lignes ignorées
-                      </p>
-                      <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid #fca5a5', borderRadius: 8, marginBottom: 16 }}>
-                        {importValidation.errors.map((e, i) => (
-                          <div key={i} style={{ padding: '6px 12px', borderBottom: '1px solid #fee2e2', fontSize: 12 }}>
-                            <span style={{ color: '#dc2626', fontWeight: 600 }}>Ligne {e.row}</span> — {e.msg}
-                          </div>
-                        ))}
-                      </div>
-                    </>
+                    <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid #fca5a5', borderRadius: 8, marginBottom: 16 }}>
+                      {importValidation.errors.map((e, i) => (
+                        <div key={i} style={{ padding: '6px 12px', borderBottom: '1px solid #fee2e2', fontSize: 12 }}>
+                          <span style={{ color: '#dc2626', fontWeight: 600 }}>Ligne {e.row}</span> — {e.msg}
+                        </div>
+                      ))}
+                    </div>
                   )}
-
                   {importValidation.toProcess.length > 0 && (
-                    <>
-                      <p className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <CheckCircle size={14} color="#2D5A3D" /> Aperçu
-                      </p>
-                      <div className="table-container" style={{ maxHeight: 250, overflowY: 'auto' }}>
-                        <table>
-                          <thead>
-                            <tr>
-                              <th>EAN</th>
-                              <th>Produit</th>
-                              <th>Achat HT</th>
-                              <th>Vente HT</th>
-                              <th>PVPR</th>
-                              <th>Client</th>
-                              <th>Prix client</th>
+                    <div className="table-container" style={{ maxHeight: 250, overflowY: 'auto' }}>
+                      <table>
+                        <thead><tr><th>EAN</th><th>Produit</th><th>Achat</th><th>Vente</th><th>PVPR</th><th>Client</th><th>Prix client</th></tr></thead>
+                        <tbody>
+                          {importValidation.toProcess.slice(0, 30).map((item, i) => (
+                            <tr key={i}>
+                              <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{item.ean13}</td>
+                              <td style={{ fontWeight: 500, fontSize: 12 }}>{item._produit.libelle}</td>
+                              <td>{item.prix_achat_ht || '—'}</td>
+                              <td>{item.prix_vente_ht || '—'}</td>
+                              <td>{item.pvpr || '—'}</td>
+                              <td style={{ fontSize: 12 }}>{item._client?.nom || '—'}</td>
+                              <td>{item.prix_client_ht || '—'}</td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {importValidation.toProcess.slice(0, 30).map((item, i) => (
-                              <tr key={i}>
-                                <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{item.ean13}</td>
-                                <td style={{ fontWeight: 500, fontSize: 12 }}>{item._produit.libelle}</td>
-                                <td>{item.prix_achat_ht || '—'}</td>
-                                <td>{item.prix_vente_ht || '—'}</td>
-                                <td>{item.pvpr || '—'}</td>
-                                <td style={{ fontSize: 12 }}>{item._client?.nom || '—'}</td>
-                                <td>{item.prix_client_ht || '—'}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      {importValidation.toProcess.length > 30 && (
-                        <div style={{ padding: 8, color: 'var(--text-muted)', fontSize: 12 }}>… et {importValidation.toProcess.length - 30} autres</div>
-                      )}
-                    </>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </>
               )}
-
               {importStep === 'done' && importResult && (
                 <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                   <CheckCircle size={48} color="#2D5A3D" style={{ marginBottom: 20 }} />
@@ -1024,28 +1065,23 @@ export default function Tarifs() {
                 </div>
               )}
             </div>
-
             <div className="modal-footer">
-              {importStep === 'upload' && (
-                <button className="btn btn-secondary" onClick={() => setImportModal(false)}>Annuler</button>
-              )}
+              {importStep === 'upload' && <button className="btn btn-secondary" onClick={() => setImportModal(false)}>Annuler</button>}
               {importStep === 'mapping' && (
                 <>
                   <button className="btn btn-secondary" onClick={() => setImportStep('upload')}>Retour</button>
-                  <button className="btn btn-primary" onClick={validateImportMapping}>Valider le mapping <ChevronRight size={15} /></button>
+                  <button className="btn btn-primary" onClick={validateImportMapping}>Valider <ChevronRight size={15} /></button>
                 </>
               )}
               {importStep === 'validation' && (
                 <>
                   <button className="btn btn-secondary" onClick={() => setImportStep('mapping')}>Retour</button>
                   <button className="btn btn-primary" onClick={doImportTarifs} disabled={importingData || importValidation.toProcess.length === 0}>
-                    {importingData ? 'Import en cours...' : `Importer ${importValidation.toProcess.length} tarif(s)`}
+                    {importingData ? 'Import...' : `Importer ${importValidation.toProcess.length} tarif(s)`}
                   </button>
                 </>
               )}
-              {importStep === 'done' && (
-                <button className="btn btn-primary" onClick={() => setImportModal(false)}>Fermer</button>
-              )}
+              {importStep === 'done' && <button className="btn btn-primary" onClick={() => setImportModal(false)}>Fermer</button>}
             </div>
           </div>
         </div>

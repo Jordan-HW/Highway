@@ -982,7 +982,7 @@ export default function Produits() {
     <div>
       <div className="page-header">
         <div>
-          <h2>Catalogue Produits</h2>
+          <h2>Articles</h2>
           <p>
             {filtered.length} produit{filtered.length > 1 ? 's' : ''}
             {selectedIds.size > 0 && <span style={{ marginLeft: 8, color: 'var(--primary)', fontWeight: 600 }}>· {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}</span>}

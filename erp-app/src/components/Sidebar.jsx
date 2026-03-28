@@ -27,13 +27,13 @@ export default function Sidebar({ user, onLogout }) {
     { section: 'Principal', items: [
       { to: '/', icon: LayoutDashboard, label: 'Tableau de bord', show: true }
     ]},
-    { section: 'Référencement', show: !isComptable, items: [
+    { section: 'Catalogue', show: !isComptable, items: [
       { to: '/marques',  icon: Building2, label: 'Marques',  show: !isComptable },
-      { to: '/produits', icon: Package,   label: 'Catalogue', show: !isComptable },
+      { to: '/produits', icon: Package,   label: 'Articles', show: !isComptable },
     ]},
     { section: 'Commercial', show: !isComptable, items: [
       { to: '/clients',         icon: Users,        label: 'Clients',         show: !isComptable },
-      { to: '/tarifs',          icon: DollarSign,   label: 'Tarifs',          show: !isComptable },
+      { to: '/tarifs',          icon: DollarSign,   label: 'Référencement et Tarifs', show: !isComptable },
       { to: '/commandes-vente', icon: ShoppingCart, label: 'Commandes vente', show: !isComptable },
       { to: '/commandes-achat', icon: Truck,        label: 'Commandes achat', show: !isComptable },
     ]},
