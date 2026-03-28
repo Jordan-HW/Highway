@@ -206,11 +206,10 @@ export default function Tarifs() {
     setSavingRef(null)
   }
 
-  async function saveClientPrix(produitId, field, value) {
+  async function saveClientPrix(produitId, value) {
     if (!selectedClient) return
     const existing = clientTarifsMap[produitId]
-    const isEmpty = !value || value === ''
-    // Si vidé et tarif existant → supprimer
+    const isEmpty = value === '' || value === null || value === undefined
     if (isEmpty && existing?.id) {
       const { error } = await supabase.from('tarifs_vente').delete().eq('id', existing.id)
       if (error) return toast('Erreur : ' + error.message, 'error')
@@ -220,8 +219,7 @@ export default function Tarifs() {
     if (isEmpty) return
     const payload = {
       produit_id: produitId, client_id: selectedClient.id,
-      prix_vente_ht: field === 'prix_vente_ht' ? parseFloat(value) : (existing?.prix_vente_ht || null),
-      remise_pct: field === 'remise_pct' ? (parseFloat(value) || null) : (existing?.remise_pct || null),
+      prix_vente_ht: parseFloat(value),
       date_debut: new Date().toISOString().slice(0, 10),
     }
     const { data, error } = existing?.id
@@ -229,6 +227,26 @@ export default function Tarifs() {
       : await supabase.from('tarifs_vente').insert(payload).select().single()
     if (error) return toast('Erreur : ' + error.message, 'error')
     setClientTarifsMap(prev => ({ ...prev, [produitId]: data }))
+  }
+
+  async function clearFixedPrice(produitId) {
+    if (!selectedClient) return
+    const existing = clientTarifsMap[produitId]
+    if (!existing?.id) return
+    const { error } = await supabase.from('tarifs_vente').delete().eq('id', existing.id)
+    if (error) return toast('Erreur : ' + error.message, 'error')
+    setClientTarifsMap(prev => { const n = { ...prev }; delete n[produitId]; return n })
+  }
+
+  async function clearAllFixedPrices() {
+    if (!selectedClient) return
+    const ids = Object.values(clientTarifsMap).filter(t => t?.id).map(t => t.id)
+    if (!ids.length) return toast('Aucun prix fixé', 'error')
+    if (!confirm(`Supprimer ${ids.length} prix fixé(s) pour ${selectedClient.nom} ?`)) return
+    const { error } = await supabase.from('tarifs_vente').delete().in('id', ids)
+    if (error) return toast('Erreur : ' + error.message, 'error')
+    setClientTarifsMap({})
+    toast(`${ids.length} prix fixé(s) supprimé(s)`, 'success')
   }
 
   // ── Remises CRUD ──
@@ -589,9 +607,16 @@ export default function Tarifs() {
                           <span style={{ fontWeight: 600, fontSize: 15 }}>{selectedClient.nom}</span>
                           <span className="badge badge-blue" style={{ fontSize: 11 }}>{clientRefs.size} référencé(s)</span>
                         </div>
-                        <button className={`btn ${showRemises ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowRemises(!showRemises)} style={{ fontSize: 12 }}>
-                          <Percent size={14} /> Remises ({clientRemises.length})
-                        </button>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {Object.keys(clientTarifsMap).length > 0 && (
+                            <button className="btn btn-secondary" onClick={clearAllFixedPrices} style={{ fontSize: 11, color: '#C0392B' }}>
+                              <Trash2 size={13} /> Supprimer tous les prix fixés ({Object.values(clientTarifsMap).filter(t => t?.id).length})
+                            </button>
+                          )}
+                          <button className={`btn ${showRemises ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowRemises(!showRemises)} style={{ fontSize: 12 }}>
+                            <Percent size={14} /> Remises ({clientRemises.length})
+                          </button>
+                        </div>
                       </div>
 
                       {/* ── Panel remises en cascade ── */}
@@ -799,13 +824,20 @@ export default function Tarifs() {
                                 {afterRemises != null ? `${afterRemises.toFixed(2)} €` : '—'}
                               </td>
                               <td>
-                                <input type="number" step="0.01"
-                                  value={ct?.prix_vente_ht ?? ''}
-                                  onChange={e => setClientTarifsMap(prev => ({ ...prev, [p.id]: { ...prev[p.id], prix_vente_ht: e.target.value, produit_id: p.id, client_id: selectedClient.id } }))}
-                                  onBlur={e => saveClientPrix(p.id, 'prix_vente_ht', e.target.value)}
-                                  placeholder="—"
-                                  style={{ width: 90, padding: '3px 6px', fontSize: 12, borderRadius: 4, border: isFixed ? '1px solid #E6C547' : '1px solid var(--border)', background: isFixed ? '#FFF8E7' : 'var(--surface)' }}
-                                />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                  <input type="number" step="0.01"
+                                    value={ct?.prix_vente_ht ?? ''}
+                                    onChange={e => setClientTarifsMap(prev => ({ ...prev, [p.id]: { ...prev[p.id], prix_vente_ht: e.target.value, produit_id: p.id, client_id: selectedClient.id } }))}
+                                    onBlur={e => saveClientPrix(p.id, e.target.value)}
+                                    placeholder="—"
+                                    style={{ width: 80, padding: '3px 6px', fontSize: 12, borderRadius: 4, border: isFixed ? '1px solid #E6C547' : '1px solid var(--border)', background: isFixed ? '#FFF8E7' : 'var(--surface)' }}
+                                  />
+                                  {isFixed && (
+                                    <button className="btn-icon" onClick={() => clearFixedPrice(p.id)} title="Supprimer le prix fixé" style={{ color: '#C0392B', padding: 2 }}>
+                                      <X size={12} />
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                               <td style={{ fontWeight: 600 }}>
                                 {effectif != null ? (
