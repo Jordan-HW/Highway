@@ -153,6 +153,8 @@ export default function Tarifs() {
         const { error } = await supabase.from('tarifs_vente').delete().eq('id', ct._id)
         setAccSaving(false)
         if (error) return toast('Erreur : ' + error.message, 'error')
+        // Mettre à jour le state local immédiatement
+        setAccClientTarifs(prev => prev.map(c => c.client_id === ct.client_id ? { ...c, prix_vente_ht: '', _existing: false, _id: null } : c))
         toast(`Prix fixé ${ct.nom} supprimé`, 'success'); fetchAll()
         return
       }
@@ -160,11 +162,13 @@ export default function Tarifs() {
       return
     }
     const payload = { produit_id: produitId, client_id: ct.client_id, prix_vente_ht: parseFloat(ct.prix_vente_ht), remise_pct: ct.remise_pct ? parseFloat(ct.remise_pct) : null, date_debut: new Date().toISOString().slice(0, 10) }
-    const { error } = ct._existing && ct._id
-      ? await supabase.from('tarifs_vente').update(payload).eq('id', ct._id)
-      : await supabase.from('tarifs_vente').insert(payload)
+    const { error, data } = ct._existing && ct._id
+      ? await supabase.from('tarifs_vente').update(payload).eq('id', ct._id).select().single()
+      : await supabase.from('tarifs_vente').insert(payload).select().single()
     setAccSaving(false)
     if (error) return toast('Erreur : ' + error.message, 'error')
+    // Mettre à jour le state local avec l'id retourné
+    setAccClientTarifs(prev => prev.map(c => c.client_id === ct.client_id ? { ...c, _existing: true, _id: data.id } : c))
     toast(`Tarif ${ct.nom} enregistré`, 'success'); fetchAll()
   }
 
