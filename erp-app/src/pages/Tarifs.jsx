@@ -35,6 +35,7 @@ export default function Tarifs() {
   const [accClientTarifs, setAccClientTarifs] = useState([])
   const [accClientSearch, setAccClientSearch] = useState('')
   const [accSaving, setAccSaving] = useState(false)
+  const [allRemises, setAllRemises] = useState([]) // toutes les remises de tous les clients
 
   // Vue par client
   const [selectedClient, setSelectedClient] = useState(null)
@@ -61,18 +62,20 @@ export default function Tarifs() {
 
   async function fetchAll() {
     setLoading(true)
-    const [{ data: prods }, { data: mqs }, { data: cls }, { data: ta }, { data: tv }] = await Promise.all([
+    const [{ data: prods }, { data: mqs }, { data: cls }, { data: ta }, { data: tv }, { data: ar }] = await Promise.all([
       supabase.from('produits').select('*, marques(nom)').eq('statut', 'actif').order('libelle'),
       supabase.from('marques').select('id, nom').eq('actif', true).order('nom'),
       supabase.from('clients').select('id, nom, type').order('nom'),
       supabase.from('tarifs_achat').select('*').order('date_debut', { ascending: false }),
       supabase.from('tarifs_vente').select('*').order('date_debut', { ascending: false }),
+      supabase.from('client_remises').select('*').order('ordre'),
     ])
     setProduits(prods || [])
     setMarques(mqs || [])
     setClients(cls || [])
     setTarifsAchat(ta || [])
     setTarifsVente(tv || [])
+    setAllRemises(ar || [])
     setLoading(false)
   }
 
@@ -480,28 +483,34 @@ export default function Tarifs() {
                                         <thead>
                                           <tr>
                                             <th style={{ fontSize: 11, padding: '6px 10px' }}>Client</th>
-                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 110 }}>Prix HT (€)</th>
-                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 80 }}>Remise %</th>
-                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 50 }}></th>
+                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 110 }}>Prix client HT</th>
+                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 100 }}>Après remises</th>
+                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 40 }}></th>
                                           </tr>
                                         </thead>
                                         <tbody>
                                           {accClientTarifs
                                             .filter(ct => !accClientSearch || ct.nom.toLowerCase().includes(accClientSearch.toLowerCase()))
-                                            .map(ct => (
-                                              <tr key={ct.client_id} style={{ background: ct.prix_vente_ht !== '' ? 'var(--primary-light)' : undefined }}>
-                                                <td style={{ fontSize: 12, padding: '4px 10px', fontWeight: ct.prix_vente_ht !== '' ? 500 : 400 }}>{ct.nom}</td>
-                                                <td style={{ padding: '4px 6px' }}>
-                                                  <input type="number" step="0.01" value={ct.prix_vente_ht} onChange={e => updateClientTarif(ct.client_id, 'prix_vente_ht', e.target.value)} placeholder="—" style={{ padding: '3px 6px', fontSize: 12, width: '100%' }} />
-                                                </td>
-                                                <td style={{ padding: '4px 6px' }}>
-                                                  <input type="number" step="0.1" value={ct.remise_pct} onChange={e => updateClientTarif(ct.client_id, 'remise_pct', e.target.value)} placeholder="—" style={{ padding: '3px 6px', fontSize: 12, width: '100%' }} />
-                                                </td>
-                                                <td style={{ padding: '4px 6px' }}>
-                                                  <button className="btn-icon" onClick={() => saveAccClientTarif(p.id, ct)} disabled={accSaving} title="Enregistrer"><Save size={13} /></button>
-                                                </td>
-                                              </tr>
-                                            ))}
+                                            .map(ct => {
+                                              const basePrice = ct.prix_vente_ht !== '' ? parseFloat(ct.prix_vente_ht) : (accVenteGen.prix_vente_ht ? parseFloat(accVenteGen.prix_vente_ht) : null)
+                                              const remisesClient = allRemises.filter(r => r.client_id === ct.client_id)
+                                              const afterRemises = basePrice ? applyRemisesCascade(basePrice, remisesClient, p.id, p.marque_id) : null
+                                              const hasRemises = remisesClient.length > 0 && afterRemises !== basePrice
+                                              return (
+                                                <tr key={ct.client_id} style={{ background: ct.prix_vente_ht !== '' ? 'var(--primary-light)' : undefined }}>
+                                                  <td style={{ fontSize: 12, padding: '4px 10px', fontWeight: ct.prix_vente_ht !== '' ? 500 : 400 }}>{ct.nom}</td>
+                                                  <td style={{ padding: '4px 6px' }}>
+                                                    <input type="number" step="0.01" value={ct.prix_vente_ht} onChange={e => updateClientTarif(ct.client_id, 'prix_vente_ht', e.target.value)} placeholder={accVenteGen.prix_vente_ht ? `${Number(accVenteGen.prix_vente_ht).toFixed(2)}` : '—'} style={{ padding: '3px 6px', fontSize: 12, width: '100%' }} />
+                                                  </td>
+                                                  <td style={{ padding: '4px 10px', fontSize: 12, fontWeight: hasRemises ? 600 : 400, color: hasRemises ? 'var(--primary)' : 'var(--text-muted)' }}>
+                                                    {afterRemises != null ? `${afterRemises.toFixed(2)} €` : '—'}
+                                                  </td>
+                                                  <td style={{ padding: '4px 6px' }}>
+                                                    <button className="btn-icon" onClick={() => saveAccClientTarif(p.id, ct)} disabled={accSaving} title="Enregistrer"><Save size={13} /></button>
+                                                  </td>
+                                                </tr>
+                                              )
+                                            })}
                                         </tbody>
                                       </table>
                                     </div>
