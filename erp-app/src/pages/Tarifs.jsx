@@ -1,18 +1,18 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { Search, X, Edit2, TrendingUp, Package, Users, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent } from 'lucide-react'
+import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent, Package, Users } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
-const TVA_OPTIONS = [0, 5.5, 10, 20]
-
 // ── Helpers ──
-function applyRemisesCascade(basePrice, remises, produitId) {
+function applyRemisesCascade(basePrice, remises, produitId, marqueId) {
   let price = basePrice
   for (const r of [...remises].sort((a, b) => a.ordre - b.ordre)) {
-    if (!r.produit_ids || r.produit_ids.includes(produitId)) {
-      price = price * (1 - r.pourcentage / 100)
-    }
+    // La remise doit correspondre au fournisseur du produit
+    if (r.marque_id && r.marque_id !== marqueId) continue
+    // Scope : null = tous les produits du fournisseur, sinon sélection
+    if (r.produit_ids && !r.produit_ids.includes(produitId)) continue
+    price = price * (1 - r.pourcentage / 100)
   }
   return Math.round(price * 100) / 100
 }
@@ -30,9 +30,9 @@ export default function Tarifs() {
 
   // Vue par produit — accordion
   const [expandedId, setExpandedId] = useState(null)
-  const [accAchat, setAccAchat] = useState({ prix_achat_ht: '', taux_tva: 5.5 })
+  const [accAchat, setAccAchat] = useState({ prix_achat_ht: '' })
   const [accVenteGen, setAccVenteGen] = useState({ prix_vente_ht: '', remise_pct: '' })
-  const [accClientTarifs, setAccClientTarifs] = useState([]) // { client_id, nom, prix_vente_ht, remise_pct, _existing }
+  const [accClientTarifs, setAccClientTarifs] = useState([])
   const [accClientSearch, setAccClientSearch] = useState('')
   const [accSaving, setAccSaving] = useState(false)
 
@@ -44,17 +44,9 @@ export default function Tarifs() {
   const [showRemises, setShowRemises] = useState(false)
   const [savingRemise, setSavingRemise] = useState(false)
   const [savingRef, setSavingRef] = useState(null)
-
-  // Bulk uplift modal
-  const [bulkModal, setBulkModal] = useState(false)
-  const [bulkStep, setBulkStep] = useState(1)
-  const [bulkClient, setBulkClient] = useState('')
-  const [bulkMode, setBulkMode] = useState('marque')
-  const [bulkMarque, setBulkMarque] = useState('')
-  const [bulkSelectedIds, setBulkSelectedIds] = useState(new Set())
-  const [bulkPourcent, setBulkPourcent] = useState('')
-  const [bulkPreview, setBulkPreview] = useState([])
-  const [applyingBulk, setApplyingBulk] = useState(false)
+  // Remise product picker
+  const [pickerRemiseId, setPickerRemiseId] = useState(null)
+  const [pickerSearch, setPickerSearch] = useState('')
 
   // Import modal
   const [importModal, setImportModal] = useState(false)
@@ -84,21 +76,11 @@ export default function Tarifs() {
     setLoading(false)
   }
 
-  // ── Tarif helpers ──
-  function getLastAchat(produitId) {
-    return tarifsAchat.find(t => t.produit_id === produitId)
-  }
-  function getGeneralVente(produitId) {
-    return tarifsVente.find(t => t.produit_id === produitId && !t.client_id)
-  }
-  function getClientVente(produitId, clientId) {
-    return tarifsVente.find(t => t.produit_id === produitId && t.client_id === clientId)
-  }
-  function countClientTarifs(produitId) {
-    return tarifsVente.filter(t => t.produit_id === produitId && t.client_id).length
-  }
+  function getLastAchat(produitId) { return tarifsAchat.find(t => t.produit_id === produitId) }
+  function getGeneralVente(produitId) { return tarifsVente.find(t => t.produit_id === produitId && !t.client_id) }
+  function getClientVente(produitId, clientId) { return tarifsVente.find(t => t.produit_id === produitId && t.client_id === clientId) }
+  function countClientTarifs(produitId) { return tarifsVente.filter(t => t.produit_id === produitId && t.client_id).length }
 
-  // ── Margin helpers ──
   function calcMarge(cost, sell) {
     if (!cost || !sell || cost === 0) return null
     return ((sell - cost) / cost) * 100
@@ -109,7 +91,6 @@ export default function Tarifs() {
     return <span className={`badge ${color}`}>{val.toFixed(1)}%</span>
   }
 
-  // ── Filtered products ──
   const filteredProduits = produits.filter(p => {
     const s = search.toLowerCase()
     const matchSearch = p.libelle.toLowerCase().includes(s) || (p.ean13 || '').includes(s) || (p.marques?.nom || '').toLowerCase().includes(s)
@@ -117,119 +98,81 @@ export default function Tarifs() {
     return matchSearch && matchMarque
   })
 
-  // ════════════════════════════════════════════════════════════
+  // ════════════════════════════════════════════
   // VUE PAR PRODUIT — Accordion
-  // ════════════════════════════════════════════════════════════
+  // ════════════════════════════════════════════
 
-  async function toggleAccordion(produitId) {
+  function toggleAccordion(produitId) {
     if (expandedId === produitId) { setExpandedId(null); return }
     setExpandedId(produitId)
     setAccClientSearch('')
-
-    // Load achat
     const achat = getLastAchat(produitId)
-    setAccAchat(achat ? { prix_achat_ht: achat.prix_achat_ht ?? '', taux_tva: achat.taux_tva ?? 5.5 } : { prix_achat_ht: '', taux_tva: 5.5 })
-
-    // Load vente general
+    setAccAchat({ prix_achat_ht: achat?.prix_achat_ht ?? '' })
     const gen = getGeneralVente(produitId)
-    setAccVenteGen(gen ? { prix_vente_ht: gen.prix_vente_ht ?? '', remise_pct: gen.remise_pct ?? '' } : { prix_vente_ht: '', remise_pct: '' })
-
-    // Build client tarifs list (all clients)
-    const clientList = clients.map(c => {
+    setAccVenteGen({ prix_vente_ht: gen?.prix_vente_ht ?? '', remise_pct: gen?.remise_pct ?? '' })
+    setAccClientTarifs(clients.map(c => {
       const tv = getClientVente(produitId, c.id)
-      return {
-        client_id: c.id,
-        nom: c.nom,
-        prix_vente_ht: tv?.prix_vente_ht ?? '',
-        remise_pct: tv?.remise_pct ?? '',
-        _existing: !!tv,
-        _id: tv?.id,
-      }
-    })
-    setAccClientTarifs(clientList)
+      return { client_id: c.id, nom: c.nom, prix_vente_ht: tv?.prix_vente_ht ?? '', remise_pct: tv?.remise_pct ?? '', _existing: !!tv, _id: tv?.id }
+    }))
   }
 
   async function saveAccAchat(produitId) {
     if (!accAchat.prix_achat_ht && accAchat.prix_achat_ht !== 0) return toast('Saisissez un prix', 'error')
     setAccSaving(true)
-    const payload = {
-      produit_id: produitId,
-      prix_achat_ht: parseFloat(accAchat.prix_achat_ht),
-      date_debut: new Date().toISOString().slice(0, 10),
-    }
+    const payload = { produit_id: produitId, prix_achat_ht: parseFloat(accAchat.prix_achat_ht), date_debut: new Date().toISOString().slice(0, 10) }
     const existing = getLastAchat(produitId)
     const { error } = existing
       ? await supabase.from('tarifs_achat').update(payload).eq('id', existing.id)
       : await supabase.from('tarifs_achat').insert(payload)
     setAccSaving(false)
     if (error) return toast('Erreur : ' + error.message, 'error')
-    toast('Prix achat enregistré', 'success')
-    fetchAll()
+    toast('Prix achat enregistré', 'success'); fetchAll()
   }
 
   async function saveAccVenteGen(produitId) {
     if (!accVenteGen.prix_vente_ht && accVenteGen.prix_vente_ht !== 0) return toast('Saisissez un prix', 'error')
     setAccSaving(true)
-    const payload = {
-      produit_id: produitId,
-      client_id: null,
-      prix_vente_ht: parseFloat(accVenteGen.prix_vente_ht),
-      remise_pct: accVenteGen.remise_pct ? parseFloat(accVenteGen.remise_pct) : null,
-      date_debut: new Date().toISOString().slice(0, 10),
-    }
+    const payload = { produit_id: produitId, client_id: null, prix_vente_ht: parseFloat(accVenteGen.prix_vente_ht), remise_pct: accVenteGen.remise_pct ? parseFloat(accVenteGen.remise_pct) : null, date_debut: new Date().toISOString().slice(0, 10) }
     const existing = getGeneralVente(produitId)
     const { error } = existing
       ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
       : await supabase.from('tarifs_vente').insert(payload)
     setAccSaving(false)
     if (error) return toast('Erreur : ' + error.message, 'error')
-    toast('Tarif général enregistré', 'success')
-    fetchAll()
+    toast('Tarif général enregistré', 'success'); fetchAll()
   }
 
   async function saveAccClientTarif(produitId, ct) {
     if (!ct.prix_vente_ht && ct.prix_vente_ht !== 0) return
     setAccSaving(true)
-    const payload = {
-      produit_id: produitId,
-      client_id: ct.client_id,
-      prix_vente_ht: parseFloat(ct.prix_vente_ht),
-      remise_pct: ct.remise_pct ? parseFloat(ct.remise_pct) : null,
-      date_debut: new Date().toISOString().slice(0, 10),
-    }
+    const payload = { produit_id: produitId, client_id: ct.client_id, prix_vente_ht: parseFloat(ct.prix_vente_ht), remise_pct: ct.remise_pct ? parseFloat(ct.remise_pct) : null, date_debut: new Date().toISOString().slice(0, 10) }
     const { error } = ct._existing && ct._id
       ? await supabase.from('tarifs_vente').update(payload).eq('id', ct._id)
       : await supabase.from('tarifs_vente').insert(payload)
     setAccSaving(false)
     if (error) return toast('Erreur : ' + error.message, 'error')
-    toast(`Tarif ${ct.nom} enregistré`, 'success')
-    fetchAll()
+    toast(`Tarif ${ct.nom} enregistré`, 'success'); fetchAll()
   }
 
   function updateClientTarif(clientId, field, val) {
-    setAccClientTarifs(prev => prev.map(ct =>
-      ct.client_id === clientId ? { ...ct, [field]: val } : ct
-    ))
+    setAccClientTarifs(prev => prev.map(ct => ct.client_id === clientId ? { ...ct, [field]: val } : ct))
   }
 
-  // ════════════════════════════════════════════════════════════
-  // VUE PAR CLIENT — Référencement + Remises
-  // ════════════════════════════════════════════════════════════
+  // ════════════════════════════════════════════
+  // VUE PAR CLIENT
+  // ════════════════════════════════════════════
 
   async function selectClient(client) {
     setSelectedClient(client)
     setShowRemises(false)
-
-    // Fetch references, remises, and client tarifs
+    setPickerRemiseId(null)
     const [{ data: refs }, { data: remises }, { data: tvClient }] = await Promise.all([
       supabase.from('client_produit_references').select('produit_id').eq('client_id', client.id),
       supabase.from('client_remises').select('*').eq('client_id', client.id).order('ordre'),
       supabase.from('tarifs_vente').select('*').eq('client_id', client.id),
     ])
-
     setClientRefs(new Set((refs || []).map(r => r.produit_id)))
     setClientRemises(remises || [])
-
     const map = {}
     ;(tvClient || []).forEach(t => { map[t.produit_id] = t })
     setClientTarifsMap(map)
@@ -239,15 +182,11 @@ export default function Tarifs() {
     if (!selectedClient) return
     setSavingRef(produitId)
     const isRef = clientRefs.has(produitId)
-
     if (isRef) {
-      await supabase.from('client_produit_references').delete()
-        .eq('client_id', selectedClient.id).eq('produit_id', produitId)
+      await supabase.from('client_produit_references').delete().eq('client_id', selectedClient.id).eq('produit_id', produitId)
       setClientRefs(prev => { const n = new Set(prev); n.delete(produitId); return n })
     } else {
-      await supabase.from('client_produit_references').insert({
-        client_id: selectedClient.id, produit_id: produitId
-      })
+      await supabase.from('client_produit_references').insert({ client_id: selectedClient.id, produit_id: produitId })
       setClientRefs(prev => new Set([...prev, produitId]))
     }
     setSavingRef(null)
@@ -257,14 +196,12 @@ export default function Tarifs() {
     if (!selectedClient) return
     const existing = clientTarifsMap[produitId]
     const payload = {
-      produit_id: produitId,
-      client_id: selectedClient.id,
+      produit_id: produitId, client_id: selectedClient.id,
       prix_vente_ht: field === 'prix_vente_ht' ? (parseFloat(value) || null) : (existing?.prix_vente_ht || null),
       remise_pct: field === 'remise_pct' ? (parseFloat(value) || null) : (existing?.remise_pct || null),
       date_debut: new Date().toISOString().slice(0, 10),
     }
     if (!payload.prix_vente_ht && !payload.remise_pct) return
-
     const { data, error } = existing
       ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id).select().single()
       : await supabase.from('tarifs_vente').insert(payload).select().single()
@@ -276,20 +213,20 @@ export default function Tarifs() {
   async function addRemise() {
     if (!selectedClient) return
     setSavingRemise(true)
-    const ordre = clientRemises.length
     const { data, error } = await supabase.from('client_remises').insert({
       client_id: selectedClient.id,
       label: 'Nouvelle remise',
       pourcentage: 0,
+      marque_id: marques[0]?.id || null,
       produit_ids: null,
-      ordre,
+      ordre: clientRemises.length,
     }).select().single()
     setSavingRemise(false)
     if (error) return toast('Erreur : ' + error.message, 'error')
     setClientRemises(prev => [...prev, data])
   }
 
-  async function updateRemise(id, field, value) {
+  function updateRemiseLocal(id, field, value) {
     setClientRemises(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r))
   }
 
@@ -299,71 +236,29 @@ export default function Tarifs() {
     const { error } = await supabase.from('client_remises').update(payload).eq('id', id)
     setSavingRemise(false)
     if (error) return toast('Erreur : ' + error.message, 'error')
-    toast('Remise enregistrée', 'success')
   }
 
   async function deleteRemise(id) {
     const { error } = await supabase.from('client_remises').delete().eq('id', id)
     if (error) return toast('Erreur : ' + error.message, 'error')
     setClientRemises(prev => prev.filter(r => r.id !== id))
+    if (pickerRemiseId === id) setPickerRemiseId(null)
   }
 
-  // ── Bulk uplift ──
-  function openBulkModal() {
-    setBulkStep(1); setBulkClient(''); setBulkMode('marque'); setBulkMarque('')
-    setBulkSelectedIds(new Set()); setBulkPourcent(''); setBulkPreview([]); setBulkModal(true)
+  function toggleRemiseProduit(remiseId, produitId) {
+    setClientRemises(prev => prev.map(r => {
+      if (r.id !== remiseId) return r
+      const ids = r.produit_ids || []
+      const next = ids.includes(produitId) ? ids.filter(x => x !== produitId) : [...ids, produitId]
+      return { ...r, produit_ids: next }
+    }))
   }
-
-  function computeBulkPreview() {
-    let sel = bulkMode === 'marque'
-      ? produits.filter(p => p.marque_id === bulkMarque)
-      : produits.filter(p => bulkSelectedIds.has(p.id))
-    const pct = parseFloat(bulkPourcent)
-    const preview = sel.map(p => {
-      const general = getGeneralVente(p.id)
-      if (!general) return null
-      const old = getClientVente(p.id, bulkClient)
-      return {
-        produit: p,
-        tarifGeneral: general.prix_vente_ht,
-        ancienPrix: old?.prix_vente_ht ?? null,
-        nouveauPrix: Math.round(general.prix_vente_ht * (1 + pct / 100) * 100) / 100,
-      }
-    }).filter(Boolean)
-    setBulkPreview(preview)
-    setBulkStep(2)
-  }
-
-  async function applyBulk() {
-    setApplyingBulk(true)
-    const today = new Date().toISOString().slice(0, 10)
-    let errors = 0
-    for (const item of bulkPreview) {
-      const existing = getClientVente(item.produit.id, bulkClient)
-      const payload = {
-        produit_id: item.produit.id, client_id: bulkClient,
-        prix_vente_ht: item.nouveauPrix, date_debut: today,
-        notes: `Majoration ${bulkPourcent >= 0 ? '+' : ''}${bulkPourcent}%`,
-      }
-      const { error } = existing
-        ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
-        : await supabase.from('tarifs_vente').insert(payload)
-      if (error) errors++
-    }
-    setApplyingBulk(false); setBulkModal(false)
-    if (errors) toast(`Appliqué avec ${errors} erreur(s)`, 'error')
-    else toast(`Majoration appliquée à ${bulkPreview.length} produit(s)`, 'success')
-    fetchAll()
-  }
-
-  const bulkCanPreview = bulkClient && bulkPourcent && (bulkMode === 'marque' ? bulkMarque : bulkSelectedIds.size > 0)
 
   // ── Import tarifs ──
   const IMPORT_FIELDS = [
     { key: '__ignore__', label: '— Ignorer —' },
     { key: 'ean13', label: 'EAN13 (clé) *' },
     { key: 'prix_achat_ht', label: 'Prix achat HT' },
-    { key: 'taux_tva', label: 'Taux TVA (%)' },
     { key: 'prix_vente_ht', label: 'Tarif vente général HT' },
     { key: 'remise_pct', label: 'Remise vente (%)' },
     { key: 'pvpr', label: 'PVPR TTC' },
@@ -377,7 +272,6 @@ export default function Tarifs() {
     const hints = {
       ean: 'ean13', ean13: 'ean13', 'code barre': 'ean13', barcode: 'ean13',
       'prix achat': 'prix_achat_ht', 'achat ht': 'prix_achat_ht',
-      tva: 'taux_tva', 'taux tva': 'taux_tva',
       'prix vente': 'prix_vente_ht', 'vente ht': 'prix_vente_ht', 'tarif general': 'prix_vente_ht',
       remise: 'remise_pct', 'remise %': 'remise_pct',
       pvpr: 'pvpr', 'prix public': 'pvpr',
@@ -415,21 +309,14 @@ export default function Tarifs() {
     const eanIdx = new Map(); produits.forEach(p => { if (p.ean13) eanIdx.set(p.ean13, p) })
     const clientIdx = new Map(); clients.forEach(c => clientIdx.set(c.nom.toLowerCase(), c))
     const toProcess = [], errors = []
-
     importFile.rows.forEach((row, i) => {
       const obj = {}
-      Object.entries(importMapping).forEach(([col, field]) => {
-        if (field === '__ignore__') return
-        obj[field] = String(row[col] ?? '').trim()
-      })
+      Object.entries(importMapping).forEach(([col, field]) => { if (field !== '__ignore__') obj[field] = String(row[col] ?? '').trim() })
       if (!obj.ean13) { errors.push({ row: i + 2, msg: 'EAN13 manquant' }); return }
       const produit = eanIdx.get(obj.ean13)
       if (!produit) { errors.push({ row: i + 2, msg: `EAN ${obj.ean13} non trouvé` }); return }
       let resolvedClient = null
-      if (obj.client_nom) {
-        resolvedClient = clientIdx.get(obj.client_nom.toLowerCase())
-        if (!resolvedClient) { errors.push({ row: i + 2, msg: `Client "${obj.client_nom}" non trouvé` }); return }
-      }
+      if (obj.client_nom) { resolvedClient = clientIdx.get(obj.client_nom.toLowerCase()); if (!resolvedClient) { errors.push({ row: i + 2, msg: `Client "${obj.client_nom}" non trouvé` }); return } }
       toProcess.push({ ...obj, _row: i + 2, _produit: produit, _client: resolvedClient })
     })
     setImportValidation({ toProcess, errors }); setImportStep('validation')
@@ -441,41 +328,22 @@ export default function Tarifs() {
     let updated = 0, failed = 0
     for (const item of importValidation.toProcess) {
       const prodId = item._produit.id
-      if (item.pvpr) {
-        const { error } = await supabase.from('produits').update({ pvpr: parseFloat(item.pvpr) || null }).eq('id', prodId)
-        if (error) failed++
-      }
-      if (item.prix_achat_ht) {
-        const payload = { produit_id: prodId, prix_achat_ht: parseFloat(item.prix_achat_ht), date_debut: today }
-        const ex = getLastAchat(prodId)
-        const { error } = ex ? await supabase.from('tarifs_achat').update(payload).eq('id', ex.id) : await supabase.from('tarifs_achat').insert(payload)
-        if (error) { failed++; continue }
-      }
-      if (item.prix_vente_ht) {
-        const payload = { produit_id: prodId, client_id: null, prix_vente_ht: parseFloat(item.prix_vente_ht), remise_pct: item.remise_pct ? parseFloat(item.remise_pct) : null, date_debut: today }
-        const ex = getGeneralVente(prodId)
-        const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload)
-        if (error) { failed++; continue }
-      }
-      if (item.prix_client_ht && item._client) {
-        const payload = { produit_id: prodId, client_id: item._client.id, prix_vente_ht: parseFloat(item.prix_client_ht), remise_pct: item.remise_client_pct ? parseFloat(item.remise_client_pct) : null, date_debut: today, notes: 'Import Excel' }
-        const ex = getClientVente(prodId, item._client.id)
-        const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload)
-        if (error) { failed++; continue }
-      }
+      if (item.pvpr) { const { error } = await supabase.from('produits').update({ pvpr: parseFloat(item.pvpr) || null }).eq('id', prodId); if (error) failed++ }
+      if (item.prix_achat_ht) { const ex = getLastAchat(prodId); const payload = { produit_id: prodId, prix_achat_ht: parseFloat(item.prix_achat_ht), date_debut: today }; const { error } = ex ? await supabase.from('tarifs_achat').update(payload).eq('id', ex.id) : await supabase.from('tarifs_achat').insert(payload); if (error) { failed++; continue } }
+      if (item.prix_vente_ht) { const ex = getGeneralVente(prodId); const payload = { produit_id: prodId, client_id: null, prix_vente_ht: parseFloat(item.prix_vente_ht), remise_pct: item.remise_pct ? parseFloat(item.remise_pct) : null, date_debut: today }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
+      if (item.prix_client_ht && item._client) { const ex = getClientVente(prodId, item._client.id); const payload = { produit_id: prodId, client_id: item._client.id, prix_vente_ht: parseFloat(item.prix_client_ht), remise_pct: item.remise_client_pct ? parseFloat(item.remise_client_pct) : null, date_debut: today, notes: 'Import Excel' }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
       updated++
     }
     setImportResult({ updated, failed }); setImportingData(false); setImportStep('done'); fetchAll()
   }
 
-  // ── Photo thumbnail ──
   const Thumb = ({ url }) => url
     ? <img src={url} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />
     : <div style={{ width: 36, height: 36, borderRadius: 6, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Package size={16} color="var(--text-muted)" /></div>
 
-  // ════════════════════════════════════════════════════════════
+  // ════════════════════════════════════════════
   // RENDER
-  // ════════════════════════════════════════════════════════════
+  // ════════════════════════════════════════════
 
   return (
     <div>
@@ -486,12 +354,10 @@ export default function Tarifs() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-secondary" onClick={openImportModal}><Upload size={15} /> Importer</button>
-          <button className="btn btn-secondary" onClick={openBulkModal}><TrendingUp size={15} /> Masse</button>
         </div>
       </div>
 
       <div className="page-body">
-        {/* Toggle vue */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           <button className={`btn ${view === 'produit' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setView('produit'); setSelectedClient(null); setExpandedId(null) }}>
             <Package size={15} /> Vue par produit
@@ -501,7 +367,6 @@ export default function Tarifs() {
           </button>
         </div>
 
-        {/* Filters */}
         <div className="filters-bar">
           <div className="search-input" style={{ minWidth: 280 }}>
             <Search />
@@ -567,27 +432,24 @@ export default function Tarifs() {
                             <td>{nbClients > 0 ? <span className="badge badge-blue">{nbClients}</span> : '—'}</td>
                             <td>{isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</td>
                           </tr>,
-
                           isExpanded && (
                             <tr key={`${p.id}-acc`}>
                               <td colSpan={9} style={{ padding: 0, background: 'var(--surface-2)' }}>
                                 <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-
                                   {/* Prix d'achat */}
                                   <div>
                                     <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 8 }}>Prix d'achat</div>
                                     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
                                       <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
                                         <label style={{ fontSize: 11 }}>Prix HT (€)</label>
-                                        <input type="number" step="0.01" value={accAchat.prix_achat_ht} onChange={e => setAccAchat(a => ({ ...a, prix_achat_ht: e.target.value }))} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
+                                        <input type="number" step="0.01" value={accAchat.prix_achat_ht} onChange={e => setAccAchat({ prix_achat_ht: e.target.value })} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
                                       </div>
                                       <button className="btn btn-primary" onClick={() => saveAccAchat(p.id)} disabled={accSaving} style={{ fontSize: 11, padding: '6px 12px', whiteSpace: 'nowrap' }}>
                                         <Save size={13} /> Enregistrer
                                       </button>
                                     </div>
                                   </div>
-
-                                  {/* Prix vente général */}
+                                  {/* Tarif vente général */}
                                   <div>
                                     <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 8 }}>Tarif vente général</div>
                                     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
@@ -604,7 +466,6 @@ export default function Tarifs() {
                                       </button>
                                     </div>
                                   </div>
-
                                   {/* Tarifs clients */}
                                   <div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -659,24 +520,18 @@ export default function Tarifs() {
                 {view === 'client' && !selectedClient && (
                   <table>
                     <thead>
-                      <tr>
-                        <th>Client</th>
-                        <th>Type</th>
-                        <th>Produits référencés</th>
-                        <th>Tarifs spécifiques</th>
-                      </tr>
+                      <tr><th>Client</th><th>Type</th><th>Tarifs spécifiques</th></tr>
                     </thead>
                     <tbody>
                       {clients.length === 0 ? (
-                        <tr><td colSpan={4}><div className="empty-state"><Users /><p>Aucun client</p></div></td></tr>
+                        <tr><td colSpan={3}><div className="empty-state"><Users /><p>Aucun client</p></div></td></tr>
                       ) : clients.filter(c => !search || c.nom.toLowerCase().includes(search.toLowerCase())).map(c => {
-                        const nbTarifs = tarifsVente.filter(t => t.client_id === c.id).length
+                        const nb = tarifsVente.filter(t => t.client_id === c.id).length
                         return (
                           <tr key={c.id} onClick={() => selectClient(c)} style={{ cursor: 'pointer' }}>
                             <td style={{ fontWeight: 500 }}>{c.nom}</td>
                             <td><span className={`badge ${c.type === 'centrale' ? 'badge-blue' : c.type === 'grossiste' ? 'badge-orange' : 'badge-gray'}`}>{c.type}</span></td>
-                            <td>—</td>
-                            <td>{nbTarifs > 0 ? <span className="badge badge-blue">{nbTarifs}</span> : <span style={{ color: 'var(--text-muted)' }}>0</span>}</td>
+                            <td>{nb > 0 ? <span className="badge badge-blue">{nb}</span> : <span style={{ color: 'var(--text-muted)' }}>0</span>}</td>
                           </tr>
                         )
                       })}
@@ -687,7 +542,7 @@ export default function Tarifs() {
                 {/* ══════════ VUE PAR CLIENT — Détail ══════════ */}
                 {view === 'client' && selectedClient && (
                   <>
-                    {/* Header client + remises */}
+                    {/* Header */}
                     <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -700,71 +555,155 @@ export default function Tarifs() {
                         </button>
                       </div>
 
-                      {/* Panel remises cascade */}
+                      {/* ── Panel remises en cascade ── */}
                       {showRemises && (
-                        <div style={{ marginTop: 12, padding: '12px 14px', background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                        <div style={{ marginTop: 12, padding: '14px 16px', background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                             <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)' }}>Remises en cascade</span>
-                            <button className="btn btn-secondary" onClick={addRemise} disabled={savingRemise} style={{ fontSize: 11, padding: '3px 10px' }}>
-                              <Plus size={13} /> Ajouter
+                            <button className="btn btn-secondary" onClick={addRemise} disabled={savingRemise} style={{ fontSize: 11, padding: '4px 10px' }}>
+                              <Plus size={13} /> Ajouter une remise
                             </button>
                           </div>
 
                           {clientRemises.length === 0 ? (
-                            <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-muted)', fontSize: 13 }}>Aucune remise configurée.</div>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                              {clientRemises.map((r, idx) => (
-                                <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 10px', background: 'var(--surface)', borderRadius: 6, border: '1px solid var(--border)' }}>
-                                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, width: 20, textAlign: 'center' }}>{idx + 1}</span>
-                                  <input
-                                    value={r.label}
-                                    onChange={e => updateRemise(r.id, 'label', e.target.value)}
-                                    onBlur={() => saveRemise(r)}
-                                    placeholder="Nom de la remise"
-                                    style={{ flex: 1, padding: '4px 8px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4 }}
-                                  />
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    <input
-                                      type="number"
-                                      step="0.1"
-                                      value={r.pourcentage}
-                                      onChange={e => updateRemise(r.id, 'pourcentage', parseFloat(e.target.value) || 0)}
-                                      onBlur={() => saveRemise(r)}
-                                      style={{ width: 60, padding: '4px 6px', fontSize: 12, textAlign: 'right', border: '1px solid var(--border)', borderRadius: 4 }}
-                                    />
-                                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>%</span>
-                                  </div>
-                                  <select
-                                    value={r.produit_ids === null ? 'all' : 'selection'}
-                                    onChange={e => {
-                                      const val = e.target.value === 'all' ? null : []
-                                      updateRemise(r.id, 'produit_ids', val)
-                                      saveRemise({ ...r, produit_ids: val })
-                                    }}
-                                    style={{ padding: '4px 6px', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4 }}
-                                  >
-                                    <option value="all">Tous les produits</option>
-                                    <option value="selection">Sélection</option>
-                                  </select>
-                                  {r.produit_ids !== null && (
-                                    <span style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 500 }}>
-                                      {r.produit_ids.length} prod.
-                                    </span>
-                                  )}
-                                  <button className="btn-icon" onClick={() => deleteRemise(r.id)} title="Supprimer"><Trash2 size={13} /></button>
-                                </div>
-                              ))}
+                            <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-muted)', fontSize: 13 }}>
+                              Aucune remise. Les prix de vente s'appliquent tels quels.
                             </div>
-                          )}
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              {clientRemises.map((r, idx) => {
+                                const remiseMarque = marques.find(m => m.id === r.marque_id)
+                                const marqueProduits = produits.filter(p => p.marque_id === r.marque_id)
+                                const isPicking = pickerRemiseId === r.id
 
-                          {clientRemises.length > 0 && (
-                            <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--primary-light)', borderRadius: 6, fontSize: 12 }}>
-                              <strong>Effet cascade (base 100 €) :</strong>{' '}
-                              {applyRemisesCascade(100, clientRemises, null).toFixed(2)} €
-                              <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>
-                                ({clientRemises.map(r => `-${r.pourcentage}%`).join(' puis ')})
-                              </span>
+                                return (
+                                  <div key={r.id} style={{ background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
+                                    {/* Ligne principale */}
+                                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 12px' }}>
+                                      <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700, width: 22, textAlign: 'center', flexShrink: 0 }}>{idx + 1}</span>
+
+                                      <input
+                                        value={r.label}
+                                        onChange={e => updateRemiseLocal(r.id, 'label', e.target.value)}
+                                        onBlur={() => saveRemise(r)}
+                                        placeholder="Nom de la remise"
+                                        style={{ flex: 1, padding: '5px 8px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4, minWidth: 0 }}
+                                      />
+
+                                      <select
+                                        value={r.marque_id || ''}
+                                        onChange={e => {
+                                          updateRemiseLocal(r.id, 'marque_id', e.target.value || null)
+                                          updateRemiseLocal(r.id, 'produit_ids', null)
+                                          saveRemise({ ...r, marque_id: e.target.value || null, produit_ids: null })
+                                        }}
+                                        style={{ padding: '5px 6px', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, maxWidth: 140 }}
+                                      >
+                                        <option value="">Tous fournisseurs</option>
+                                        {marques.map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
+                                      </select>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                                        <input
+                                          type="number" step="0.1"
+                                          value={r.pourcentage}
+                                          onChange={e => updateRemiseLocal(r.id, 'pourcentage', parseFloat(e.target.value) || 0)}
+                                          onBlur={() => saveRemise(r)}
+                                          style={{ width: 55, padding: '5px 6px', fontSize: 12, textAlign: 'right', border: '1px solid var(--border)', borderRadius: 4 }}
+                                        />
+                                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>%</span>
+                                      </div>
+
+                                      <select
+                                        value={r.produit_ids === null ? 'all' : 'selection'}
+                                        onChange={e => {
+                                          const val = e.target.value === 'all' ? null : []
+                                          updateRemiseLocal(r.id, 'produit_ids', val)
+                                          saveRemise({ ...r, produit_ids: val })
+                                          if (e.target.value === 'selection') setPickerRemiseId(r.id)
+                                          else setPickerRemiseId(null)
+                                        }}
+                                        style={{ padding: '5px 6px', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4 }}
+                                      >
+                                        <option value="all">Tous les produits</option>
+                                        <option value="selection">Sélection</option>
+                                      </select>
+
+                                      {r.produit_ids !== null && (
+                                        <button
+                                          className="btn btn-secondary"
+                                          onClick={() => setPickerRemiseId(isPicking ? null : r.id)}
+                                          style={{ fontSize: 10, padding: '3px 8px', whiteSpace: 'nowrap' }}
+                                        >
+                                          {r.produit_ids.length} produit(s)
+                                        </button>
+                                      )}
+
+                                      <button className="btn-icon" onClick={() => deleteRemise(r.id)} title="Supprimer"><Trash2 size={13} /></button>
+                                    </div>
+
+                                    {/* Product picker */}
+                                    {isPicking && (
+                                      <div style={{ borderTop: '1px solid var(--border)', padding: '10px 12px', background: 'var(--primary-light)' }}>
+                                        <div style={{ marginBottom: 8 }}>
+                                          <input
+                                            placeholder="Rechercher un produit..."
+                                            value={pickerSearch}
+                                            onChange={e => setPickerSearch(e.target.value)}
+                                            style={{ width: '100%', padding: '5px 8px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4 }}
+                                          />
+                                        </div>
+                                        <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                          {(r.marque_id ? marqueProduits : produits)
+                                            .filter(p => !pickerSearch || p.libelle.toLowerCase().includes(pickerSearch.toLowerCase()))
+                                            .map(p => {
+                                              const selected = (r.produit_ids || []).includes(p.id)
+                                              return (
+                                                <div key={p.id} onClick={() => {
+                                                  toggleRemiseProduit(r.id, p.id)
+                                                }} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderRadius: 4, cursor: 'pointer', background: selected ? 'var(--surface)' : 'transparent' }}>
+                                                  <div style={{
+                                                    width: 18, height: 18, borderRadius: 4, border: `2px solid ${selected ? 'var(--primary)' : 'var(--border)'}`,
+                                                    background: selected ? 'var(--primary)' : 'var(--surface)',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                                                  }}>
+                                                    {selected && <Check size={11} color="#fff" strokeWidth={3} />}
+                                                  </div>
+                                                  <Thumb url={p.photo_url} />
+                                                  <span style={{ fontSize: 12 }}>{p.libelle}</span>
+                                                  {!r.marque_id && p.marques?.nom && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' }}>{p.marques.nom}</span>}
+                                                </div>
+                                              )
+                                            })}
+                                        </div>
+                                        <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+                                          <button className="btn btn-primary" onClick={() => { saveRemise(clientRemises.find(x => x.id === r.id)); setPickerRemiseId(null) }} style={{ fontSize: 11, padding: '4px 12px' }}>
+                                            OK
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+
+                              {/* Preview cascade */}
+                              <div style={{ marginTop: 4, padding: '10px 14px', background: 'var(--primary-light)', borderRadius: 6, fontSize: 12, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                                <strong>Cascade :</strong>
+                                {clientRemises.map((r, i) => (
+                                  <span key={r.id}>
+                                    <span style={{ background: 'var(--surface)', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>
+                                      {r.label || `#${i + 1}`} -{r.pourcentage}%
+                                      {r.marque_id && <span style={{ color: 'var(--text-muted)' }}> ({marques.find(m => m.id === r.marque_id)?.nom})</span>}
+                                      {r.produit_ids !== null && <span style={{ color: 'var(--text-muted)' }}> [{r.produit_ids.length}]</span>}
+                                    </span>
+                                    {i < clientRemises.length - 1 && <span style={{ color: 'var(--text-muted)', margin: '0 2px' }}>→</span>}
+                                  </span>
+                                ))}
+                                <span style={{ marginLeft: 'auto', fontWeight: 600 }}>
+                                  Base 100 € → {applyRemisesCascade(100, clientRemises, null, null).toFixed(2)} €
+                                </span>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -792,7 +731,7 @@ export default function Tarifs() {
                           const general = getGeneralVente(p.id)
                           const ct = clientTarifsMap[p.id]
                           const basePrice = ct?.prix_vente_ht || general?.prix_vente_ht || null
-                          const afterRemises = basePrice ? applyRemisesCascade(basePrice, clientRemises, p.id) : null
+                          const afterRemises = basePrice ? applyRemisesCascade(basePrice, clientRemises, p.id, p.marque_id) : null
                           const achat = getLastAchat(p.id)
                           const marge = calcMarge(achat?.prix_achat_ht, afterRemises || basePrice)
 
@@ -800,15 +739,11 @@ export default function Tarifs() {
                             <tr key={p.id} style={{ opacity: isRef ? 1 : 0.5 }}>
                               <td><Thumb url={p.photo_url} /></td>
                               <td>
-                                <button
-                                  onClick={() => toggleRef(p.id)}
-                                  disabled={savingRef === p.id}
-                                  style={{
-                                    width: 28, height: 28, borderRadius: 6, border: `2px solid ${isRef ? 'var(--primary)' : 'var(--border)'}`,
-                                    background: isRef ? 'var(--primary)' : 'var(--surface)', cursor: 'pointer',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s',
-                                  }}
-                                >
+                                <button onClick={() => toggleRef(p.id)} disabled={savingRef === p.id} style={{
+                                  width: 28, height: 28, borderRadius: 6, border: `2px solid ${isRef ? 'var(--primary)' : 'var(--border)'}`,
+                                  background: isRef ? 'var(--primary)' : 'var(--surface)', cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s',
+                                }}>
                                   {isRef && <Check size={14} color="#fff" strokeWidth={3} />}
                                 </button>
                               </td>
@@ -819,20 +754,15 @@ export default function Tarifs() {
                               <td>{p.marques?.nom || '—'}</td>
                               <td>{general?.prix_vente_ht != null ? `${Number(general.prix_vente_ht).toFixed(2)} €` : '—'}</td>
                               <td>
-                                <input
-                                  type="number"
-                                  step="0.01"
+                                <input type="number" step="0.01"
                                   value={ct?.prix_vente_ht ?? ''}
-                                  onChange={e => setClientTarifsMap(prev => ({
-                                    ...prev,
-                                    [p.id]: { ...prev[p.id], prix_vente_ht: e.target.value, produit_id: p.id, client_id: selectedClient.id }
-                                  }))}
+                                  onChange={e => setClientTarifsMap(prev => ({ ...prev, [p.id]: { ...prev[p.id], prix_vente_ht: e.target.value, produit_id: p.id, client_id: selectedClient.id } }))}
                                   onBlur={e => saveClientPrix(p.id, 'prix_vente_ht', e.target.value)}
                                   placeholder={general?.prix_vente_ht ? `${Number(general.prix_vente_ht).toFixed(2)}` : '—'}
                                   style={{ width: 90, padding: '3px 6px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4, background: ct?.prix_vente_ht ? 'var(--primary-light)' : 'var(--surface)' }}
                                 />
                               </td>
-                              <td style={{ fontWeight: 500, color: 'var(--primary)' }}>
+                              <td style={{ fontWeight: 500, color: afterRemises !== basePrice ? 'var(--primary)' : undefined }}>
                                 {afterRemises != null ? `${afterRemises.toFixed(2)} €` : '—'}
                               </td>
                               <td>{p.pvpr != null ? `${Number(p.pvpr).toFixed(2)} €` : '—'}</td>
@@ -849,105 +779,6 @@ export default function Tarifs() {
           </div>
         </div>
       </div>
-
-      {/* ── Modal majoration en masse ── */}
-      {bulkModal && (
-        <div className="modal-overlay" onClick={() => setBulkModal(false)}>
-          <div className="modal" style={{ maxWidth: 700 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Modification en masse</h3>
-              <button className="btn-icon" onClick={() => setBulkModal(false)}><X size={18} /></button>
-            </div>
-            <div className="modal-body">
-              {bulkStep === 1 && (
-                <>
-                  <p className="section-title">1. Sélection</p>
-                  <div className="form-grid">
-                    <div className="form-group form-full">
-                      <label>Client *</label>
-                      <select value={bulkClient} onChange={e => setBulkClient(e.target.value)}>
-                        <option value="">Sélectionner un client...</option>
-                        {clients.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, margin: '16px 0 12px' }}>
-                    <button className={`btn ${bulkMode === 'marque' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setBulkMode('marque')} style={{ fontSize: 13 }}>Par marque</button>
-                    <button className={`btn ${bulkMode === 'individuel' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setBulkMode('individuel')} style={{ fontSize: 13 }}>Sélection individuelle</button>
-                  </div>
-                  {bulkMode === 'marque' && (
-                    <div className="form-group" style={{ marginBottom: 16 }}>
-                      <label>Marque</label>
-                      <select value={bulkMarque} onChange={e => setBulkMarque(e.target.value)}>
-                        <option value="">Sélectionner une marque...</option>
-                        {marques.map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
-                      </select>
-                    </div>
-                  )}
-                  {bulkMode === 'individuel' && (
-                    <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8, marginBottom: 16 }}>
-                      {produits.map(p => {
-                        const checked = bulkSelectedIds.has(p.id)
-                        return (
-                          <div key={p.id} onClick={() => setBulkSelectedIds(prev => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n })} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', cursor: 'pointer', borderRadius: 5, background: checked ? '#e8f0eb' : 'transparent' }}>
-                            <input type="checkbox" checked={checked} readOnly style={{ accentColor: 'var(--primary)' }} />
-                            <span style={{ fontSize: 13 }}>{p.libelle}</span>
-                            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>{p.marques?.nom || ''}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                  <div className="form-group" style={{ maxWidth: 200 }}>
-                    <label>Pourcentage (%)</label>
-                    <input type="number" step="0.1" value={bulkPourcent} onChange={e => setBulkPourcent(e.target.value)} placeholder="ex: +5 ou -3" />
-                  </div>
-                </>
-              )}
-              {bulkStep === 2 && (
-                <>
-                  <p className="section-title">2. Aperçu ({bulkPourcent >= 0 ? '+' : ''}{bulkPourcent}%)</p>
-                  {bulkPreview.length === 0 ? (
-                    <div className="empty-state" style={{ padding: 24 }}><Package /><p>Aucun produit avec tarif général</p></div>
-                  ) : (
-                    <div className="table-container" style={{ maxHeight: 350, overflowY: 'auto' }}>
-                      <table>
-                        <thead><tr><th>Produit</th><th>Tarif Général</th><th>Ancien</th><th>Nouveau</th></tr></thead>
-                        <tbody>
-                          {bulkPreview.map(item => (
-                            <tr key={item.produit.id}>
-                              <td style={{ fontWeight: 500 }}>{item.produit.libelle}</td>
-                              <td>{Number(item.tarifGeneral).toFixed(2)} €</td>
-                              <td>{item.ancienPrix != null ? `${Number(item.ancienPrix).toFixed(2)} €` : '—'}</td>
-                              <td style={{ fontWeight: 600, color: 'var(--primary)' }}>{item.nouveauPrix.toFixed(2)} €</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-            <div className="modal-footer">
-              {bulkStep === 1 && (
-                <>
-                  <button className="btn btn-secondary" onClick={() => setBulkModal(false)}>Annuler</button>
-                  <button className="btn btn-primary" onClick={computeBulkPreview} disabled={!bulkCanPreview}>Aperçu</button>
-                </>
-              )}
-              {bulkStep === 2 && (
-                <>
-                  <button className="btn btn-secondary" onClick={() => setBulkStep(1)}>Retour</button>
-                  <button className="btn btn-primary" onClick={applyBulk} disabled={applyingBulk || bulkPreview.length === 0}>
-                    {applyingBulk ? 'Application...' : `Appliquer à ${bulkPreview.length} produit(s)`}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Modal import tarifs ── */}
       {importModal && (
@@ -972,15 +803,10 @@ export default function Tarifs() {
             </div>
             <div className="modal-body" style={{ flex: 1, overflowY: 'auto' }}>
               {importStep === 'upload' && (
-                <div
-                  onDrop={e => { e.preventDefault(); handleImportFile(e.dataTransfer.files[0]) }}
-                  onDragOver={e => e.preventDefault()}
-                  onClick={() => document.getElementById('tarif-file-input').click()}
-                  style={{ border: '2px dashed var(--border)', borderRadius: 12, padding: '60px 40px', textAlign: 'center', cursor: 'pointer' }}
-                >
+                <div onDrop={e => { e.preventDefault(); handleImportFile(e.dataTransfer.files[0]) }} onDragOver={e => e.preventDefault()} onClick={() => document.getElementById('tarif-file-input').click()} style={{ border: '2px dashed var(--border)', borderRadius: 12, padding: '60px 40px', textAlign: 'center', cursor: 'pointer' }}>
                   <FileSpreadsheet size={40} color="var(--text-muted)" style={{ marginBottom: 16 }} />
                   <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>Glissez un fichier Excel ici</div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>ou cliquez pour choisir</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>ou cliquez pour choisir</div>
                   <input id="tarif-file-input" type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={e => handleImportFile(e.target.files[0])} />
                 </div>
               )}
@@ -1041,11 +867,8 @@ export default function Tarifs() {
                             <tr key={i}>
                               <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{item.ean13}</td>
                               <td style={{ fontWeight: 500, fontSize: 12 }}>{item._produit.libelle}</td>
-                              <td>{item.prix_achat_ht || '—'}</td>
-                              <td>{item.prix_vente_ht || '—'}</td>
-                              <td>{item.pvpr || '—'}</td>
-                              <td style={{ fontSize: 12 }}>{item._client?.nom || '—'}</td>
-                              <td>{item.prix_client_ht || '—'}</td>
+                              <td>{item.prix_achat_ht || '—'}</td><td>{item.prix_vente_ht || '—'}</td><td>{item.pvpr || '—'}</td>
+                              <td style={{ fontSize: 12 }}>{item._client?.nom || '—'}</td><td>{item.prix_client_ht || '—'}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -1067,20 +890,8 @@ export default function Tarifs() {
             </div>
             <div className="modal-footer">
               {importStep === 'upload' && <button className="btn btn-secondary" onClick={() => setImportModal(false)}>Annuler</button>}
-              {importStep === 'mapping' && (
-                <>
-                  <button className="btn btn-secondary" onClick={() => setImportStep('upload')}>Retour</button>
-                  <button className="btn btn-primary" onClick={validateImportMapping}>Valider <ChevronRight size={15} /></button>
-                </>
-              )}
-              {importStep === 'validation' && (
-                <>
-                  <button className="btn btn-secondary" onClick={() => setImportStep('mapping')}>Retour</button>
-                  <button className="btn btn-primary" onClick={doImportTarifs} disabled={importingData || importValidation.toProcess.length === 0}>
-                    {importingData ? 'Import...' : `Importer ${importValidation.toProcess.length} tarif(s)`}
-                  </button>
-                </>
-              )}
+              {importStep === 'mapping' && (<><button className="btn btn-secondary" onClick={() => setImportStep('upload')}>Retour</button><button className="btn btn-primary" onClick={validateImportMapping}>Valider <ChevronRight size={15} /></button></>)}
+              {importStep === 'validation' && (<><button className="btn btn-secondary" onClick={() => setImportStep('mapping')}>Retour</button><button className="btn btn-primary" onClick={doImportTarifs} disabled={importingData || importValidation.toProcess.length === 0}>{importingData ? 'Import...' : `Importer ${importValidation.toProcess.length} tarif(s)`}</button></>)}
               {importStep === 'done' && <button className="btn btn-primary" onClick={() => setImportModal(false)}>Fermer</button>}
             </div>
           </div>
