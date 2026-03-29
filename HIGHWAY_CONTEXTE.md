@@ -47,11 +47,11 @@ Highway/
             ├── Login.jsx          ✅ auth via RPC sécurisé
             ├── Dashboard.jsx      ✅ stats globales
             ├── Marques.jsx        ✅ CRUD marques + contacts multiples + catégories par marque
-            ├── Produits.jsx       ✅ Catalogue — volet droit fiche produit + CRUD
+            ├── Produits.jsx       ✅ Articles — volet droit fiche produit + CRUD
             ├── ImportProduits.jsx ✅ import Excel avec mapping colonnes
-            ├── Clients.jsx        ✅ CRUD complet
+            ├── Clients.jsx        ✅ CRUD complet + onglets (infos, contacts, logistique, facturation)
             ├── Stock.jsx          ✅ lots + alertes DLC
-            ├── Tarifs.jsx         ✅ gestion tarifs achat/vente/clients
+            ├── Tarifs.jsx         ✅ Référencement et Tarifs — vue produit/client, remises cascade, prix fixés
             ├── Utilisateurs.jsx   ✅ gestion via RPC sécurisé
             ├── Fournisseurs.jsx   ✅ gestion fournisseurs
             └── Placeholders.jsx   ⏳ CommandesVente, CommandesAchat, Expeditions, Factures
@@ -167,7 +167,7 @@ logo color: #D4B8F0          /* violet clair */
 - **Nomenclature catégories** : choix par marque entre générale ou spécifique
 - **Catégories générales** : gérées via bouton dédié dans le header de la page
 
-### Catalogue (Produits)
+### Articles (Produits)
 - **Clic sur ligne** → volet droit 620px (pas de modal) avec fiche complète
 - **6 onglets** : Général, Colisage, Conservation, Ingrédients, Douane, Tarifs
 - **Traduction auto** : description et ingrédients VO → FR via Google Translate
@@ -176,6 +176,27 @@ logo color: #D4B8F0          /* violet clair */
 - **Photo** : cliquable pour zoom plein écran
 - **Modal création** séparée (nouveau produit uniquement)
 - **Statuts** affichés avec majuscule (Actif, En référencement, Arrêté, Inactif)
+
+### Clients
+- Modale 640px avec **4 onglets** : Infos générales, Contacts, Logistique, Facturation
+- **Contacts multiples** : même pattern que Marques (ligne compacte lecture, crayon pour éditer)
+- Mode lecture/édition par section avec crayon
+
+### Référencement et Tarifs
+- **Vue par produit** : tableau avec photo, accordion inline au clic
+  - Prix d'achat (éditable), tarif vente général (éditable)
+  - Sous-table clients : prix client HT (éditable), après remises (calculé), prix fixé (optionnel), prix effectif
+- **Vue par client** : sélection client → tableau de tous les produits
+  - **Toggle référencement** : checkbox pour référencer/déréférencer un produit chez le client
+  - Prix vente HT général, après remises (calculé), prix fixé (éditable), prix effectif
+  - Badge **FIXÉ** (jaune) quand un prix override existe
+  - Bouton X par ligne + bouton "Supprimer tous les prix fixés"
+- **Remises en cascade** (par client) :
+  - Chaque remise : label, pourcentage, fournisseur (marque), scope (tous produits ou sélection)
+  - Product picker avec photos/recherche pour la sélection
+  - Preview cascade : affiche l'enchaînement et le résultat
+  - Logique : prix général → remises cascade → prix effectif (sauf si prix fixé = override)
+- **Import Excel** : mapping colonnes, validation, aperçu
 
 ---
 
@@ -188,8 +209,11 @@ logo color: #D4B8F0          /* violet clair */
 | `categories` | Catégories produits — champs : nom, parent_id, **marque_id** (FK nullable, null = générale) |
 | `produits` | Catalogue produits — champs classiques + **description_fr**, **type_conditionnement** (unites/kg), **poids_colis_kg**, **longueur/largeur/hauteur_colis_cm**, **poids_produit_brut_kg**, **poids_produit_net_kg** |
 | `clients` | Clients (centrale/indépendant/grossiste) |
+| `client_contacts` | Contacts par client — champs : client_id (FK), prenom, nom, fonction, email, telephone |
+| `client_produit_references` | Référencement produit par client — champs : client_id (FK), produit_id (FK), UNIQUE |
+| `client_remises` | Remises en cascade par client — champs : client_id (FK), label, pourcentage, marque_id (FK nullable), produit_ids (uuid[] nullable = tous), ordre |
 | `tarifs_achat` | Prix achat HT par produit/marque |
-| `tarifs_vente` | Prix vente HT général ou par client |
+| `tarifs_vente` | Prix vente HT général (client_id NULL) ou prix fixé client (client_id renseigné) |
 | `lots` | Lots avec DLC, localisation, statut |
 | `mouvements_stock` | Entrées/sorties stock |
 | `portail_acces` | Accès portail client |
@@ -202,14 +226,20 @@ logo color: #D4B8F0          /* violet clair */
 
 ---
 
+## Sidebar (navigation)
+- **Catalogue** (section) : Marques, Articles
+- **Commercial** (section) : Clients, Fournisseurs, Référencement et Tarifs
+- **Logistique** (section) : Stock, Commandes achat, Commandes vente, Expéditions
+- **Finance** (section) : Factures
+- **Admin** (section, admin only) : Utilisateurs
+
 ## Fonctionnalités à construire (par priorité)
 1. ⏳ **Commandes vente** — saisie, suivi, statuts
 2. ⏳ **Commandes achat** — vers marques/fournisseurs
 3. ⏳ **Expéditions** — préparation + envoi
 4. ⏳ **Factures** — génération PDF
 5. ⏳ **Portail client** — app séparée, login client, catalogue filtré, commandes
-6. ⏳ **Tarification client** — prix spécifiques par client
-7. ⏳ **Intégration EDI** — Carrefour, Franprix
+6. ⏳ **Intégration EDI** — Carrefour, Franprix
 
 ---
 
