@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useBlocker } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent, Package, Users } from 'lucide-react'
@@ -28,13 +29,10 @@ export default function Tarifs() {
   const [search, setSearch] = useState('')
   const [filterMarque, setFilterMarque] = useState('')
 
-  // Vue par produit — accordion
+  // Vue par produit — édition inline
   const [expandedId, setExpandedId] = useState(null)
-  const [accAchat, setAccAchat] = useState({ prix_achat_ht: '' })
-  const [accVenteGen, setAccVenteGen] = useState({ prix_vente_ht: '' })
-  const [accPvpr, setAccPvpr] = useState('')
-  const [accTva, setAccTva] = useState(5.5)
-  const [accSaving, setAccSaving] = useState(false)
+  const [rowEdits, setRowEdits] = useState({}) // { [produitId]: { tva, achat, vente, pvpr } }
+  const [rowSaving, setRowSaving] = useState(null)
   const [allRemises, setAllRemises] = useState([]) // toutes les remises de tous les clients
 
   // Vue par client
@@ -105,27 +103,68 @@ export default function Tarifs() {
   // VUE PAR PRODUIT — Accordion
   // ════════════════════════════════════════════
 
-  function toggleAccordion(produitId) {
-    if (expandedId === produitId) { setExpandedId(null); return }
-    setExpandedId(produitId)
-    const prod = produits.find(p => p.id === produitId)
-    const achat = getLastAchat(produitId)
-    setAccAchat({ prix_achat_ht: achat?.prix_achat_ht ?? '' })
-    const gen = getGeneralVente(produitId)
-    setAccVenteGen({ prix_vente_ht: gen?.prix_vente_ht ?? '' })
-    setAccPvpr(prod?.pvpr ?? '')
-    setAccTva(prod?.taux_tva ?? 5.5)
+  // Initialise les valeurs d'édition d'une ligne à partir des données actuelles
+  function getRowValues(p) {
+    const achat = getLastAchat(p.id)
+    const gen = getGeneralVente(p.id)
+    return {
+      tva: p.taux_tva ?? 5.5,
+      achat: achat?.prix_achat_ht ?? '',
+      vente: gen?.prix_vente_ht ?? '',
+      pvpr: p.pvpr ?? '',
+    }
   }
 
-  async function saveAccAll(produitId) {
-    setAccSaving(true)
+  function getEditRow(p) {
+    return rowEdits[p.id] || getRowValues(p)
+  }
+
+  function setEditField(produitId, field, value) {
+    setRowEdits(prev => {
+      const prod = produits.find(pp => pp.id === produitId)
+      const base = prev[produitId] || getRowValues(prod)
+      return { ...prev, [produitId]: { ...base, [field]: value } }
+    })
+  }
+
+  function isRowDirty(p) {
+    const edit = rowEdits[p.id]
+    if (!edit) return false
+    const orig = getRowValues(p)
+    return String(edit.tva) !== String(orig.tva) || String(edit.achat) !== String(orig.achat) || String(edit.vente) !== String(orig.vente) || String(edit.pvpr) !== String(orig.pvpr)
+  }
+
+  const hasDirtyRows = produits.some(p => isRowDirty(p))
+
+  // Warning avant de quitter avec des modifs non sauvées (refresh / fermeture onglet)
+  useEffect(() => {
+    const handler = e => { if (hasDirtyRows) { e.preventDefault(); e.returnValue = '' } }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [hasDirtyRows])
+
+  // Warning avant navigation interne (changement de page React Router)
+  useBlocker(useCallback(({ currentLocation, nextLocation }) => {
+    if (!hasDirtyRows) return false
+    if (currentLocation.pathname === nextLocation.pathname) return false
+    return !window.confirm('Vous avez des modifications non enregistrées. Quitter sans sauvegarder ?')
+  }, [hasDirtyRows]))
+
+  function toggleAccordion(produitId) {
+    setExpandedId(prev => prev === produitId ? null : produitId)
+  }
+
+  async function saveRow(produitId) {
+    const prod = produits.find(pp => pp.id === produitId)
+    const edit = getEditRow(prod)
+    setRowSaving(produitId)
     const today = new Date().toISOString().slice(0, 10)
     const r2 = v => Math.round(parseFloat(v) * 100) / 100
     let hasError = false
 
     // 1. Prix d'achat
-    if (accAchat.prix_achat_ht !== '' && accAchat.prix_achat_ht !== null) {
-      const payload = { produit_id: produitId, prix_achat_ht: r2(accAchat.prix_achat_ht), date_debut: today }
+    if (edit.achat !== '' && edit.achat !== null) {
+      const payload = { produit_id: produitId, prix_achat_ht: r2(edit.achat), date_debut: today }
       const existing = getLastAchat(produitId)
       const { error } = existing
         ? await supabase.from('tarifs_achat').update(payload).eq('id', existing.id)
@@ -134,8 +173,8 @@ export default function Tarifs() {
     }
 
     // 2. Tarif vente général
-    if (accVenteGen.prix_vente_ht !== '' && accVenteGen.prix_vente_ht !== null) {
-      const payload = { produit_id: produitId, client_id: null, prix_vente_ht: r2(accVenteGen.prix_vente_ht), remise_pct: null, date_debut: today }
+    if (edit.vente !== '' && edit.vente !== null) {
+      const payload = { produit_id: produitId, client_id: null, prix_vente_ht: r2(edit.vente), remise_pct: null, date_debut: today }
       const existing = getGeneralVente(produitId)
       const { error } = existing
         ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
@@ -144,15 +183,17 @@ export default function Tarifs() {
     }
 
     // 3. PVPR + TVA sur la fiche produit
-    const prodUpdate = {}
-    if (accPvpr !== '' && accPvpr !== null) prodUpdate.pvpr = r2(accPvpr)
+    const prodUpdate = { taux_tva: parseFloat(edit.tva) }
+    if (edit.pvpr !== '' && edit.pvpr !== null) prodUpdate.pvpr = r2(edit.pvpr)
     else prodUpdate.pvpr = null
-    prodUpdate.taux_tva = parseFloat(accTva)
     const { error: errProd } = await supabase.from('produits').update(prodUpdate).eq('id', produitId)
     if (errProd) { toast('Erreur PVPR/TVA : ' + errProd.message, 'error'); hasError = true }
 
-    setAccSaving(false)
-    if (!hasError) toast('Tarifs enregistrés', 'success')
+    setRowSaving(null)
+    if (!hasError) {
+      toast('Tarifs enregistrés', 'success')
+      setRowEdits(prev => { const n = { ...prev }; delete n[produitId]; return n })
+    }
     fetchAll()
   }
 
@@ -427,12 +468,14 @@ export default function Tarifs() {
                       <tr>
                         <th style={{ width: 44 }}></th>
                         <th>Produit</th>
-                        <th>Marque</th>
-                        <th>TVA</th>
+                        <th style={{ width: 70 }}>TVA</th>
                         <th>Achat HT</th>
+                        <th style={{ width: 80 }}>Achat TTC</th>
                         <th>Vente HT</th>
+                        <th style={{ width: 80 }}>Vente TTC</th>
                         <th>PVPR TTC</th>
-                        <th>Marge</th>
+                        <th style={{ width: 70 }}>Marge</th>
+                        <th style={{ width: 70 }}></th>
                         <th style={{ width: 30 }}></th>
                       </tr>
                     </thead>
@@ -440,79 +483,53 @@ export default function Tarifs() {
                       {filteredProduits.length === 0 ? (
                         <tr><td colSpan={10}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
                       ) : filteredProduits.map(p => {
-                        const achat = getLastAchat(p.id)
-                        const vente = getGeneralVente(p.id)
-                        const achatHT = achat?.prix_achat_ht
-                        const venteHT = vente?.prix_vente_ht
-                        const tva = p.taux_tva ?? 5.5
+                        const edit = getEditRow(p)
+                        const dirty = isRowDirty(p)
+                        const saving = rowSaving === p.id
+                        const tva = parseFloat(edit.tva) || 0
+                        const achatHT = edit.achat !== '' ? parseFloat(edit.achat) : null
+                        const venteHT = edit.vente !== '' ? parseFloat(edit.vente) : null
+                        const pvprVal = edit.pvpr !== '' ? parseFloat(edit.pvpr) : null
                         const marge = calcMarge(achatHT, venteHT)
                         const isExpanded = expandedId === p.id
+                        const inputStyle = { padding: '4px 6px', fontSize: 12, width: '100%' }
 
                         return [
-                          <tr key={p.id} onClick={() => toggleAccordion(p.id)} style={{ cursor: 'pointer', background: isExpanded ? 'var(--primary-light)' : undefined }}>
+                          <tr key={p.id} style={{ background: dirty ? '#FFFDE7' : isExpanded ? 'var(--primary-light)' : undefined }}>
                             <td><Thumb url={p.photo_url} /></td>
-                            <td>
+                            <td style={{ cursor: 'pointer' }} onClick={() => toggleAccordion(p.id)}>
                               <div style={{ fontWeight: 500 }}>{p.libelle}</div>
                               {p.ean13 && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.ean13}</div>}
                             </td>
-                            <td>{p.marques?.nom || '—'}</td>
-                            <td>{tva}%</td>
-                            <td>{achatHT != null ? `${Number(achatHT).toFixed(2)} €` : '—'}</td>
-                            <td style={{ fontWeight: 500 }}>{venteHT != null ? `${Number(venteHT).toFixed(2)} €` : '—'}</td>
-                            <td>{p.pvpr != null ? `${Number(p.pvpr).toFixed(2)} €` : '—'}</td>
+                            <td>
+                              <select value={edit.tva} onChange={e => setEditField(p.id, 'tva', parseFloat(e.target.value))} style={{ ...inputStyle, width: 60 }}>
+                                <option value="0">0%</option><option value="5.5">5.5%</option><option value="10">10%</option><option value="20">20%</option>
+                              </select>
+                            </td>
+                            <td><input type="number" step="0.01" value={edit.achat} onChange={e => setEditField(p.id, 'achat', e.target.value)} placeholder="0.00" style={inputStyle} /></td>
+                            <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)}` : '—'}</td>
+                            <td><input type="number" step="0.01" value={edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} placeholder="0.00" style={inputStyle} /></td>
+                            <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)}` : '—'}</td>
+                            <td><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} placeholder="0.00" style={inputStyle} /></td>
                             <td>{margeBadge(marge)}</td>
-                            <td>{isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</td>
+                            <td>
+                              {dirty && (
+                                <button className="btn btn-primary" onClick={() => saveRow(p.id)} disabled={saving} style={{ fontSize: 10, padding: '3px 8px', whiteSpace: 'nowrap' }}>
+                                  <Save size={12} /> {saving ? '...' : 'OK'}
+                                </button>
+                              )}
+                            </td>
+                            <td style={{ cursor: 'pointer' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</td>
                           </tr>,
                           isExpanded && (
                             <tr key={`${p.id}-acc`}>
-                              <td colSpan={10} style={{ padding: 0, background: 'var(--surface-2)' }}>
-                                <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                                  {/* Ligne tarifs éditables */}
-                                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
-                                    <div className="form-group" style={{ marginBottom: 0, width: 100 }}>
-                                      <label style={{ fontSize: 11 }}>TVA (%)</label>
-                                      <select value={accTva} onChange={e => setAccTva(parseFloat(e.target.value))} style={{ padding: '5px 8px', fontSize: 13 }}>
-                                        <option value="0">0%</option><option value="5.5">5.5%</option><option value="10">10%</option><option value="20">20%</option>
-                                      </select>
-                                    </div>
-                                    <div className="form-group" style={{ marginBottom: 0, width: 130 }}>
-                                      <label style={{ fontSize: 11 }}>Achat HT (€)</label>
-                                      <input type="number" step="0.01" value={accAchat.prix_achat_ht} onChange={e => setAccAchat({ prix_achat_ht: e.target.value })} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
-                                    </div>
-                                    <div className="form-group" style={{ marginBottom: 0, width: 130, pointerEvents: 'none' }}>
-                                      <label style={{ fontSize: 11 }}>Achat TTC</label>
-                                      <input type="text" disabled value={accAchat.prix_achat_ht ? `${(parseFloat(accAchat.prix_achat_ht) * (1 + accTva / 100)).toFixed(2)} €` : '—'} style={{ padding: '5px 8px', fontSize: 13, background: 'var(--surface)', color: 'var(--text-secondary)' }} />
-                                    </div>
-                                    <div style={{ width: 1, height: 36, background: 'var(--border)' }} />
-                                    <div className="form-group" style={{ marginBottom: 0, width: 130 }}>
-                                      <label style={{ fontSize: 11 }}>Vente HT (€)</label>
-                                      <input type="number" step="0.01" value={accVenteGen.prix_vente_ht} onChange={e => setAccVenteGen({ prix_vente_ht: e.target.value })} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
-                                    </div>
-                                    <div className="form-group" style={{ marginBottom: 0, width: 130, pointerEvents: 'none' }}>
-                                      <label style={{ fontSize: 11 }}>Vente TTC</label>
-                                      <input type="text" disabled value={accVenteGen.prix_vente_ht ? `${(parseFloat(accVenteGen.prix_vente_ht) * (1 + accTva / 100)).toFixed(2)} €` : '—'} style={{ padding: '5px 8px', fontSize: 13, background: 'var(--surface)', color: 'var(--text-secondary)' }} />
-                                    </div>
-                                    <div style={{ width: 1, height: 36, background: 'var(--border)' }} />
-                                    <div className="form-group" style={{ marginBottom: 0, width: 130 }}>
-                                      <label style={{ fontSize: 11 }}>PVPR TTC (€)</label>
-                                      <input type="number" step="0.01" value={accPvpr} onChange={e => setAccPvpr(e.target.value)} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
-                                    </div>
-                                    {accAchat.prix_achat_ht && accVenteGen.prix_vente_ht && (
-                                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', alignSelf: 'center', paddingTop: 14 }}>
-                                        Marge : {margeBadge(calcMarge(parseFloat(accAchat.prix_achat_ht), parseFloat(accVenteGen.prix_vente_ht)))}
-                                      </div>
-                                    )}
-                                    <div style={{ marginLeft: 'auto', paddingTop: 14 }}>
-                                      <button className="btn btn-primary" onClick={() => saveAccAll(p.id)} disabled={accSaving} style={{ fontSize: 12, padding: '7px 20px', gap: 6 }}>
-                                        <Save size={14} /> {accSaving ? '...' : 'Enregistrer'}
-                                      </button>
-                                    </div>
-                                  </div>
+                              <td colSpan={11} style={{ padding: 0, background: 'var(--surface-2)' }}>
+                                <div style={{ padding: '12px 20px' }}>
                                   {/* Tableau clients */}
                                   {(() => {
-                                    const achatVal = accAchat.prix_achat_ht ? parseFloat(accAchat.prix_achat_ht) : null
-                                    const genVal = accVenteGen.prix_vente_ht ? parseFloat(accVenteGen.prix_vente_ht) : null
-                                    const pvprHT = accPvpr ? parseFloat(accPvpr) / (1 + accTva / 100) : null
+                                    const achatVal = achatHT
+                                    const genVal = venteHT
+                                    const pvprHT = pvprVal ? pvprVal / (1 + tva / 100) : null
                                     const clientRows = clients.map(c => {
                                       const fixed = getClientVente(p.id, c.id)
                                       const remisesClient = allRemises.filter(r => r.client_id === c.id)
@@ -567,7 +584,7 @@ export default function Tarifs() {
                                                 </td>
                                                 <td style={{ fontSize: 12, padding: '5px 10px', fontWeight: 700 }}>{cr.prixFinal != null ? `${cr.prixFinal.toFixed(2)} €` : '—'}</td>
                                                 <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeHW != null ? margeBadge(cr.margeHW) : '—'}</td>
-                                                <td style={{ fontSize: 12, padding: '5px 10px', color: 'var(--text-secondary)' }}>{accPvpr ? `${parseFloat(accPvpr).toFixed(2)} €` : '—'}</td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px', color: 'var(--text-secondary)' }}>{pvprVal ? `${pvprVal.toFixed(2)} €` : '—'}</td>
                                                 <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeClient != null ? margeBadge(cr.margeClient) : '—'}</td>
                                               </tr>
                                             ))}
