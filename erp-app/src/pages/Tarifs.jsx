@@ -505,10 +505,6 @@ export default function Tarifs() {
                                         <label style={{ fontSize: 11 }}>Prix HT (€)</label>
                                         <input type="number" step="0.01" value={accVenteGen.prix_vente_ht} onChange={e => setAccVenteGen(v => ({ ...v, prix_vente_ht: e.target.value }))} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
                                       </div>
-                                      <div className="form-group" style={{ marginBottom: 0, width: 80 }}>
-                                        <label style={{ fontSize: 11 }}>Remise %</label>
-                                        <input type="number" step="0.1" value={accVenteGen.remise_pct} onChange={e => setAccVenteGen(v => ({ ...v, remise_pct: e.target.value }))} placeholder="0" style={{ padding: '5px 8px', fontSize: 13 }} />
-                                      </div>
                                       <button className="btn btn-primary" onClick={() => saveAccVenteGen(p.id)} disabled={accSaving} style={{ fontSize: 11, padding: '6px 12px', whiteSpace: 'nowrap' }}>
                                         <Save size={13} /> Enregistrer
                                       </button>
