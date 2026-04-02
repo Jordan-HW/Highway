@@ -797,14 +797,14 @@ export default function Produits() {
     switch (col.key) {
       case 'photo':
         return row.photo_url
-          ? <img src={row.photo_url} alt="" onClick={e => { e.stopPropagation(); setPhotoZoomUrl(row.photo_url) }} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)', cursor: 'zoom-in' }} />
-          : <div style={{ width: 36, height: 36, borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Package size={16} color="var(--text-muted)" /></div>
+          ? <img src={row.photo_url} alt="" onClick={e => { e.stopPropagation(); setPhotoZoomUrl(row.photo_url) }} style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)', cursor: 'zoom-in' }} />
+          : <div style={{ width: 28, height: 28, borderRadius: 4, background: 'var(--surface-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Package size={12} color="var(--text-muted)" /></div>
       case 'libelle':
-        return <div><div style={{ fontWeight: 500 }}>{row.libelle}</div>{row.libelle_court && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{row.libelle_court}</div>}</div>
-      case 'ean13':          return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{row.ean13 || '—'}</span>
+        return <div><div style={{ fontWeight: 500, fontSize: 12 }}>{row.libelle}</div>{row.libelle_court && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{row.libelle_court}</div>}</div>
+      case 'ean13':          return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>{row.ean13 || '—'}</span>
       case 'marque_nom':     return row.marques?.nom || '—'
       case 'categorie_nom':  return row.categories?.nom ? <span className="badge badge-gray">{row.categories.nom}</span> : '—'
-      case 'ref_marque':     return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{row.ref_marque || '—'}</span>
+      case 'ref_marque':     return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>{row.ref_marque || '—'}</span>
       case 'statut':         return <span className={`badge ${statutBadge(row.statut)}`}>{formatStatut(row.statut)}</span>
       case 'pcb':            return row.pcb || '—'
       case 'poids_brut_kg':  return row.poids_brut_kg  ? `${row.poids_brut_kg} kg`  : '—'
@@ -816,9 +816,9 @@ export default function Produits() {
       case 'temperature_stockage': return <span className={`badge ${tempBadge(row.temperature_stockage)}`}>{row.temperature_stockage}</span>
       case 'dlc':            return row.dlc_type && row.dlc_duree_jours ? `${row.dlc_type} ${row.dlc_duree_jours}j` : '—'
       case 'dlc_duree_jours':return row.dlc_duree_jours ? `${row.dlc_duree_jours} j` : '—'
-      case 'code_douanier':  return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{row.code_douanier || '—'}</span>
+      case 'code_douanier':  return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>{row.code_douanier || '—'}</span>
       case 'pays_origine':   return row.pays_origine   || '—'
-      case 'meursing_code':  return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{row.meursing_code || '—'}</span>
+      case 'meursing_code':  return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>{row.meursing_code || '—'}</span>
       default: return '—'
     }
   }
@@ -868,10 +868,10 @@ export default function Produits() {
         <div className="card">
           <div className="table-container">
             {loading ? <div className="loading">Chargement...</div> : (
-              <table>
+              <table style={{ fontSize: 11 }}>
                 <thead>
                   <tr>
-                    <th style={{ width: 36, padding: '10px 8px' }}>
+                    <th style={{ width: 32, padding: '6px 6px' }}>
                       <div onClick={toggleSelectAll} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {allSelected ? <CheckSquare size={16} color="var(--primary)" /> : <Square size={16} color="var(--text-muted)" />}
                       </div>
@@ -922,16 +922,16 @@ export default function Produits() {
                     const isSel = selectedIds.has(row.id)
                     return (
                       <tr key={row.id} onClick={() => openDetail(row)} style={{ background: isSel ? '#e8f0eb' : undefined }}>
-                        <td style={{ padding: '10px 8px' }} onClick={e => toggleSelect(row.id, e)}>
+                        <td style={{ padding: '3px 6px' }} onClick={e => toggleSelect(row.id, e)}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                            {isSel ? <CheckSquare size={16} color="var(--primary)" /> : <Square size={16} color="var(--text-muted)" />}
+                            {isSel ? <CheckSquare size={14} color="var(--primary)" /> : <Square size={14} color="var(--text-muted)" />}
                           </div>
                         </td>
-                        {activeCols.map(col => <td key={col.key}>{renderCell(col, row)}</td>)}
-                        <td onClick={e => e.stopPropagation()}>
-                          <div style={{ display: 'flex', gap: 4 }}>
-                            <button className="btn-icon" onClick={() => openDetail(row)}><Edit2 size={14} /></button>
-                            <button className="btn-icon" onClick={() => remove(row.id)}><Trash2 size={14} /></button>
+                        {activeCols.map(col => <td key={col.key} style={{ padding: '3px 6px' }}>{renderCell(col, row)}</td>)}
+                        <td style={{ padding: '3px 6px' }} onClick={e => e.stopPropagation()}>
+                          <div style={{ display: 'flex', gap: 3 }}>
+                            <button className="btn-icon" onClick={() => openDetail(row)}><Edit2 size={13} /></button>
+                            <button className="btn-icon" onClick={() => remove(row.id)}><Trash2 size={13} /></button>
                           </div>
                         </td>
                       </tr>
