@@ -33,11 +33,9 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
   const [editSection, setEditSection] = useState(null)
   const [form, setForm] = useState({})
   const [saving, setSaving] = useState(false)
-  const [tarifAchat, setTarifAchat] = useState({ prix_unitaire_ht: '', taux_tva: 5.5 })
-  const [tarifVenteGeneral, setTarifVenteGeneral] = useState({ prix_unitaire_ht: '', remise_pourcent: '' })
-  const [tarifsVenteClients, setTarifsVenteClients] = useState([])
+  const [tarifAchat, setTarifAchat] = useState(null)
+  const [tarifVenteGeneral, setTarifVenteGeneral] = useState(null)
   const [loadingTarifs, setLoadingTarifs] = useState(false)
-  const [savingTarif, setSavingTarif] = useState(false)
   const [tooltipVisible, setTooltipVisible] = useState(false)
 
   const prevIdRef = useRef(null)
@@ -60,66 +58,11 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
     setLoadingTarifs(true)
     const [{ data: achats }, { data: ventes }] = await Promise.all([
       supabase.from('tarifs_achat').select('*').eq('produit_id', produitId).order('date_debut', { ascending: false }).limit(1),
-      supabase.from('tarifs_vente').select('*, clients(nom)').eq('produit_id', produitId).order('date_debut', { ascending: false }),
+      supabase.from('tarifs_vente').select('*').eq('produit_id', produitId).is('client_id', null).order('date_debut', { ascending: false }).limit(1),
     ])
-    if (achats && achats.length > 0) {
-      setTarifAchat({ prix_unitaire_ht: achats[0].prix_unitaire_ht ?? '', taux_tva: achats[0].taux_tva ?? 5.5 })
-    } else {
-      setTarifAchat({ prix_unitaire_ht: '', taux_tva: 5.5 })
-    }
-    const general = ventes?.find(v => !v.client_id)
-    setTarifVenteGeneral(general ? { prix_unitaire_ht: general.prix_unitaire_ht ?? '', remise_pourcent: general.remise_pourcent ?? '' } : { prix_unitaire_ht: '', remise_pourcent: '' })
-    setTarifsVenteClients(ventes?.filter(v => v.client_id) || [])
+    setTarifAchat(achats?.[0] || null)
+    setTarifVenteGeneral(ventes?.[0] || null)
     setLoadingTarifs(false)
-  }
-
-  async function saveTarifAchat() {
-    if (!product) return
-    if (!tarifAchat.prix_unitaire_ht && tarifAchat.prix_unitaire_ht !== 0) return toast('Saisissez un prix HT', 'error')
-    setSavingTarif(true)
-    const payload = {
-      produit_id: product.id,
-      prix_unitaire_ht: parseFloat(tarifAchat.prix_unitaire_ht),
-      taux_tva: parseFloat(tarifAchat.taux_tva),
-      date_debut: new Date().toISOString().slice(0, 10),
-    }
-    const { data: existing } = await supabase.from('tarifs_achat').select('id').eq('produit_id', product.id).order('date_debut', { ascending: false }).limit(1)
-    let error
-    if (existing && existing.length > 0) {
-      const { error: e } = await supabase.from('tarifs_achat').update(payload).eq('id', existing[0].id)
-      error = e
-    } else {
-      const { error: e } = await supabase.from('tarifs_achat').insert(payload)
-      error = e
-    }
-    setSavingTarif(false)
-    if (error) return toast('Erreur : ' + error.message, 'error')
-    toast('Prix d\'achat enregistré', 'success')
-  }
-
-  async function saveTarifVenteGeneral() {
-    if (!product) return
-    if (!tarifVenteGeneral.prix_unitaire_ht && tarifVenteGeneral.prix_unitaire_ht !== 0) return toast('Saisissez un prix HT', 'error')
-    setSavingTarif(true)
-    const payload = {
-      produit_id: product.id,
-      client_id: null,
-      prix_unitaire_ht: parseFloat(tarifVenteGeneral.prix_unitaire_ht),
-      remise_pourcent: tarifVenteGeneral.remise_pourcent ? parseFloat(tarifVenteGeneral.remise_pourcent) : null,
-      date_debut: new Date().toISOString().slice(0, 10),
-    }
-    const { data: existing } = await supabase.from('tarifs_vente').select('id').eq('produit_id', product.id).is('client_id', null).order('date_debut', { ascending: false }).limit(1)
-    let error
-    if (existing && existing.length > 0) {
-      const { error: e } = await supabase.from('tarifs_vente').update(payload).eq('id', existing[0].id)
-      error = e
-    } else {
-      const { error: e } = await supabase.from('tarifs_vente').insert(payload)
-      error = e
-    }
-    setSavingTarif(false)
-    if (error) return toast('Erreur : ' + error.message, 'error')
-    toast('Tarif général enregistré', 'success')
   }
 
   function set(field, val) { setForm(f => ({ ...f, [field]: val })) }
@@ -445,96 +388,34 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
             </>
           )}
 
-          {/* ── Tarifs ── */}
+          {/* ── Tarifs (lecture seule) ── */}
           {panelTab === 'tarifs' && (
             loadingTarifs ? <div className="loading">Chargement des tarifs...</div> : (
               <>
                 {/* Prix d'achat */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, marginTop: 4 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Prix d'achat</span>
-                  <button className="btn btn-primary" onClick={saveTarifAchat} disabled={savingTarif} style={{ fontSize: 11, padding: '4px 12px', gap: 4 }}>
-                    <Save size={13} /> {savingTarif ? '...' : 'Enregistrer'}
-                  </button>
-                </div>
-                <div className="form-grid-3">
-                  <div className="form-group">
-                    <label>Prix HT (€)</label>
-                    <input type="number" step="0.01" value={tarifAchat.prix_unitaire_ht} onChange={e => setTarifAchat(p => ({ ...p, prix_unitaire_ht: e.target.value }))} placeholder="0.00" />
-                  </div>
-                  <div className="form-group">
-                    <label>TVA (%)</label>
-                    <select value={tarifAchat.taux_tva} onChange={e => setTarifAchat(p => ({ ...p, taux_tva: parseFloat(e.target.value) }))}>
-                      <option value="0">0%</option><option value="5.5">5.5%</option><option value="10">10%</option><option value="20">20%</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>Prix TTC (€)</label>
-                    <input type="text" disabled value={tarifAchat.prix_unitaire_ht ? (parseFloat(tarifAchat.prix_unitaire_ht) * (1 + tarifAchat.taux_tva / 100)).toFixed(2) : '—'} style={{ background: 'var(--surface-2)' }} />
-                  </div>
-                </div>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 4, marginTop: 4 }}>Prix d'achat</span>
+                <ReadRow label="Prix achat HT" value={tarifAchat?.prix_achat_ht != null ? `${Number(tarifAchat.prix_achat_ht).toFixed(2)} €` : null} />
 
                 <hr className="divider" />
 
                 {/* Tarif vente général */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Tarif vente général</span>
-                  <button className="btn btn-primary" onClick={saveTarifVenteGeneral} disabled={savingTarif} style={{ fontSize: 11, padding: '4px 12px', gap: 4 }}>
-                    <Save size={13} /> {savingTarif ? '...' : 'Enregistrer'}
-                  </button>
-                </div>
-                <div className="form-grid-3">
-                  <div className="form-group">
-                    <label>Prix vente HT (€)</label>
-                    <input type="number" step="0.01" value={tarifVenteGeneral.prix_unitaire_ht} onChange={e => setTarifVenteGeneral(p => ({ ...p, prix_unitaire_ht: e.target.value }))} placeholder="0.00" />
-                  </div>
-                  <div className="form-group">
-                    <label>Remise (%)</label>
-                    <input type="number" step="0.1" value={tarifVenteGeneral.remise_pourcent} onChange={e => setTarifVenteGeneral(p => ({ ...p, remise_pourcent: e.target.value }))} placeholder="0" />
-                  </div>
-                  <div className="form-group">
-                    <label>Marge Highway</label>
-                    <input type="text" disabled value={
-                      tarifAchat.prix_unitaire_ht && tarifVenteGeneral.prix_unitaire_ht
-                        ? `${(((parseFloat(tarifVenteGeneral.prix_unitaire_ht) - parseFloat(tarifAchat.prix_unitaire_ht)) / parseFloat(tarifAchat.prix_unitaire_ht)) * 100).toFixed(1)}%`
-                        : '—'
-                    } style={{ background: 'var(--surface-2)' }} />
-                  </div>
-                </div>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 4 }}>Tarif vente général</span>
+                <ReadRow label="Prix vente HT" value={tarifVenteGeneral?.prix_vente_ht != null ? `${Number(tarifVenteGeneral.prix_vente_ht).toFixed(2)} €` : null} />
+                <ReadRow label="Marge Highway" value={
+                  tarifAchat?.prix_achat_ht && tarifVenteGeneral?.prix_vente_ht
+                    ? `${(((tarifVenteGeneral.prix_vente_ht - tarifAchat.prix_achat_ht) / tarifAchat.prix_achat_ht) * 100).toFixed(1)} %`
+                    : null
+                } />
 
                 <hr className="divider" />
 
                 {/* PVPR */}
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 12 }}>PVPR</span>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>PVPR TTC (€)</label>
-                    <input type="number" step="0.01" value={form.pvpr || ''} onChange={e => set('pvpr', e.target.value)} placeholder="0.00" />
-                  </div>
-                </div>
-                <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
-                  Enregistré avec la fiche produit (onglet Général).
-                </p>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 4 }}>Prix de vente recommandé</span>
+                <ReadRow label="PVPR TTC" value={product.pvpr != null && product.pvpr !== '' ? `${Number(product.pvpr).toFixed(2)} €` : null} />
 
-                {tarifsVenteClients.length > 0 && (
-                  <>
-                    <hr className="divider" />
-                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 12 }}>Tarifs clients</span>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                      {tarifsVenteClients.map(t => (
-                        <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
-                          <span style={{ fontWeight: 500 }}>{t.clients?.nom || '—'}</span>
-                          <span style={{ color: 'var(--text-secondary)' }}>
-                            {t.prix_unitaire_ht != null ? `${Number(t.prix_unitaire_ht).toFixed(2)} €` : '—'}
-                            {t.remise_pourcent != null ? ` · -${t.remise_pourcent}%` : ''}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ marginTop: 10 }}>
-                      <a href="/tarifs" style={{ fontSize: 12, color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}>Gérer les tarifs clients →</a>
-                    </div>
-                  </>
-                )}
+                <div style={{ marginTop: 16 }}>
+                  <a href="/tarifs" style={{ fontSize: 12, color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}>Gérer les tarifs dans Référencement & Tarifs →</a>
+                </div>
               </>
             )
           )}
