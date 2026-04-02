@@ -7,14 +7,14 @@ import * as XLSX from 'xlsx'
 // ── Helpers ──
 function applyRemisesCascade(basePrice, remises, produitId, marqueId) {
   let price = basePrice
+  const steps = []
   for (const r of [...remises].sort((a, b) => a.ordre - b.ordre)) {
-    // La remise doit correspondre au fournisseur du produit
     if (r.marque_id && r.marque_id !== marqueId) continue
-    // Scope : null = tous les produits du fournisseur, sinon sélection
     if (r.produit_ids && !r.produit_ids.includes(produitId)) continue
     price = price * (1 - r.pourcentage / 100)
+    steps.push({ label: r.label || 'Remise', pct: r.pourcentage, after: Math.round(price * 100) / 100 })
   }
-  return Math.round(price * 100) / 100
+  return { price: Math.round(price * 100) / 100, steps }
 }
 
 export default function Tarifs() {
@@ -512,16 +512,19 @@ export default function Tarifs() {
                                   {(() => {
                                     const achatVal = accAchat.prix_achat_ht ? parseFloat(accAchat.prix_achat_ht) : null
                                     const genVal = accVenteGen.prix_vente_ht ? parseFloat(accVenteGen.prix_vente_ht) : null
-                                    const pvprVal = accPvpr ? parseFloat(accPvpr) : null
+                                    const pvprHT = accPvpr ? parseFloat(accPvpr) / (1 + accTva / 100) : null
                                     const clientRows = clients.map(c => {
                                       const fixed = getClientVente(p.id, c.id)
                                       const remisesClient = allRemises.filter(r => r.client_id === c.id)
-                                      const afterRemises = genVal ? applyRemisesCascade(genVal, remisesClient, p.id, p.marque_id) : null
-                                      const prixClient = fixed ? fixed.prix_vente_ht : afterRemises
-                                      if (!prixClient) return null
-                                      const margeHW = achatVal && prixClient ? ((prixClient - achatVal) / achatVal * 100) : null
-                                      const margeClient = pvprVal && prixClient ? ((pvprVal / (1 + accTva / 100) - prixClient) / prixClient * 100) : null
-                                      return { nom: c.nom, prixClient, isFixed: !!fixed, margeHW, margeClient }
+                                      const result = genVal ? applyRemisesCascade(genVal, remisesClient, p.id, p.marque_id) : null
+                                      const afterRemises = result?.price ?? null
+                                      const steps = result?.steps || []
+                                      const hasFixed = !!fixed
+                                      const prixFinal = hasFixed ? fixed.prix_vente_ht : afterRemises
+                                      if (!prixFinal && !steps.length) return null
+                                      const margeHW = achatVal && prixFinal ? ((prixFinal - achatVal) / achatVal * 100) : null
+                                      const margeClient = pvprHT && prixFinal ? ((pvprHT - prixFinal) / prixFinal * 100) : null
+                                      return { nom: c.nom, genVal, steps, afterRemises, fixedPrice: hasFixed ? fixed.prix_vente_ht : null, prixFinal, margeHW, margeClient }
                                     }).filter(Boolean)
                                     if (!clientRows.length) return null
                                     return (
@@ -530,19 +533,38 @@ export default function Tarifs() {
                                           <thead>
                                             <tr>
                                               <th style={{ fontSize: 11, padding: '6px 10px' }}>Client</th>
-                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 110 }}>Prix vente HT</th>
-                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 110 }}>Marge Highway</th>
-                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 110 }}>Marge client</th>
+                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 90 }}>Départ HT</th>
+                                              <th style={{ fontSize: 11, padding: '6px 10px' }}>Remises</th>
+                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 90 }}>Après remises</th>
+                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 90 }}>Prix fixé</th>
+                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 90, fontWeight: 700 }}>Prix final HT</th>
+                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 100 }}>Marge Highway</th>
+                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 100 }}>Marge client</th>
                                             </tr>
                                           </thead>
                                           <tbody>
                                             {clientRows.map(cr => (
-                                              <tr key={cr.nom}>
-                                                <td style={{ fontSize: 12, padding: '5px 10px', fontWeight: 500 }}>
-                                                  {cr.nom}
-                                                  {cr.isFixed && <span style={{ fontSize: 9, background: '#E6C547', color: '#5C4B00', padding: '1px 5px', borderRadius: 3, fontWeight: 700, marginLeft: 6 }}>FIXÉ</span>}
+                                              <tr key={cr.nom} style={{ background: cr.fixedPrice != null ? '#FFF8E7' : undefined }}>
+                                                <td style={{ fontSize: 12, padding: '5px 10px', fontWeight: 500 }}>{cr.nom}</td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px', color: 'var(--text-secondary)' }}>{cr.genVal != null ? `${cr.genVal.toFixed(2)} €` : '—'}</td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>
+                                                  {cr.steps.length > 0 ? (
+                                                    <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                                                      {cr.steps.map((s, i) => (
+                                                        <span key={i} title={`${s.label} → ${s.after.toFixed(2)} €`} style={{ fontSize: 10, background: 'var(--primary-light)', color: 'var(--primary)', padding: '1px 6px', borderRadius: 3, fontWeight: 600 }}>
+                                                          -{s.pct}%
+                                                        </span>
+                                                      ))}
+                                                    </span>
+                                                  ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                                                 </td>
-                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.prixClient.toFixed(2)} €</td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px', color: cr.steps.length > 0 ? 'var(--primary)' : 'var(--text-muted)' }}>{cr.afterRemises != null ? `${cr.afterRemises.toFixed(2)} €` : '—'}</td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>
+                                                  {cr.fixedPrice != null ? (
+                                                    <span style={{ fontWeight: 600 }}>{cr.fixedPrice.toFixed(2)} € <span style={{ fontSize: 9, background: '#E6C547', color: '#5C4B00', padding: '1px 5px', borderRadius: 3, fontWeight: 700 }}>FIXÉ</span></span>
+                                                  ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                                                </td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px', fontWeight: 700 }}>{cr.prixFinal != null ? `${cr.prixFinal.toFixed(2)} €` : '—'}</td>
                                                 <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeHW != null ? margeBadge(cr.margeHW) : '—'}</td>
                                                 <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeClient != null ? margeBadge(cr.margeClient) : '—'}</td>
                                               </tr>
@@ -754,7 +776,7 @@ export default function Tarifs() {
                                   </span>
                                 ))}
                                 <span style={{ marginLeft: 'auto', fontWeight: 600 }}>
-                                  Base 100 € → {applyRemisesCascade(100, clientRemises, null, null).toFixed(2)} €
+                                  Base 100 € → {applyRemisesCascade(100, clientRemises, null, null).price.toFixed(2)} €
                                 </span>
                               </div>
                             </div>
@@ -784,7 +806,8 @@ export default function Tarifs() {
                           const general = getGeneralVente(p.id)
                           const genPrice = general?.prix_vente_ht || null
                           const ct = clientTarifsMap[p.id]
-                          const afterRemises = genPrice ? applyRemisesCascade(genPrice, clientRemises, p.id, p.marque_id) : null
+                          const remiseResult = genPrice ? applyRemisesCascade(genPrice, clientRemises, p.id, p.marque_id) : null
+                          const afterRemises = remiseResult?.price ?? null
                           const hasRemises = clientRemises.length > 0 && afterRemises !== genPrice
                           const isFixed = ct?.prix_vente_ht != null && ct?.prix_vente_ht !== ''
                           const effectif = isFixed ? parseFloat(ct.prix_vente_ht) : afterRemises
