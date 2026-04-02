@@ -545,44 +545,6 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
   )
 }
 
-// ─── PhotoPanel ────────────────────────────────────────────────────────────────
-function PhotoPanel({ product, onClose }) {
-  if (!product) return null
-  return (
-    <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.25)' }} />
-      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 201, width: '100%', maxWidth: 380, background: 'var(--surface)', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', animation: 'slideIn .2s ease' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)' }}>
-          <span style={{ fontWeight: 600, fontSize: 15 }}>Photo produit</span>
-          <button className="btn-icon" onClick={onClose}><X size={18} /></button>
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {product.photo_url ? (
-            <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 260 }}>
-              <img src={product.photo_url} alt={product.libelle} style={{ maxWidth: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: 8 }} />
-            </div>
-          ) : (
-            <div style={{ background: 'var(--surface-2)', borderRadius: 12, minHeight: 260, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-muted)' }}>
-              <Package size={40} /><span style={{ fontSize: 13 }}>Aucune photo disponible</span>
-            </div>
-          )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Produit</div>
-              <div style={{ fontWeight: 600, fontSize: 15 }}>{product.libelle}</div>
-            </div>
-            {product.marques?.nom && <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Marque</div><div style={{ fontSize: 13 }}>{product.marques.nom}</div></div>}
-            {product.ean13 && <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>EAN13</div><div style={{ fontSize: 13, fontFamily: 'var(--font-mono)' }}>{product.ean13}</div></div>}
-          </div>
-        </div>
-        <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)' }}>
-          <button className="btn btn-secondary" style={{ width: '100%' }} onClick={onClose}>Fermer</button>
-        </div>
-      </div>
-      <style>{`@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
-    </>
-  )
-}
 
 // ─── Définition de toutes les colonnes ─────────────────────────────────────────
 const ALL_COLUMNS = [
@@ -784,7 +746,7 @@ export default function Produits() {
   const [form, setForm]               = useState(emptyForm)
   const [saving, setSaving]           = useState(false)
   const [activeTab, setActiveTab]     = useState('general')
-  const [photoPanel, setPhotoPanel]   = useState(null)
+  const [photoZoomUrl, setPhotoZoomUrl] = useState(null)
   const [detailPanel, setDetailPanel] = useState(null)
   const [visibleCols, setVisibleCols] = useState(() => {
     try {
@@ -952,7 +914,7 @@ export default function Produits() {
     switch (col.key) {
       case 'photo':
         return row.photo_url
-          ? <img src={row.photo_url} alt="" onClick={e => { e.stopPropagation(); setPhotoPanel(row) }} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)', cursor: 'zoom-in' }} />
+          ? <img src={row.photo_url} alt="" onClick={e => { e.stopPropagation(); setPhotoZoomUrl(row.photo_url) }} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)', cursor: 'zoom-in' }} />
           : <div style={{ width: 36, height: 36, borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Package size={16} color="var(--text-muted)" /></div>
       case 'libelle':
         return <div><div style={{ fontWeight: 500 }}>{row.libelle}</div>{row.libelle_court && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{row.libelle_court}</div>}</div>
@@ -1158,7 +1120,7 @@ export default function Produits() {
                   <div className="form-group form-full"><label>URL Photo</label><input value={form.photo_url || ''} onChange={e => set('photo_url', e.target.value)} placeholder="https://..." /></div>
                   {form.photo_url && (
                     <div className="form-full" style={{ marginTop: 4 }}>
-                      <img src={form.photo_url} alt="" onClick={() => setPhotoPanel(form)} style={{ height: 80, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', padding: 4, cursor: 'zoom-in' }} />
+                      <img src={form.photo_url} alt="" onClick={() => setPhotoZoomUrl(form.photo_url)} style={{ height: 80, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', padding: 4, cursor: 'zoom-in' }} />
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Cliquez pour agrandir</div>
                     </div>
                   )}
@@ -1247,7 +1209,11 @@ export default function Produits() {
       {showImport   && <ImportProduits onClose={() => setShowImport(false)} onImported={fetchAll} />}
       {showColPanel && <ColumnPanel visibleCols={visibleCols} onChange={updateVisibleCols} onClose={() => setShowColPanel(false)} />}
       {showExport   && <ExportModal products={selectedRows} allProducts={filtered} onClose={() => setShowExport(false)} />}
-      {photoPanel   && <PhotoPanel  product={photoPanel} onClose={() => setPhotoPanel(null)} />}
+      {photoZoomUrl && (
+        <div onClick={() => setPhotoZoomUrl(null)} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
+          <img src={photoZoomUrl} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
+        </div>
+      )}
       {detailPanel  && <DetailPanel product={detailPanel} marques={marques} categories={categories} onClose={() => setDetailPanel(null)} onSaved={async (currentTab) => { await fetchAll(); const { data } = await supabase.from('produits').select('*, marques(nom), categories(nom)').eq('id', detailPanel.id).single(); if (data) setDetailPanel(data) }} onDelete={(id) => { remove(id); setDetailPanel(null) }} />}
     </div>
   )
