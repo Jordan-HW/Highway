@@ -31,7 +31,7 @@ export default function Tarifs() {
   // Vue par produit — édition inline
   const [expandedId, setExpandedId] = useState(null)
   const [rowEdits, setRowEdits] = useState({}) // { [produitId]: { tva, achat, vente, pvpr } }
-  const [rowSaving, setRowSaving] = useState(null)
+  const [savingAll, setSavingAll] = useState(false)
   const [allRemises, setAllRemises] = useState([]) // toutes les remises de tous les clients
 
   // Vue par client
@@ -143,49 +143,63 @@ export default function Tarifs() {
   }, [hasDirtyRows])
 
 
+  // Formate un champ prix à 2 décimales au blur
+  function formatField(produitId, field) {
+    setRowEdits(prev => {
+      const edit = prev[produitId]
+      if (!edit || edit[field] === '' || edit[field] === null) return prev
+      const val = parseFloat(edit[field])
+      if (isNaN(val)) return prev
+      return { ...prev, [produitId]: { ...edit, [field]: val.toFixed(2) } }
+    })
+  }
+
   function toggleAccordion(produitId) {
     setExpandedId(prev => prev === produitId ? null : produitId)
   }
 
-  async function saveRow(produitId) {
-    const prod = produits.find(pp => pp.id === produitId)
-    const edit = getEditRow(prod)
-    setRowSaving(produitId)
+  const dirtyIds = produits.filter(p => isRowDirty(p)).map(p => p.id)
+
+  async function saveAllDirty() {
+    if (!dirtyIds.length) return
+    setSavingAll(true)
     const today = new Date().toISOString().slice(0, 10)
     const r2 = v => Math.round(parseFloat(v) * 100) / 100
     let hasError = false
 
-    // 1. Prix d'achat
-    if (edit.achat !== '' && edit.achat !== null) {
-      const payload = { produit_id: produitId, prix_achat_ht: r2(edit.achat), date_debut: today }
-      const existing = getLastAchat(produitId)
-      const { error } = existing
-        ? await supabase.from('tarifs_achat').update(payload).eq('id', existing.id)
-        : await supabase.from('tarifs_achat').insert(payload)
-      if (error) { toast('Erreur prix achat : ' + error.message, 'error'); hasError = true }
+    for (const produitId of dirtyIds) {
+      const prod = produits.find(pp => pp.id === produitId)
+      const edit = getEditRow(prod)
+
+      if (edit.achat !== '' && edit.achat !== null) {
+        const payload = { produit_id: produitId, prix_achat_ht: r2(edit.achat), date_debut: today }
+        const existing = getLastAchat(produitId)
+        const { error } = existing
+          ? await supabase.from('tarifs_achat').update(payload).eq('id', existing.id)
+          : await supabase.from('tarifs_achat').insert(payload)
+        if (error) { toast('Erreur prix achat : ' + error.message, 'error'); hasError = true }
+      }
+
+      if (edit.vente !== '' && edit.vente !== null) {
+        const payload = { produit_id: produitId, client_id: null, prix_vente_ht: r2(edit.vente), remise_pct: null, date_debut: today }
+        const existing = getGeneralVente(produitId)
+        const { error } = existing
+          ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
+          : await supabase.from('tarifs_vente').insert(payload)
+        if (error) { toast('Erreur tarif général : ' + error.message, 'error'); hasError = true }
+      }
+
+      const prodUpdate = { taux_tva: parseFloat(edit.tva) }
+      if (edit.pvpr !== '' && edit.pvpr !== null) prodUpdate.pvpr = r2(edit.pvpr)
+      else prodUpdate.pvpr = null
+      const { error: errProd } = await supabase.from('produits').update(prodUpdate).eq('id', produitId)
+      if (errProd) { toast('Erreur PVPR/TVA : ' + errProd.message, 'error'); hasError = true }
     }
 
-    // 2. Tarif vente général
-    if (edit.vente !== '' && edit.vente !== null) {
-      const payload = { produit_id: produitId, client_id: null, prix_vente_ht: r2(edit.vente), remise_pct: null, date_debut: today }
-      const existing = getGeneralVente(produitId)
-      const { error } = existing
-        ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
-        : await supabase.from('tarifs_vente').insert(payload)
-      if (error) { toast('Erreur tarif général : ' + error.message, 'error'); hasError = true }
-    }
-
-    // 3. PVPR + TVA sur la fiche produit
-    const prodUpdate = { taux_tva: parseFloat(edit.tva) }
-    if (edit.pvpr !== '' && edit.pvpr !== null) prodUpdate.pvpr = r2(edit.pvpr)
-    else prodUpdate.pvpr = null
-    const { error: errProd } = await supabase.from('produits').update(prodUpdate).eq('id', produitId)
-    if (errProd) { toast('Erreur PVPR/TVA : ' + errProd.message, 'error'); hasError = true }
-
-    setRowSaving(null)
+    setSavingAll(false)
     if (!hasError) {
-      toast('Tarifs enregistrés', 'success')
-      setRowEdits(prev => { const n = { ...prev }; delete n[produitId]; return n })
+      toast(`${dirtyIds.length} produit(s) enregistré(s)`, 'success')
+      setRowEdits({})
     }
     fetchAll()
   }
@@ -463,22 +477,20 @@ export default function Tarifs() {
                         <th>Produit</th>
                         <th style={{ width: 70 }}>TVA</th>
                         <th>Achat HT</th>
-                        <th style={{ width: 80 }}>Achat TTC</th>
+                        <th style={{ width: 85 }}>Achat TTC</th>
                         <th>Vente HT</th>
-                        <th style={{ width: 80 }}>Vente TTC</th>
+                        <th style={{ width: 85 }}>Vente TTC</th>
                         <th>PVPR TTC</th>
                         <th style={{ width: 70 }}>Marge</th>
-                        <th style={{ width: 70 }}></th>
                         <th style={{ width: 30 }}></th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredProduits.length === 0 ? (
-                        <tr><td colSpan={11}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
+                        <tr><td colSpan={10}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
                       ) : filteredProduits.map(p => {
                         const edit = getEditRow(p)
                         const dirty = isRowDirty(p)
-                        const saving = rowSaving === p.id
                         const tva = parseFloat(edit.tva) || 0
                         const achatHT = edit.achat !== '' ? parseFloat(edit.achat) : null
                         const venteHT = edit.vente !== '' ? parseFloat(edit.vente) : null
@@ -499,24 +511,17 @@ export default function Tarifs() {
                                 <option value="0">0%</option><option value="5.5">5.5%</option><option value="10">10%</option><option value="20">20%</option>
                               </select>
                             </td>
-                            <td><input type="number" step="0.01" value={edit.achat} onChange={e => setEditField(p.id, 'achat', e.target.value)} placeholder="0.00" style={inputStyle} /></td>
-                            <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)}` : '—'}</td>
-                            <td><input type="number" step="0.01" value={edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} placeholder="0.00" style={inputStyle} /></td>
-                            <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)}` : '—'}</td>
-                            <td><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} placeholder="0.00" style={inputStyle} /></td>
+                            <td><input type="number" step="0.01" value={edit.achat} onChange={e => setEditField(p.id, 'achat', e.target.value)} onBlur={() => formatField(p.id, 'achat')} placeholder="0.00" style={inputStyle} /></td>
+                            <td style={{ fontSize: 12 }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
+                            <td><input type="number" step="0.01" value={edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} onBlur={() => formatField(p.id, 'vente')} placeholder="0.00" style={inputStyle} /></td>
+                            <td style={{ fontSize: 12 }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
+                            <td><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inputStyle} /></td>
                             <td>{margeBadge(marge)}</td>
-                            <td>
-                              {dirty && (
-                                <button className="btn btn-primary" onClick={() => saveRow(p.id)} disabled={saving} style={{ fontSize: 10, padding: '3px 8px', whiteSpace: 'nowrap' }}>
-                                  <Save size={12} /> {saving ? '...' : 'OK'}
-                                </button>
-                              )}
-                            </td>
                             <td style={{ cursor: 'pointer' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</td>
                           </tr>,
                           isExpanded && (
                             <tr key={`${p.id}-acc`}>
-                              <td colSpan={11} style={{ padding: 0, background: 'var(--surface-2)' }}>
+                              <td colSpan={10} style={{ padding: 0, background: 'var(--surface-2)' }}>
                                 <div style={{ padding: '12px 20px' }}>
                                   {/* Tableau clients */}
                                   {(() => {
@@ -999,6 +1004,18 @@ export default function Tarifs() {
               {importStep === 'validation' && (<><button className="btn btn-secondary" onClick={() => setImportStep('mapping')}>Retour</button><button className="btn btn-primary" onClick={doImportTarifs} disabled={importingData || importValidation.toProcess.length === 0}>{importingData ? 'Import...' : `Importer ${importValidation.toProcess.length} tarif(s)`}</button></>)}
               {importStep === 'done' && <button className="btn btn-primary" onClick={() => setImportModal(false)}>Fermer</button>}
             </div>
+          </div>
+        </div>
+      )}
+      {/* Barre globale Enregistrer */}
+      {hasDirtyRows && (
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: 'var(--surface)', borderTop: '2px solid var(--primary)', padding: '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 -4px 16px rgba(0,0,0,0.1)' }}>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>{dirtyIds.length} produit(s) modifié(s)</span>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn btn-secondary" onClick={() => setRowEdits({})} style={{ fontSize: 12 }}>Annuler</button>
+            <button className="btn btn-primary" onClick={saveAllDirty} disabled={savingAll} style={{ fontSize: 12, padding: '7px 24px', gap: 6 }}>
+              <Save size={14} /> {savingAll ? 'Enregistrement...' : 'Enregistrer tout'}
+            </button>
           </div>
         </div>
       )}
