@@ -82,8 +82,8 @@ export default function Tarifs() {
   function countClientTarifs(produitId) { return tarifsVente.filter(t => t.produit_id === produitId && t.client_id).length }
 
   function calcMarge(cost, sell) {
-    if (!cost || !sell || cost === 0) return null
-    return ((sell - cost) / cost) * 100
+    if (!cost || !sell || sell === 0) return null
+    return ((sell - cost) / sell) * 100
   }
   function margeBadge(val) {
     if (val == null) return '—'
@@ -537,8 +537,8 @@ export default function Tarifs() {
                                       const hasFixed = !!fixed
                                       const prixFinal = hasFixed ? fixed.prix_vente_ht : afterRemises
                                       if (!prixFinal && !steps.length) return null
-                                      const margeHW = achatVal && prixFinal ? ((prixFinal - achatVal) / achatVal * 100) : null
-                                      const margeClient = pvprHT && prixFinal ? ((pvprHT - prixFinal) / prixFinal * 100) : null
+                                      const margeHW = achatVal && prixFinal ? ((prixFinal - achatVal) / prixFinal * 100) : null
+                                      const margeClient = pvprHT && prixFinal ? ((pvprHT - prixFinal) / pvprHT * 100) : null
                                       return { nom: c.nom, genVal, steps, afterRemises, fixedPrice: hasFixed ? fixed.prix_vente_ht : null, prixFinal, margeHW, margeClient }
                                     }).filter(Boolean)
                                     if (!clientRows.length) return null
