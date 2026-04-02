@@ -533,13 +533,14 @@ export default function Tarifs() {
                                           <thead>
                                             <tr>
                                               <th style={{ fontSize: 11, padding: '6px 10px' }}>Client</th>
-                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 90 }}>Départ HT</th>
+                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 90 }}>Prix général</th>
                                               <th style={{ fontSize: 11, padding: '6px 10px' }}>Remises</th>
                                               <th style={{ fontSize: 11, padding: '6px 10px', width: 90 }}>Après remises</th>
                                               <th style={{ fontSize: 11, padding: '6px 10px', width: 90 }}>Prix fixé</th>
                                               <th style={{ fontSize: 11, padding: '6px 10px', width: 90, fontWeight: 700 }}>Prix final HT</th>
-                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 100 }}>Marge Highway</th>
-                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 100 }}>Marge client</th>
+                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 90 }}>Marge HW</th>
+                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 90 }}>PVPR TTC</th>
+                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 90 }}>Marge client</th>
                                             </tr>
                                           </thead>
                                           <tbody>
@@ -566,6 +567,7 @@ export default function Tarifs() {
                                                 </td>
                                                 <td style={{ fontSize: 12, padding: '5px 10px', fontWeight: 700 }}>{cr.prixFinal != null ? `${cr.prixFinal.toFixed(2)} €` : '—'}</td>
                                                 <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeHW != null ? margeBadge(cr.margeHW) : '—'}</td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px', color: 'var(--text-secondary)' }}>{accPvpr ? `${parseFloat(accPvpr).toFixed(2)} €` : '—'}</td>
                                                 <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeClient != null ? margeBadge(cr.margeClient) : '—'}</td>
                                               </tr>
                                             ))}
