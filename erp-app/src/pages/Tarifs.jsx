@@ -31,9 +31,9 @@ export default function Tarifs() {
   // Vue par produit — accordion
   const [expandedId, setExpandedId] = useState(null)
   const [accAchat, setAccAchat] = useState({ prix_achat_ht: '' })
-  const [accVenteGen, setAccVenteGen] = useState({ prix_vente_ht: '', remise_pct: '' })
-  const [accClientTarifs, setAccClientTarifs] = useState([])
-  const [accClientSearch, setAccClientSearch] = useState('')
+  const [accVenteGen, setAccVenteGen] = useState({ prix_vente_ht: '' })
+  const [accPvpr, setAccPvpr] = useState('')
+  const [accTva, setAccTva] = useState(5.5)
   const [accSaving, setAccSaving] = useState(false)
   const [allRemises, setAllRemises] = useState([]) // toutes les remises de tous les clients
 
@@ -108,25 +108,24 @@ export default function Tarifs() {
   function toggleAccordion(produitId) {
     if (expandedId === produitId) { setExpandedId(null); return }
     setExpandedId(produitId)
-    setAccClientSearch('')
+    const prod = produits.find(p => p.id === produitId)
     const achat = getLastAchat(produitId)
     setAccAchat({ prix_achat_ht: achat?.prix_achat_ht ?? '' })
     const gen = getGeneralVente(produitId)
-    setAccVenteGen({ prix_vente_ht: gen?.prix_vente_ht ?? '', remise_pct: gen?.remise_pct ?? '' })
-    setAccClientTarifs(clients.map(c => {
-      const tv = getClientVente(produitId, c.id)
-      return { client_id: c.id, nom: c.nom, prix_vente_ht: tv?.prix_vente_ht ?? '', remise_pct: tv?.remise_pct ?? '', _existing: !!tv, _id: tv?.id }
-    }))
+    setAccVenteGen({ prix_vente_ht: gen?.prix_vente_ht ?? '' })
+    setAccPvpr(prod?.pvpr ?? '')
+    setAccTva(prod?.taux_tva ?? 5.5)
   }
 
   async function saveAccAll(produitId) {
     setAccSaving(true)
     const today = new Date().toISOString().slice(0, 10)
+    const r2 = v => Math.round(parseFloat(v) * 100) / 100
     let hasError = false
 
     // 1. Prix d'achat
     if (accAchat.prix_achat_ht !== '' && accAchat.prix_achat_ht !== null) {
-      const payload = { produit_id: produitId, prix_achat_ht: Math.round(parseFloat(accAchat.prix_achat_ht) * 100) / 100, date_debut: today }
+      const payload = { produit_id: produitId, prix_achat_ht: r2(accAchat.prix_achat_ht), date_debut: today }
       const existing = getLastAchat(produitId)
       const { error } = existing
         ? await supabase.from('tarifs_achat').update(payload).eq('id', existing.id)
@@ -136,7 +135,7 @@ export default function Tarifs() {
 
     // 2. Tarif vente général
     if (accVenteGen.prix_vente_ht !== '' && accVenteGen.prix_vente_ht !== null) {
-      const payload = { produit_id: produitId, client_id: null, prix_vente_ht: Math.round(parseFloat(accVenteGen.prix_vente_ht) * 100) / 100, remise_pct: null, date_debut: today }
+      const payload = { produit_id: produitId, client_id: null, prix_vente_ht: r2(accVenteGen.prix_vente_ht), remise_pct: null, date_debut: today }
       const existing = getGeneralVente(produitId)
       const { error } = existing
         ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
@@ -144,28 +143,17 @@ export default function Tarifs() {
       if (error) { toast('Erreur tarif général : ' + error.message, 'error'); hasError = true }
     }
 
-    // 3. Tarifs clients (seulement ceux modifiés)
-    for (const ct of accClientTarifs) {
-      const isEmpty = (!ct.prix_vente_ht && ct.prix_vente_ht !== 0) || ct.prix_vente_ht === ''
-      if (isEmpty && ct._existing && ct._id) {
-        const { error } = await supabase.from('tarifs_vente').delete().eq('id', ct._id)
-        if (error) { toast(`Erreur suppression ${ct.nom} : ` + error.message, 'error'); hasError = true }
-      } else if (!isEmpty) {
-        const payload = { produit_id: produitId, client_id: ct.client_id, prix_vente_ht: Math.round(parseFloat(ct.prix_vente_ht) * 100) / 100, remise_pct: null, date_debut: today }
-        const { error } = ct._existing && ct._id
-          ? await supabase.from('tarifs_vente').update(payload).eq('id', ct._id)
-          : await supabase.from('tarifs_vente').insert(payload)
-        if (error) { toast(`Erreur tarif ${ct.nom} : ` + error.message, 'error'); hasError = true }
-      }
-    }
+    // 3. PVPR + TVA sur la fiche produit
+    const prodUpdate = {}
+    if (accPvpr !== '' && accPvpr !== null) prodUpdate.pvpr = r2(accPvpr)
+    else prodUpdate.pvpr = null
+    prodUpdate.taux_tva = parseFloat(accTva)
+    const { error: errProd } = await supabase.from('produits').update(prodUpdate).eq('id', produitId)
+    if (errProd) { toast('Erreur PVPR/TVA : ' + errProd.message, 'error'); hasError = true }
 
     setAccSaving(false)
     if (!hasError) toast('Tarifs enregistrés', 'success')
     fetchAll()
-  }
-
-  function updateClientTarif(clientId, field, val) {
-    setAccClientTarifs(prev => prev.map(ct => ct.client_id === clientId ? { ...ct, [field]: val } : ct))
   }
 
   // ════════════════════════════════════════════
@@ -298,26 +286,24 @@ export default function Tarifs() {
   const IMPORT_FIELDS = [
     { key: '__ignore__', label: '— Ignorer —' },
     { key: 'ean13', label: 'EAN13 (clé) *' },
+    { key: 'taux_tva', label: 'TVA (%)' },
     { key: 'prix_achat_ht', label: 'Prix achat HT' },
-    { key: 'prix_vente_ht', label: 'Tarif vente général HT' },
-    { key: 'remise_pct', label: 'Remise vente (%)' },
+    { key: 'prix_vente_ht', label: 'Prix vente général HT' },
     { key: 'pvpr', label: 'PVPR TTC' },
     { key: 'client_nom', label: 'Client (nom)' },
-    { key: 'prix_client_ht', label: 'Tarif client HT' },
-    { key: 'remise_client_pct', label: 'Remise client (%)' },
+    { key: 'prix_client_ht', label: 'Prix client HT' },
   ]
 
   function autoMapTarifs(cols) {
     const map = {}
     const hints = {
       ean: 'ean13', ean13: 'ean13', 'code barre': 'ean13', barcode: 'ean13',
+      tva: 'taux_tva', 'taux tva': 'taux_tva', 'tva %': 'taux_tva',
       'prix achat': 'prix_achat_ht', 'achat ht': 'prix_achat_ht',
       'prix vente': 'prix_vente_ht', 'vente ht': 'prix_vente_ht', 'tarif general': 'prix_vente_ht',
-      remise: 'remise_pct', 'remise %': 'remise_pct',
       pvpr: 'pvpr', 'prix public': 'pvpr',
       client: 'client_nom', 'nom client': 'client_nom',
       'prix client': 'prix_client_ht', 'tarif client': 'prix_client_ht',
-      'remise client': 'remise_client_pct',
     }
     cols.forEach(col => { map[col] = hints[col.toLowerCase().trim().replace(/_/g, ' ')] || '__ignore__' })
     return map
@@ -369,7 +355,11 @@ export default function Tarifs() {
     for (const item of importValidation.toProcess) {
       const prodId = item._produit.id
       const r2 = v => Math.round(parseFloat(v) * 100) / 100
-      if (item.pvpr) { const { error } = await supabase.from('produits').update({ pvpr: r2(item.pvpr) || null }).eq('id', prodId); if (error) failed++ }
+      // PVPR + TVA sur fiche produit
+      const prodUpdate = {}
+      if (item.pvpr) prodUpdate.pvpr = r2(item.pvpr)
+      if (item.taux_tva) prodUpdate.taux_tva = parseFloat(item.taux_tva)
+      if (Object.keys(prodUpdate).length) { const { error } = await supabase.from('produits').update(prodUpdate).eq('id', prodId); if (error) failed++ }
       if (item.prix_achat_ht) { const ex = getLastAchat(prodId); const payload = { produit_id: prodId, prix_achat_ht: r2(item.prix_achat_ht), date_debut: today }; const { error } = ex ? await supabase.from('tarifs_achat').update(payload).eq('id', ex.id) : await supabase.from('tarifs_achat').insert(payload); if (error) { failed++; continue } }
       if (item.prix_vente_ht) { const ex = getGeneralVente(prodId); const payload = { produit_id: prodId, client_id: null, prix_vente_ht: r2(item.prix_vente_ht), remise_pct: null, date_debut: today }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
       if (item.prix_client_ht && item._client) { const ex = getClientVente(prodId, item._client.id); const payload = { produit_id: prodId, client_id: item._client.id, prix_vente_ht: r2(item.prix_client_ht), remise_pct: null, date_debut: today, notes: 'Import Excel' }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
@@ -438,24 +428,24 @@ export default function Tarifs() {
                         <th style={{ width: 44 }}></th>
                         <th>Produit</th>
                         <th>Marque</th>
+                        <th>TVA</th>
                         <th>Achat HT</th>
                         <th>Vente HT</th>
-                        <th>PVPR</th>
+                        <th>PVPR TTC</th>
                         <th>Marge</th>
-                        <th>Clients</th>
                         <th style={{ width: 30 }}></th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredProduits.length === 0 ? (
-                        <tr><td colSpan={9}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
+                        <tr><td colSpan={10}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
                       ) : filteredProduits.map(p => {
                         const achat = getLastAchat(p.id)
                         const vente = getGeneralVente(p.id)
                         const achatHT = achat?.prix_achat_ht
                         const venteHT = vente?.prix_vente_ht
+                        const tva = p.taux_tva ?? 5.5
                         const marge = calcMarge(achatHT, venteHT)
-                        const nbClients = countClientTarifs(p.id)
                         const isExpanded = expandedId === p.id
 
                         return [
@@ -466,94 +456,53 @@ export default function Tarifs() {
                               {p.ean13 && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.ean13}</div>}
                             </td>
                             <td>{p.marques?.nom || '—'}</td>
+                            <td>{tva}%</td>
                             <td>{achatHT != null ? `${Number(achatHT).toFixed(2)} €` : '—'}</td>
                             <td style={{ fontWeight: 500 }}>{venteHT != null ? `${Number(venteHT).toFixed(2)} €` : '—'}</td>
                             <td>{p.pvpr != null ? `${Number(p.pvpr).toFixed(2)} €` : '—'}</td>
                             <td>{margeBadge(marge)}</td>
-                            <td>{nbClients > 0 ? <span className="badge badge-blue">{nbClients}</span> : '—'}</td>
                             <td>{isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</td>
                           </tr>,
                           isExpanded && (
                             <tr key={`${p.id}-acc`}>
-                              <td colSpan={9} style={{ padding: 0, background: 'var(--surface-2)' }}>
-                                <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-                                  {/* Prix d'achat */}
-                                  <div>
-                                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 8 }}>Prix d'achat</div>
-                                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-                                      <div className="form-group" style={{ marginBottom: 0, flex: 1, maxWidth: 200 }}>
-                                        <label style={{ fontSize: 11 }}>Prix HT (€)</label>
-                                        <input type="number" step="0.01" value={accAchat.prix_achat_ht} onChange={e => setAccAchat({ prix_achat_ht: e.target.value })} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
-                                      </div>
-                                    </div>
+                              <td colSpan={10} style={{ padding: 0, background: 'var(--surface-2)' }}>
+                                <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
+                                  <div className="form-group" style={{ marginBottom: 0, width: 100 }}>
+                                    <label style={{ fontSize: 11 }}>TVA (%)</label>
+                                    <select value={accTva} onChange={e => setAccTva(parseFloat(e.target.value))} style={{ padding: '5px 8px', fontSize: 13 }}>
+                                      <option value="0">0%</option><option value="5.5">5.5%</option><option value="10">10%</option><option value="20">20%</option>
+                                    </select>
                                   </div>
-                                  {/* Tarif vente général */}
-                                  <div>
-                                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 8 }}>Tarif vente général</div>
-                                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-                                      <div className="form-group" style={{ marginBottom: 0, flex: 1, maxWidth: 200 }}>
-                                        <label style={{ fontSize: 11 }}>Prix HT (€)</label>
-                                        <input type="number" step="0.01" value={accVenteGen.prix_vente_ht} onChange={e => setAccVenteGen(v => ({ ...v, prix_vente_ht: e.target.value }))} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
-                                      </div>
-                                    </div>
+                                  <div className="form-group" style={{ marginBottom: 0, width: 130 }}>
+                                    <label style={{ fontSize: 11 }}>Achat HT (€)</label>
+                                    <input type="number" step="0.01" value={accAchat.prix_achat_ht} onChange={e => setAccAchat({ prix_achat_ht: e.target.value })} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
                                   </div>
-                                  {/* Tarifs clients */}
-                                  <div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                                      <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)' }}>Tarifs par client</span>
-                                      <div className="search-input" style={{ width: 200, height: 28 }}>
-                                        <Search size={13} />
-                                        <input placeholder="Filtrer clients..." value={accClientSearch} onChange={e => setAccClientSearch(e.target.value)} style={{ fontSize: 11, padding: '3px 6px' }} />
-                                      </div>
-                                    </div>
-                                    <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)' }}>
-                                      <table style={{ margin: 0 }}>
-                                        <thead>
-                                          <tr>
-                                            <th style={{ fontSize: 11, padding: '6px 10px' }}>Client</th>
-                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 100 }}>Après remises</th>
-                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 110 }}>Prix fixé</th>
-                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 80 }}>Prix effectif</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {accClientTarifs
-                                            .filter(ct => !accClientSearch || ct.nom.toLowerCase().includes(accClientSearch.toLowerCase()))
-                                            .map(ct => {
-                                              const genPrice = accVenteGen.prix_vente_ht ? parseFloat(accVenteGen.prix_vente_ht) : null
-                                              const remisesClient = allRemises.filter(r => r.client_id === ct.client_id)
-                                              const afterRemises = genPrice ? applyRemisesCascade(genPrice, remisesClient, p.id, p.marque_id) : null
-                                              const hasRemises = remisesClient.length > 0 && afterRemises !== genPrice
-                                              const isFixed = ct.prix_vente_ht !== '' && ct.prix_vente_ht !== null
-                                              const effectif = isFixed ? parseFloat(ct.prix_vente_ht) : afterRemises
-                                              return (
-                                                <tr key={ct.client_id} style={{ background: isFixed ? '#FFF8E7' : undefined }}>
-                                                  <td style={{ fontSize: 12, padding: '4px 10px', fontWeight: 500 }}>{ct.nom}</td>
-                                                  <td style={{ padding: '4px 10px', fontSize: 12, color: hasRemises ? 'var(--primary)' : 'var(--text-muted)' }}>
-                                                    {afterRemises != null ? `${afterRemises.toFixed(2)} €` : '—'}
-                                                  </td>
-                                                  <td style={{ padding: '4px 6px' }}>
-                                                    <input type="number" step="0.01" value={ct.prix_vente_ht} onChange={e => updateClientTarif(ct.client_id, 'prix_vente_ht', e.target.value)} placeholder="—" style={{ padding: '3px 6px', fontSize: 12, width: '100%', background: isFixed ? '#FFF8E7' : undefined, border: isFixed ? '1px solid #E6C547' : undefined }} />
-                                                  </td>
-                                                  <td style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600 }}>
-                                                    {effectif != null ? (
-                                                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                        {effectif.toFixed(2)} €
-                                                        {isFixed && <span style={{ fontSize: 9, background: '#E6C547', color: '#5C4B00', padding: '1px 5px', borderRadius: 3, fontWeight: 700 }}>FIXÉ</span>}
-                                                      </span>
-                                                    ) : '—'}
-                                                  </td>
-                                                </tr>
-                                              )
-                                            })}
-                                        </tbody>
-                                      </table>
-                                    </div>
+                                  <div className="form-group" style={{ marginBottom: 0, width: 130, pointerEvents: 'none' }}>
+                                    <label style={{ fontSize: 11 }}>Achat TTC</label>
+                                    <input type="text" disabled value={accAchat.prix_achat_ht ? `${(parseFloat(accAchat.prix_achat_ht) * (1 + accTva / 100)).toFixed(2)} €` : '—'} style={{ padding: '5px 8px', fontSize: 13, background: 'var(--surface)', color: 'var(--text-secondary)' }} />
                                   </div>
-                                  {/* Bouton unique Enregistrer */}
-                                  <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 8 }}>
+                                  <div style={{ width: 1, height: 36, background: 'var(--border)' }} />
+                                  <div className="form-group" style={{ marginBottom: 0, width: 130 }}>
+                                    <label style={{ fontSize: 11 }}>Vente HT (€)</label>
+                                    <input type="number" step="0.01" value={accVenteGen.prix_vente_ht} onChange={e => setAccVenteGen({ prix_vente_ht: e.target.value })} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
+                                  </div>
+                                  <div className="form-group" style={{ marginBottom: 0, width: 130, pointerEvents: 'none' }}>
+                                    <label style={{ fontSize: 11 }}>Vente TTC</label>
+                                    <input type="text" disabled value={accVenteGen.prix_vente_ht ? `${(parseFloat(accVenteGen.prix_vente_ht) * (1 + accTva / 100)).toFixed(2)} €` : '—'} style={{ padding: '5px 8px', fontSize: 13, background: 'var(--surface)', color: 'var(--text-secondary)' }} />
+                                  </div>
+                                  <div style={{ width: 1, height: 36, background: 'var(--border)' }} />
+                                  <div className="form-group" style={{ marginBottom: 0, width: 130 }}>
+                                    <label style={{ fontSize: 11 }}>PVPR TTC (€)</label>
+                                    <input type="number" step="0.01" value={accPvpr} onChange={e => setAccPvpr(e.target.value)} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
+                                  </div>
+                                  {accAchat.prix_achat_ht && accVenteGen.prix_vente_ht && (
+                                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', alignSelf: 'center', paddingTop: 14 }}>
+                                      Marge : {margeBadge(calcMarge(parseFloat(accAchat.prix_achat_ht), parseFloat(accVenteGen.prix_vente_ht)))}
+                                    </div>
+                                  )}
+                                  <div style={{ marginLeft: 'auto', paddingTop: 14 }}>
                                     <button className="btn btn-primary" onClick={() => saveAccAll(p.id)} disabled={accSaving} style={{ fontSize: 12, padding: '7px 20px', gap: 6 }}>
-                                      <Save size={14} /> {accSaving ? 'Enregistrement...' : 'Enregistrer'}
+                                      <Save size={14} /> {accSaving ? '...' : 'Enregistrer'}
                                     </button>
                                   </div>
                                 </div>

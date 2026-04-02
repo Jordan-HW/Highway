@@ -389,36 +389,38 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
           )}
 
           {/* ── Tarifs (lecture seule) ── */}
-          {panelTab === 'tarifs' && (
-            loadingTarifs ? <div className="loading">Chargement des tarifs...</div> : (
+          {panelTab === 'tarifs' && (() => {
+            const tva = product.taux_tva ?? 5.5
+            const achatHT = tarifAchat?.prix_achat_ht
+            const venteHT = tarifVenteGeneral?.prix_vente_ht
+            const fmt = v => v != null ? `${Number(v).toFixed(2)} €` : null
+            const ttc = (ht) => ht != null ? `${(Number(ht) * (1 + tva / 100)).toFixed(2)} €` : null
+            return loadingTarifs ? <div className="loading">Chargement des tarifs...</div> : (
               <>
-                {/* Prix d'achat */}
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 4, marginTop: 4 }}>Prix d'achat</span>
-                <ReadRow label="Prix achat HT" value={tarifAchat?.prix_achat_ht != null ? `${Number(tarifAchat.prix_achat_ht).toFixed(2)} €` : null} />
+                <ReadRow label="TVA" value={`${tva} %`} />
+                <ReadRow label="Prix achat HT" value={fmt(achatHT)} />
+                <ReadRow label="Prix achat TTC" value={ttc(achatHT)} />
 
                 <hr className="divider" />
 
-                {/* Tarif vente général */}
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 4 }}>Tarif vente général</span>
-                <ReadRow label="Prix vente HT" value={tarifVenteGeneral?.prix_vente_ht != null ? `${Number(tarifVenteGeneral.prix_vente_ht).toFixed(2)} €` : null} />
-                <ReadRow label="Marge Highway" value={
-                  tarifAchat?.prix_achat_ht && tarifVenteGeneral?.prix_vente_ht
-                    ? `${(((tarifVenteGeneral.prix_vente_ht - tarifAchat.prix_achat_ht) / tarifAchat.prix_achat_ht) * 100).toFixed(1)} %`
+                <ReadRow label="Prix vente HT" value={fmt(venteHT)} />
+                <ReadRow label="Prix vente TTC" value={ttc(venteHT)} />
+                <ReadRow label="Marge" value={
+                  achatHT && venteHT
+                    ? `${(((venteHT - achatHT) / achatHT) * 100).toFixed(1)} %`
                     : null
                 } />
 
                 <hr className="divider" />
 
-                {/* PVPR */}
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 4 }}>Prix de vente recommandé</span>
-                <ReadRow label="PVPR TTC" value={product.pvpr != null && product.pvpr !== '' ? `${Number(product.pvpr).toFixed(2)} €` : null} />
+                <ReadRow label="PVPR TTC" value={product.pvpr != null && product.pvpr !== '' ? fmt(product.pvpr) : null} />
 
                 <div style={{ marginTop: 16 }}>
-                  <a href="/tarifs" style={{ fontSize: 12, color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}>Gérer les tarifs dans Référencement & Tarifs →</a>
+                  <a href="/tarifs" style={{ fontSize: 12, color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}>Modifier dans Référencement & Tarifs →</a>
                 </div>
               </>
             )
-          )}
+          })()}
         </div>
       </div>
       <style>{`@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
