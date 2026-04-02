@@ -358,6 +358,11 @@ tbody td {
 
 .form-group textarea { resize: vertical; min-height: 80px; }
 
+/* Masquer les flèches spinner des inputs number */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; }
+
 /* ── Modal ─────────────────────────────────────────────────────────────────── */
 .modal-overlay {
   position: fixed;

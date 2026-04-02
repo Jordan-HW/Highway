@@ -126,7 +126,7 @@ export default function Tarifs() {
 
     // 1. Prix d'achat
     if (accAchat.prix_achat_ht !== '' && accAchat.prix_achat_ht !== null) {
-      const payload = { produit_id: produitId, prix_achat_ht: parseFloat(accAchat.prix_achat_ht), date_debut: today }
+      const payload = { produit_id: produitId, prix_achat_ht: Math.round(parseFloat(accAchat.prix_achat_ht) * 100) / 100, date_debut: today }
       const existing = getLastAchat(produitId)
       const { error } = existing
         ? await supabase.from('tarifs_achat').update(payload).eq('id', existing.id)
@@ -136,7 +136,7 @@ export default function Tarifs() {
 
     // 2. Tarif vente général
     if (accVenteGen.prix_vente_ht !== '' && accVenteGen.prix_vente_ht !== null) {
-      const payload = { produit_id: produitId, client_id: null, prix_vente_ht: parseFloat(accVenteGen.prix_vente_ht), remise_pct: null, date_debut: today }
+      const payload = { produit_id: produitId, client_id: null, prix_vente_ht: Math.round(parseFloat(accVenteGen.prix_vente_ht) * 100) / 100, remise_pct: null, date_debut: today }
       const existing = getGeneralVente(produitId)
       const { error } = existing
         ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
@@ -151,7 +151,7 @@ export default function Tarifs() {
         const { error } = await supabase.from('tarifs_vente').delete().eq('id', ct._id)
         if (error) { toast(`Erreur suppression ${ct.nom} : ` + error.message, 'error'); hasError = true }
       } else if (!isEmpty) {
-        const payload = { produit_id: produitId, client_id: ct.client_id, prix_vente_ht: parseFloat(ct.prix_vente_ht), remise_pct: null, date_debut: today }
+        const payload = { produit_id: produitId, client_id: ct.client_id, prix_vente_ht: Math.round(parseFloat(ct.prix_vente_ht) * 100) / 100, remise_pct: null, date_debut: today }
         const { error } = ct._existing && ct._id
           ? await supabase.from('tarifs_vente').update(payload).eq('id', ct._id)
           : await supabase.from('tarifs_vente').insert(payload)
@@ -216,7 +216,7 @@ export default function Tarifs() {
     if (isEmpty) return
     const payload = {
       produit_id: produitId, client_id: selectedClient.id,
-      prix_vente_ht: parseFloat(value),
+      prix_vente_ht: Math.round(parseFloat(value) * 100) / 100,
       date_debut: new Date().toISOString().slice(0, 10),
     }
     const { data, error } = existing?.id
@@ -368,10 +368,11 @@ export default function Tarifs() {
     let updated = 0, failed = 0
     for (const item of importValidation.toProcess) {
       const prodId = item._produit.id
-      if (item.pvpr) { const { error } = await supabase.from('produits').update({ pvpr: parseFloat(item.pvpr) || null }).eq('id', prodId); if (error) failed++ }
-      if (item.prix_achat_ht) { const ex = getLastAchat(prodId); const payload = { produit_id: prodId, prix_achat_ht: parseFloat(item.prix_achat_ht), date_debut: today }; const { error } = ex ? await supabase.from('tarifs_achat').update(payload).eq('id', ex.id) : await supabase.from('tarifs_achat').insert(payload); if (error) { failed++; continue } }
-      if (item.prix_vente_ht) { const ex = getGeneralVente(prodId); const payload = { produit_id: prodId, client_id: null, prix_vente_ht: parseFloat(item.prix_vente_ht), remise_pct: item.remise_pct ? parseFloat(item.remise_pct) : null, date_debut: today }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
-      if (item.prix_client_ht && item._client) { const ex = getClientVente(prodId, item._client.id); const payload = { produit_id: prodId, client_id: item._client.id, prix_vente_ht: parseFloat(item.prix_client_ht), remise_pct: item.remise_client_pct ? parseFloat(item.remise_client_pct) : null, date_debut: today, notes: 'Import Excel' }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
+      const r2 = v => Math.round(parseFloat(v) * 100) / 100
+      if (item.pvpr) { const { error } = await supabase.from('produits').update({ pvpr: r2(item.pvpr) || null }).eq('id', prodId); if (error) failed++ }
+      if (item.prix_achat_ht) { const ex = getLastAchat(prodId); const payload = { produit_id: prodId, prix_achat_ht: r2(item.prix_achat_ht), date_debut: today }; const { error } = ex ? await supabase.from('tarifs_achat').update(payload).eq('id', ex.id) : await supabase.from('tarifs_achat').insert(payload); if (error) { failed++; continue } }
+      if (item.prix_vente_ht) { const ex = getGeneralVente(prodId); const payload = { produit_id: prodId, client_id: null, prix_vente_ht: r2(item.prix_vente_ht), remise_pct: null, date_debut: today }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
+      if (item.prix_client_ht && item._client) { const ex = getClientVente(prodId, item._client.id); const payload = { produit_id: prodId, client_id: item._client.id, prix_vente_ht: r2(item.prix_client_ht), remise_pct: null, date_debut: today, notes: 'Import Excel' }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
       updated++
     }
     setImportResult({ updated, failed }); setImportingData(false); setImportStep('done'); fetchAll()
