@@ -46,6 +46,9 @@ export default function Tarifs() {
   const [pickerRemiseId, setPickerRemiseId] = useState(null)
   const [pickerSearch, setPickerSearch] = useState('')
 
+  // Photo zoom
+  const [photoZoomUrl, setPhotoZoomUrl] = useState(null)
+
   // Import modal
   const [importModal, setImportModal] = useState(false)
   const [importStep, setImportStep] = useState('upload')
@@ -422,8 +425,8 @@ export default function Tarifs() {
   }
 
   const Thumb = ({ url }) => url
-    ? <img src={url} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />
-    : <div style={{ width: 36, height: 36, borderRadius: 6, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Package size={16} color="var(--text-muted)" /></div>
+    ? <img src={url} alt="" onClick={e => { e.stopPropagation(); setPhotoZoomUrl(url) }} style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)', cursor: 'zoom-in' }} />
+    : <div style={{ width: 28, height: 28, borderRadius: 4, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Package size={12} color="var(--text-muted)" /></div>
 
   // ════════════════════════════════════════════
   // RENDER
@@ -475,24 +478,25 @@ export default function Tarifs() {
               <>
                 {/* ══════════ VUE PAR PRODUIT ══════════ */}
                 {view === 'produit' && (
-                  <table>
+                  <table style={{ fontSize: 11 }}>
                     <thead>
                       <tr>
-                        <th style={{ width: 44 }}></th>
+                        <th style={{ width: 32 }}></th>
                         <th>Produit</th>
-                        <th style={{ width: 70 }}>TVA</th>
-                        <th>Achat HT</th>
-                        <th style={{ width: 85 }}>Achat TTC</th>
-                        <th>Vente HT</th>
-                        <th style={{ width: 85 }}>Vente TTC</th>
-                        <th>PVPR TTC</th>
-                        <th style={{ width: 70 }}>Marge</th>
-                        <th style={{ width: 30 }}></th>
+                        <th style={{ width: 90 }}>EAN13</th>
+                        <th style={{ width: 60 }}>TVA</th>
+                        <th style={{ width: 85 }}>Achat HT</th>
+                        <th style={{ width: 75 }}>Achat TTC</th>
+                        <th style={{ width: 85 }}>Vente HT</th>
+                        <th style={{ width: 75 }}>Vente TTC</th>
+                        <th style={{ width: 85 }}>PVPR TTC</th>
+                        <th style={{ width: 65 }}>Marge</th>
+                        <th style={{ width: 24 }}></th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredProduits.length === 0 ? (
-                        <tr><td colSpan={10}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
+                        <tr><td colSpan={11}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
                       ) : filteredProduits.map(p => {
                         const edit = getEditRow(p)
                         const dirty = isRowDirty(p)
@@ -502,31 +506,31 @@ export default function Tarifs() {
                         const pvprVal = edit.pvpr !== '' ? parseFloat(edit.pvpr) : null
                         const marge = calcMarge(achatHT, venteHT)
                         const isExpanded = expandedId === p.id
-                        const inputStyle = { padding: '4px 6px', fontSize: 12, width: '100%' }
+                        const inputStyle = { padding: '3px 5px', fontSize: 11, width: '100%' }
 
                         return [
                           <tr key={p.id} style={{ background: dirty ? '#FFFDE7' : isExpanded ? 'var(--primary-light)' : undefined }}>
-                            <td><Thumb url={p.photo_url} /></td>
-                            <td style={{ cursor: 'pointer' }} onClick={() => toggleAccordion(p.id)}>
-                              <div style={{ fontWeight: 500 }}>{p.libelle}</div>
-                              {p.ean13 && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.ean13}</div>}
+                            <td style={{ padding: '3px 6px' }}><Thumb url={p.photo_url} /></td>
+                            <td style={{ cursor: 'pointer', padding: '3px 6px' }} onClick={() => toggleAccordion(p.id)}>
+                              <div style={{ fontWeight: 500, fontSize: 12 }}>{p.libelle}</div>
                             </td>
-                            <td>
-                              <select value={edit.tva} onChange={e => setEditField(p.id, 'tva', parseFloat(e.target.value))} style={{ ...inputStyle, width: 60 }}>
+                            <td style={{ padding: '3px 6px', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)' }}>{p.ean13 || '—'}</td>
+                            <td style={{ padding: '3px 4px' }}>
+                              <select value={edit.tva} onChange={e => setEditField(p.id, 'tva', parseFloat(e.target.value))} style={{ ...inputStyle, width: 52 }}>
                                 <option value="0">0%</option><option value="5.5">5.5%</option><option value="10">10%</option><option value="20">20%</option>
                               </select>
                             </td>
-                            <td><input type="number" step="0.01" value={edit.achat} onChange={e => setEditField(p.id, 'achat', e.target.value)} onBlur={() => formatField(p.id, 'achat')} placeholder="0.00" style={inputStyle} /></td>
-                            <td style={{ fontSize: 12 }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
-                            <td><input type="number" step="0.01" value={edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} onBlur={() => formatField(p.id, 'vente')} placeholder="0.00" style={inputStyle} /></td>
-                            <td style={{ fontSize: 12 }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
-                            <td><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inputStyle} /></td>
-                            <td>{margeBadge(marge)}</td>
-                            <td style={{ cursor: 'pointer' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</td>
+                            <td style={{ padding: '3px 4px' }}><input type="number" step="0.01" value={edit.achat} onChange={e => setEditField(p.id, 'achat', e.target.value)} onBlur={() => formatField(p.id, 'achat')} placeholder="0.00" style={inputStyle} /></td>
+                            <td style={{ padding: '3px 6px', fontSize: 11 }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
+                            <td style={{ padding: '3px 4px' }}><input type="number" step="0.01" value={edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} onBlur={() => formatField(p.id, 'vente')} placeholder="0.00" style={inputStyle} /></td>
+                            <td style={{ padding: '3px 6px', fontSize: 11 }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
+                            <td style={{ padding: '3px 4px' }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inputStyle} /></td>
+                            <td style={{ padding: '3px 4px' }}>{margeBadge(marge)}</td>
+                            <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           </tr>,
                           isExpanded && (
                             <tr key={`${p.id}-acc`}>
-                              <td colSpan={10} style={{ padding: 0, background: 'var(--surface-2)' }}>
+                              <td colSpan={11} style={{ padding: 0, background: 'var(--surface-2)' }}>
                                 <div style={{ padding: '12px 20px' }}>
                                   {/* Tableau clients */}
                                   {(() => {
@@ -1012,6 +1016,13 @@ export default function Tarifs() {
           </div>
         </div>
       )}
+      {/* Photo zoom */}
+      {photoZoomUrl && (
+        <div onClick={() => setPhotoZoomUrl(null)} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
+          <img src={photoZoomUrl} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
+        </div>
+      )}
+
       {/* Barre globale Enregistrer */}
       {hasDirtyRows && (
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: 'var(--surface)', borderTop: '2px solid var(--primary)', padding: '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 -4px 16px rgba(0,0,0,0.1)' }}>
