@@ -119,57 +119,49 @@ export default function Tarifs() {
     }))
   }
 
-  async function saveAccAchat(produitId) {
-    if (!accAchat.prix_achat_ht && accAchat.prix_achat_ht !== 0) return toast('Saisissez un prix', 'error')
+  async function saveAccAll(produitId) {
     setAccSaving(true)
-    const payload = { produit_id: produitId, prix_achat_ht: parseFloat(accAchat.prix_achat_ht), date_debut: new Date().toISOString().slice(0, 10) }
-    const existing = getLastAchat(produitId)
-    const { error } = existing
-      ? await supabase.from('tarifs_achat').update(payload).eq('id', existing.id)
-      : await supabase.from('tarifs_achat').insert(payload)
-    setAccSaving(false)
-    if (error) return toast('Erreur : ' + error.message, 'error')
-    toast('Prix achat enregistré', 'success'); fetchAll()
-  }
+    const today = new Date().toISOString().slice(0, 10)
+    let hasError = false
 
-  async function saveAccVenteGen(produitId) {
-    if (!accVenteGen.prix_vente_ht && accVenteGen.prix_vente_ht !== 0) return toast('Saisissez un prix', 'error')
-    setAccSaving(true)
-    const payload = { produit_id: produitId, client_id: null, prix_vente_ht: parseFloat(accVenteGen.prix_vente_ht), remise_pct: accVenteGen.remise_pct ? parseFloat(accVenteGen.remise_pct) : null, date_debut: new Date().toISOString().slice(0, 10) }
-    const existing = getGeneralVente(produitId)
-    const { error } = existing
-      ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
-      : await supabase.from('tarifs_vente').insert(payload)
-    setAccSaving(false)
-    if (error) return toast('Erreur : ' + error.message, 'error')
-    toast('Tarif général enregistré', 'success'); fetchAll()
-  }
-
-  async function saveAccClientTarif(produitId, ct) {
-    setAccSaving(true)
-    // Si le prix est vidé et qu'un tarif existait, on le supprime
-    if ((!ct.prix_vente_ht && ct.prix_vente_ht !== 0) || ct.prix_vente_ht === '') {
-      if (ct._existing && ct._id) {
-        const { error } = await supabase.from('tarifs_vente').delete().eq('id', ct._id)
-        setAccSaving(false)
-        if (error) return toast('Erreur : ' + error.message, 'error')
-        // Mettre à jour le state local immédiatement
-        setAccClientTarifs(prev => prev.map(c => c.client_id === ct.client_id ? { ...c, prix_vente_ht: '', _existing: false, _id: null } : c))
-        toast(`Prix fixé ${ct.nom} supprimé`, 'success'); fetchAll()
-        return
-      }
-      setAccSaving(false)
-      return
+    // 1. Prix d'achat
+    if (accAchat.prix_achat_ht !== '' && accAchat.prix_achat_ht !== null) {
+      const payload = { produit_id: produitId, prix_achat_ht: parseFloat(accAchat.prix_achat_ht), date_debut: today }
+      const existing = getLastAchat(produitId)
+      const { error } = existing
+        ? await supabase.from('tarifs_achat').update(payload).eq('id', existing.id)
+        : await supabase.from('tarifs_achat').insert(payload)
+      if (error) { toast('Erreur prix achat : ' + error.message, 'error'); hasError = true }
     }
-    const payload = { produit_id: produitId, client_id: ct.client_id, prix_vente_ht: parseFloat(ct.prix_vente_ht), remise_pct: ct.remise_pct ? parseFloat(ct.remise_pct) : null, date_debut: new Date().toISOString().slice(0, 10) }
-    const { error, data } = ct._existing && ct._id
-      ? await supabase.from('tarifs_vente').update(payload).eq('id', ct._id).select().single()
-      : await supabase.from('tarifs_vente').insert(payload).select().single()
+
+    // 2. Tarif vente général
+    if (accVenteGen.prix_vente_ht !== '' && accVenteGen.prix_vente_ht !== null) {
+      const payload = { produit_id: produitId, client_id: null, prix_vente_ht: parseFloat(accVenteGen.prix_vente_ht), remise_pct: null, date_debut: today }
+      const existing = getGeneralVente(produitId)
+      const { error } = existing
+        ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
+        : await supabase.from('tarifs_vente').insert(payload)
+      if (error) { toast('Erreur tarif général : ' + error.message, 'error'); hasError = true }
+    }
+
+    // 3. Tarifs clients (seulement ceux modifiés)
+    for (const ct of accClientTarifs) {
+      const isEmpty = (!ct.prix_vente_ht && ct.prix_vente_ht !== 0) || ct.prix_vente_ht === ''
+      if (isEmpty && ct._existing && ct._id) {
+        const { error } = await supabase.from('tarifs_vente').delete().eq('id', ct._id)
+        if (error) { toast(`Erreur suppression ${ct.nom} : ` + error.message, 'error'); hasError = true }
+      } else if (!isEmpty) {
+        const payload = { produit_id: produitId, client_id: ct.client_id, prix_vente_ht: parseFloat(ct.prix_vente_ht), remise_pct: null, date_debut: today }
+        const { error } = ct._existing && ct._id
+          ? await supabase.from('tarifs_vente').update(payload).eq('id', ct._id)
+          : await supabase.from('tarifs_vente').insert(payload)
+        if (error) { toast(`Erreur tarif ${ct.nom} : ` + error.message, 'error'); hasError = true }
+      }
+    }
+
     setAccSaving(false)
-    if (error) return toast('Erreur : ' + error.message, 'error')
-    // Mettre à jour le state local avec l'id retourné
-    setAccClientTarifs(prev => prev.map(c => c.client_id === ct.client_id ? { ...c, _existing: true, _id: data.id } : c))
-    toast(`Tarif ${ct.nom} enregistré`, 'success'); fetchAll()
+    if (!hasError) toast('Tarifs enregistrés', 'success')
+    fetchAll()
   }
 
   function updateClientTarif(clientId, field, val) {
@@ -488,26 +480,20 @@ export default function Tarifs() {
                                   <div>
                                     <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 8 }}>Prix d'achat</div>
                                     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-                                      <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+                                      <div className="form-group" style={{ marginBottom: 0, flex: 1, maxWidth: 200 }}>
                                         <label style={{ fontSize: 11 }}>Prix HT (€)</label>
                                         <input type="number" step="0.01" value={accAchat.prix_achat_ht} onChange={e => setAccAchat({ prix_achat_ht: e.target.value })} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
                                       </div>
-                                      <button className="btn btn-primary" onClick={() => saveAccAchat(p.id)} disabled={accSaving} style={{ fontSize: 11, padding: '6px 12px', whiteSpace: 'nowrap' }}>
-                                        <Save size={13} /> Enregistrer
-                                      </button>
                                     </div>
                                   </div>
                                   {/* Tarif vente général */}
                                   <div>
                                     <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 8 }}>Tarif vente général</div>
                                     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-                                      <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+                                      <div className="form-group" style={{ marginBottom: 0, flex: 1, maxWidth: 200 }}>
                                         <label style={{ fontSize: 11 }}>Prix HT (€)</label>
                                         <input type="number" step="0.01" value={accVenteGen.prix_vente_ht} onChange={e => setAccVenteGen(v => ({ ...v, prix_vente_ht: e.target.value }))} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
                                       </div>
-                                      <button className="btn btn-primary" onClick={() => saveAccVenteGen(p.id)} disabled={accSaving} style={{ fontSize: 11, padding: '6px 12px', whiteSpace: 'nowrap' }}>
-                                        <Save size={13} /> Enregistrer
-                                      </button>
                                     </div>
                                   </div>
                                   {/* Tarifs clients */}
@@ -527,7 +513,6 @@ export default function Tarifs() {
                                             <th style={{ fontSize: 11, padding: '6px 10px', width: 100 }}>Après remises</th>
                                             <th style={{ fontSize: 11, padding: '6px 10px', width: 110 }}>Prix fixé</th>
                                             <th style={{ fontSize: 11, padding: '6px 10px', width: 80 }}>Prix effectif</th>
-                                            <th style={{ fontSize: 11, padding: '6px 10px', width: 40 }}></th>
                                           </tr>
                                         </thead>
                                         <tbody>
@@ -557,15 +542,18 @@ export default function Tarifs() {
                                                       </span>
                                                     ) : '—'}
                                                   </td>
-                                                  <td style={{ padding: '4px 6px' }}>
-                                                    <button className="btn-icon" onClick={() => saveAccClientTarif(p.id, ct)} disabled={accSaving} title="Enregistrer"><Save size={13} /></button>
-                                                  </td>
                                                 </tr>
                                               )
                                             })}
                                         </tbody>
                                       </table>
                                     </div>
+                                  </div>
+                                  {/* Bouton unique Enregistrer */}
+                                  <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 8 }}>
+                                    <button className="btn btn-primary" onClick={() => saveAccAll(p.id)} disabled={accSaving} style={{ fontSize: 12, padding: '7px 20px', gap: 6 }}>
+                                      <Save size={14} /> {accSaving ? 'Enregistrement...' : 'Enregistrer'}
+                                    </button>
                                   </div>
                                 </div>
                               </td>
