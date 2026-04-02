@@ -406,7 +406,11 @@ export default function Tarifs() {
       // PVPR + TVA sur fiche produit
       const prodUpdate = {}
       if (item.pvpr) prodUpdate.pvpr = r2(item.pvpr)
-      if (item.taux_tva) prodUpdate.taux_tva = parseFloat(item.taux_tva)
+      if (item.taux_tva) {
+        let tvaVal = parseFloat(String(item.taux_tva).replace('%', '').replace(',', '.').trim())
+        if (tvaVal > 0 && tvaVal < 1) tvaVal = tvaVal * 100 // 0.055 → 5.5, 0.20 → 20
+        prodUpdate.taux_tva = tvaVal
+      }
       if (Object.keys(prodUpdate).length) { const { error } = await supabase.from('produits').update(prodUpdate).eq('id', prodId); if (error) failed++ }
       if (item.prix_achat_ht) { const ex = getLastAchat(prodId); const payload = { produit_id: prodId, prix_achat_ht: r2(item.prix_achat_ht), date_debut: today }; const { error } = ex ? await supabase.from('tarifs_achat').update(payload).eq('id', ex.id) : await supabase.from('tarifs_achat').insert(payload); if (error) { failed++; continue } }
       if (item.prix_vente_ht) { const ex = getGeneralVente(prodId); const payload = { produit_id: prodId, client_id: null, prix_vente_ht: r2(item.prix_vente_ht), remise_pct: null, date_debut: today }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
