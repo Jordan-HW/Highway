@@ -88,7 +88,7 @@ export default function Tarifs() {
   function margeBadge(val) {
     if (val == null) return '—'
     const color = val > 20 ? 'badge-green' : val > 10 ? 'badge-orange' : 'badge-red'
-    return <span className={`badge ${color}`}>{val.toFixed(1)}%</span>
+    return <span className={`badge ${color}`}>{val.toFixed(2)}%</span>
   }
 
   const filteredProduits = produits.filter(p => {
