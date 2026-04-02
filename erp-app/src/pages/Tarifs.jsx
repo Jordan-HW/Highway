@@ -466,45 +466,92 @@ export default function Tarifs() {
                           isExpanded && (
                             <tr key={`${p.id}-acc`}>
                               <td colSpan={10} style={{ padding: 0, background: 'var(--surface-2)' }}>
-                                <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
-                                  <div className="form-group" style={{ marginBottom: 0, width: 100 }}>
-                                    <label style={{ fontSize: 11 }}>TVA (%)</label>
-                                    <select value={accTva} onChange={e => setAccTva(parseFloat(e.target.value))} style={{ padding: '5px 8px', fontSize: 13 }}>
-                                      <option value="0">0%</option><option value="5.5">5.5%</option><option value="10">10%</option><option value="20">20%</option>
-                                    </select>
-                                  </div>
-                                  <div className="form-group" style={{ marginBottom: 0, width: 130 }}>
-                                    <label style={{ fontSize: 11 }}>Achat HT (€)</label>
-                                    <input type="number" step="0.01" value={accAchat.prix_achat_ht} onChange={e => setAccAchat({ prix_achat_ht: e.target.value })} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
-                                  </div>
-                                  <div className="form-group" style={{ marginBottom: 0, width: 130, pointerEvents: 'none' }}>
-                                    <label style={{ fontSize: 11 }}>Achat TTC</label>
-                                    <input type="text" disabled value={accAchat.prix_achat_ht ? `${(parseFloat(accAchat.prix_achat_ht) * (1 + accTva / 100)).toFixed(2)} €` : '—'} style={{ padding: '5px 8px', fontSize: 13, background: 'var(--surface)', color: 'var(--text-secondary)' }} />
-                                  </div>
-                                  <div style={{ width: 1, height: 36, background: 'var(--border)' }} />
-                                  <div className="form-group" style={{ marginBottom: 0, width: 130 }}>
-                                    <label style={{ fontSize: 11 }}>Vente HT (€)</label>
-                                    <input type="number" step="0.01" value={accVenteGen.prix_vente_ht} onChange={e => setAccVenteGen({ prix_vente_ht: e.target.value })} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
-                                  </div>
-                                  <div className="form-group" style={{ marginBottom: 0, width: 130, pointerEvents: 'none' }}>
-                                    <label style={{ fontSize: 11 }}>Vente TTC</label>
-                                    <input type="text" disabled value={accVenteGen.prix_vente_ht ? `${(parseFloat(accVenteGen.prix_vente_ht) * (1 + accTva / 100)).toFixed(2)} €` : '—'} style={{ padding: '5px 8px', fontSize: 13, background: 'var(--surface)', color: 'var(--text-secondary)' }} />
-                                  </div>
-                                  <div style={{ width: 1, height: 36, background: 'var(--border)' }} />
-                                  <div className="form-group" style={{ marginBottom: 0, width: 130 }}>
-                                    <label style={{ fontSize: 11 }}>PVPR TTC (€)</label>
-                                    <input type="number" step="0.01" value={accPvpr} onChange={e => setAccPvpr(e.target.value)} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
-                                  </div>
-                                  {accAchat.prix_achat_ht && accVenteGen.prix_vente_ht && (
-                                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', alignSelf: 'center', paddingTop: 14 }}>
-                                      Marge : {margeBadge(calcMarge(parseFloat(accAchat.prix_achat_ht), parseFloat(accVenteGen.prix_vente_ht)))}
+                                <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                  {/* Ligne tarifs éditables */}
+                                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
+                                    <div className="form-group" style={{ marginBottom: 0, width: 100 }}>
+                                      <label style={{ fontSize: 11 }}>TVA (%)</label>
+                                      <select value={accTva} onChange={e => setAccTva(parseFloat(e.target.value))} style={{ padding: '5px 8px', fontSize: 13 }}>
+                                        <option value="0">0%</option><option value="5.5">5.5%</option><option value="10">10%</option><option value="20">20%</option>
+                                      </select>
                                     </div>
-                                  )}
-                                  <div style={{ marginLeft: 'auto', paddingTop: 14 }}>
-                                    <button className="btn btn-primary" onClick={() => saveAccAll(p.id)} disabled={accSaving} style={{ fontSize: 12, padding: '7px 20px', gap: 6 }}>
-                                      <Save size={14} /> {accSaving ? '...' : 'Enregistrer'}
-                                    </button>
+                                    <div className="form-group" style={{ marginBottom: 0, width: 130 }}>
+                                      <label style={{ fontSize: 11 }}>Achat HT (€)</label>
+                                      <input type="number" step="0.01" value={accAchat.prix_achat_ht} onChange={e => setAccAchat({ prix_achat_ht: e.target.value })} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: 0, width: 130, pointerEvents: 'none' }}>
+                                      <label style={{ fontSize: 11 }}>Achat TTC</label>
+                                      <input type="text" disabled value={accAchat.prix_achat_ht ? `${(parseFloat(accAchat.prix_achat_ht) * (1 + accTva / 100)).toFixed(2)} €` : '—'} style={{ padding: '5px 8px', fontSize: 13, background: 'var(--surface)', color: 'var(--text-secondary)' }} />
+                                    </div>
+                                    <div style={{ width: 1, height: 36, background: 'var(--border)' }} />
+                                    <div className="form-group" style={{ marginBottom: 0, width: 130 }}>
+                                      <label style={{ fontSize: 11 }}>Vente HT (€)</label>
+                                      <input type="number" step="0.01" value={accVenteGen.prix_vente_ht} onChange={e => setAccVenteGen({ prix_vente_ht: e.target.value })} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: 0, width: 130, pointerEvents: 'none' }}>
+                                      <label style={{ fontSize: 11 }}>Vente TTC</label>
+                                      <input type="text" disabled value={accVenteGen.prix_vente_ht ? `${(parseFloat(accVenteGen.prix_vente_ht) * (1 + accTva / 100)).toFixed(2)} €` : '—'} style={{ padding: '5px 8px', fontSize: 13, background: 'var(--surface)', color: 'var(--text-secondary)' }} />
+                                    </div>
+                                    <div style={{ width: 1, height: 36, background: 'var(--border)' }} />
+                                    <div className="form-group" style={{ marginBottom: 0, width: 130 }}>
+                                      <label style={{ fontSize: 11 }}>PVPR TTC (€)</label>
+                                      <input type="number" step="0.01" value={accPvpr} onChange={e => setAccPvpr(e.target.value)} placeholder="0.00" style={{ padding: '5px 8px', fontSize: 13 }} />
+                                    </div>
+                                    {accAchat.prix_achat_ht && accVenteGen.prix_vente_ht && (
+                                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', alignSelf: 'center', paddingTop: 14 }}>
+                                        Marge : {margeBadge(calcMarge(parseFloat(accAchat.prix_achat_ht), parseFloat(accVenteGen.prix_vente_ht)))}
+                                      </div>
+                                    )}
+                                    <div style={{ marginLeft: 'auto', paddingTop: 14 }}>
+                                      <button className="btn btn-primary" onClick={() => saveAccAll(p.id)} disabled={accSaving} style={{ fontSize: 12, padding: '7px 20px', gap: 6 }}>
+                                        <Save size={14} /> {accSaving ? '...' : 'Enregistrer'}
+                                      </button>
+                                    </div>
                                   </div>
+                                  {/* Tableau clients */}
+                                  {(() => {
+                                    const achatVal = accAchat.prix_achat_ht ? parseFloat(accAchat.prix_achat_ht) : null
+                                    const genVal = accVenteGen.prix_vente_ht ? parseFloat(accVenteGen.prix_vente_ht) : null
+                                    const pvprVal = accPvpr ? parseFloat(accPvpr) : null
+                                    const clientRows = clients.map(c => {
+                                      const fixed = getClientVente(p.id, c.id)
+                                      const remisesClient = allRemises.filter(r => r.client_id === c.id)
+                                      const afterRemises = genVal ? applyRemisesCascade(genVal, remisesClient, p.id, p.marque_id) : null
+                                      const prixClient = fixed ? fixed.prix_vente_ht : afterRemises
+                                      if (!prixClient) return null
+                                      const margeHW = achatVal && prixClient ? ((prixClient - achatVal) / achatVal * 100) : null
+                                      const margeClient = pvprVal && prixClient ? ((pvprVal / (1 + accTva / 100) - prixClient) / prixClient * 100) : null
+                                      return { nom: c.nom, prixClient, isFixed: !!fixed, margeHW, margeClient }
+                                    }).filter(Boolean)
+                                    if (!clientRows.length) return null
+                                    return (
+                                      <div style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)', overflow: 'hidden' }}>
+                                        <table style={{ margin: 0 }}>
+                                          <thead>
+                                            <tr>
+                                              <th style={{ fontSize: 11, padding: '6px 10px' }}>Client</th>
+                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 110 }}>Prix vente HT</th>
+                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 110 }}>Marge Highway</th>
+                                              <th style={{ fontSize: 11, padding: '6px 10px', width: 110 }}>Marge client</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {clientRows.map(cr => (
+                                              <tr key={cr.nom}>
+                                                <td style={{ fontSize: 12, padding: '5px 10px', fontWeight: 500 }}>
+                                                  {cr.nom}
+                                                  {cr.isFixed && <span style={{ fontSize: 9, background: '#E6C547', color: '#5C4B00', padding: '1px 5px', borderRadius: 3, fontWeight: 700, marginLeft: 6 }}>FIXÉ</span>}
+                                                </td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.prixClient.toFixed(2)} €</td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeHW != null ? margeBadge(cr.margeHW) : '—'}</td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeClient != null ? margeBadge(cr.margeClient) : '—'}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    )
+                                  })()}
                                 </div>
                               </td>
                             </tr>
