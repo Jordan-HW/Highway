@@ -335,9 +335,9 @@ export default function Tarifs() {
     { key: '__ignore__', label: '— Ignorer —' },
     { key: 'ean13', label: 'EAN13 (clé) *' },
     { key: 'taux_tva', label: 'TVA (%)' },
-    { key: 'prix_achat_ht', label: 'Prix achat HT' },
+    { key: 'prix_achat_ht', label: 'Prix achat fournisseur HT' },
     { key: 'prix_vente_ht', label: 'Prix vente général HT' },
-    { key: 'pvpr', label: 'PVPR TTC' },
+    { key: 'pvpr', label: 'Prix recommandé consommateur TTC (PVPR)' },
     { key: 'client_nom', label: 'Client (nom)' },
     { key: 'prix_client_ht', label: 'Prix client HT' },
   ]
@@ -345,13 +345,13 @@ export default function Tarifs() {
   function autoMapTarifs(cols) {
     const map = {}
     const hints = {
-      ean: 'ean13', ean13: 'ean13', 'code barre': 'ean13', barcode: 'ean13',
-      tva: 'taux_tva', 'taux tva': 'taux_tva', 'tva %': 'taux_tva',
-      'prix achat': 'prix_achat_ht', 'achat ht': 'prix_achat_ht',
-      'prix vente': 'prix_vente_ht', 'vente ht': 'prix_vente_ht', 'tarif general': 'prix_vente_ht',
-      pvpr: 'pvpr', 'prix public': 'pvpr',
+      ean: 'ean13', ean13: 'ean13', 'code barre': 'ean13', barcode: 'ean13', 'code barres': 'ean13', 'code ean': 'ean13',
+      tva: 'taux_tva', 'taux tva': 'taux_tva', 'tva %': 'taux_tva', 'taux de tva': 'taux_tva',
+      'prix achat': 'prix_achat_ht', 'achat ht': 'prix_achat_ht', 'prix achat ht': 'prix_achat_ht', 'achat fournisseur': 'prix_achat_ht', 'prix fournisseur': 'prix_achat_ht',
+      'prix vente': 'prix_vente_ht', 'vente ht': 'prix_vente_ht', 'prix vente ht': 'prix_vente_ht', 'tarif general': 'prix_vente_ht', 'prix vente general': 'prix_vente_ht', 'vente general': 'prix_vente_ht',
+      pvpr: 'pvpr', 'prix public': 'pvpr', 'prix recommande': 'pvpr', 'prix consommateur': 'pvpr', 'pvpr ttc': 'pvpr', 'prix recommande ttc': 'pvpr',
       client: 'client_nom', 'nom client': 'client_nom',
-      'prix client': 'prix_client_ht', 'tarif client': 'prix_client_ht',
+      'prix client': 'prix_client_ht', 'tarif client': 'prix_client_ht', 'prix client ht': 'prix_client_ht',
     }
     cols.forEach(col => { map[col] = hints[col.toLowerCase().trim().replace(/_/g, ' ')] || '__ignore__' })
     return map
