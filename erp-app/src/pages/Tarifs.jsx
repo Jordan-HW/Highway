@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useBlocker } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent, Package, Users } from 'lucide-react'
@@ -143,12 +142,6 @@ export default function Tarifs() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [hasDirtyRows])
 
-  // Warning avant navigation interne (changement de page React Router)
-  useBlocker(useCallback(({ currentLocation, nextLocation }) => {
-    if (!hasDirtyRows) return false
-    if (currentLocation.pathname === nextLocation.pathname) return false
-    return !window.confirm('Vous avez des modifications non enregistrées. Quitter sans sauvegarder ?')
-  }, [hasDirtyRows]))
 
   function toggleAccordion(produitId) {
     setExpandedId(prev => prev === produitId ? null : produitId)
@@ -481,7 +474,7 @@ export default function Tarifs() {
                     </thead>
                     <tbody>
                       {filteredProduits.length === 0 ? (
-                        <tr><td colSpan={10}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
+                        <tr><td colSpan={11}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
                       ) : filteredProduits.map(p => {
                         const edit = getEditRow(p)
                         const dirty = isRowDirty(p)
