@@ -417,6 +417,7 @@ export default function Tarifs() {
       if (item.prix_client_ht && item._client) { const ex = getClientVente(prodId, item._client.id); const payload = { produit_id: prodId, client_id: item._client.id, prix_vente_ht: r2(item.prix_client_ht), remise_pct: null, date_debut: today, notes: 'Import Excel' }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
       updated++
     }
+    setRowEdits({})
     setImportResult({ updated, failed }); setImportingData(false); setImportStep('done'); fetchAll()
   }
 
