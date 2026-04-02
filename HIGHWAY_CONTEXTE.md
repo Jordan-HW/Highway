@@ -117,7 +117,8 @@ Highway/
 
 ### Font
 - **Poppins** (Google Fonts) partout — titres, corps, sidebar, login, codes
-- Tailles harmonisées : 13px base, 12px labels/sous-titres, 11px headers table/badges, 18px titres page
+- Tailles harmonisées : 11px tableaux/badges, 12px labels, 13px base, 18px titres page
+- **Tableaux compacts** : photos 28px, padding 3px 6px, font-size 11px, codes mono 10px
 
 ### Couleurs CSS (index.css)
 ```css
@@ -168,14 +169,17 @@ logo color: #D4B8F0          /* violet clair */
 - **Catégories générales** : gérées via bouton dédié dans le header de la page
 
 ### Articles (Produits)
+- **Tableau compact** : même format visuel que Référencement & Tarifs (photos 28px, lignes 11px)
 - **Clic sur ligne** → volet droit 620px (pas de modal) avec fiche complète
 - **6 onglets** : Général, Colisage, Conservation, Ingrédients, Douane, Tarifs
+- **Onglet Tarifs** : lecture seule — TVA, prix achat HT/TTC, prix vente HT/TTC, marge, PVPR TTC + lien vers Référencement & Tarifs
 - **Traduction auto** : description et ingrédients VO → FR via Google Translate
 - **Type conditionnement** : unités (PCB) ou kg (poids colis)
 - **Tooltip DLC** : icone info expliquant DLC/DLUO/DDM
-- **Photo** : cliquable pour zoom plein écran
+- **Photo** : cliquable pour zoom plein écran (overlay noir, zoom-out au clic)
 - **Modal création** séparée (nouveau produit uniquement)
 - **Statuts** affichés avec majuscule (Actif, En référencement, Arrêté, Inactif)
+- **Flèches spinner** masquées sur tous les inputs number (CSS global)
 
 ### Clients
 - Modale 640px avec **4 onglets** : Infos générales, Contacts, Logistique, Facturation
@@ -183,20 +187,27 @@ logo color: #D4B8F0          /* violet clair */
 - Mode lecture/édition par section avec crayon
 
 ### Référencement et Tarifs
-- **Vue par produit** : tableau avec photo, accordion inline au clic
-  - Prix d'achat (éditable), tarif vente général (éditable)
-  - Sous-table clients : prix client HT (éditable), après remises (calculé), prix fixé (optionnel), prix effectif
+- **Vue par produit** : tableau compact avec édition inline directe (pas besoin de déplier)
+  - Colonnes : Photo (zoom clic), Produit, EAN13, TVA (select), Achat HT (input), Achat TTC (calculé), Vente HT (input), Vente TTC (calculé), PVPR TTC (input), Marge
+  - **Formatage** : 2 décimales au blur sur les prix, prix TTC calculés en temps réel
+  - **Enregistrement global** : barre fixe en bas dès qu'une modif est faite (N produit(s) modifié(s) + Annuler + Enregistrer tout)
+  - **Protection** : `beforeunload` si modifications non sauvées
+  - **Dépliage** (clic nom/chevron) → tableau clients en lecture seule :
+    - Colonnes : Client, Prix général, Remises (badges cascade), Après remises, Prix fixé, Prix final HT, Marge HW, PVPR TTC, Marge client
+    - Badge **FIXÉ** (jaune) quand un prix override existe
+  - **Calcul marges** : taux de marque (vente - achat) / vente. Marge client = (PVPR_HT - prix_client) / PVPR_HT (PVPR converti en HT via TVA produit)
 - **Vue par client** : sélection client → tableau de tous les produits
   - **Toggle référencement** : checkbox pour référencer/déréférencer un produit chez le client
   - Prix vente HT général, après remises (calculé), prix fixé (éditable), prix effectif
-  - Badge **FIXÉ** (jaune) quand un prix override existe
   - Bouton X par ligne + bouton "Supprimer tous les prix fixés"
 - **Remises en cascade** (par client) :
   - Chaque remise : label, pourcentage, fournisseur (marque), scope (tous produits ou sélection)
   - Product picker avec photos/recherche pour la sélection
   - Preview cascade : affiche l'enchaînement et le résultat
   - Logique : prix général → remises cascade → prix effectif (sauf si prix fixé = override)
-- **Import Excel** : mapping colonnes, validation, aperçu
+- **Import Excel** : mapping colonnes (EAN13, TVA, Prix achat HT, Prix vente général HT, PVPR TTC, Client, Prix client HT), validation, aperçu
+  - TVA : gère formats `5%`, `0.055`, `5.5` (normalisation auto)
+  - Prix : arrondi 2 décimales à l'écriture en base
 
 ---
 
@@ -207,13 +218,13 @@ logo color: #D4B8F0          /* violet clair */
 | `marques` | Marques distribuées — champs : nom, code, pays, devise, delai_livraison_jours, conditions_paiement, adresse, notes, actif, **nomenclature_specifique** |
 | `marque_contacts` | Contacts par marque — champs : marque_id (FK), prenom, nom, fonction, email, telephone |
 | `categories` | Catégories produits — champs : nom, parent_id, **marque_id** (FK nullable, null = générale) |
-| `produits` | Catalogue produits — champs classiques + **description_fr**, **type_conditionnement** (unites/kg), **poids_colis_kg**, **longueur/largeur/hauteur_colis_cm**, **poids_produit_brut_kg**, **poids_produit_net_kg** |
+| `produits` | Catalogue produits — champs classiques + **description_fr**, **type_conditionnement** (unites/kg), **poids_colis_kg**, **longueur/largeur/hauteur_colis_cm**, **poids_produit_brut_kg**, **poids_produit_net_kg**, **taux_tva** (5.5 par défaut), **pvpr** (prix recommandé consommateur TTC) |
 | `clients` | Clients (centrale/indépendant/grossiste) |
 | `client_contacts` | Contacts par client — champs : client_id (FK), prenom, nom, fonction, email, telephone |
 | `client_produit_references` | Référencement produit par client — champs : client_id (FK), produit_id (FK), UNIQUE |
 | `client_remises` | Remises en cascade par client — champs : client_id (FK), label, pourcentage, marque_id (FK nullable), produit_ids (uuid[] nullable = tous), ordre |
-| `tarifs_achat` | Prix achat HT par produit/marque |
-| `tarifs_vente` | Prix vente HT général (client_id NULL) ou prix fixé client (client_id renseigné) |
+| `tarifs_achat` | Prix achat HT par produit — champs : produit_id, **prix_achat_ht**, date_debut |
+| `tarifs_vente` | Prix vente HT général (client_id NULL) ou prix fixé client (client_id renseigné) — champs : produit_id, client_id, **prix_vente_ht**, remise_pct, date_debut |
 | `lots` | Lots avec DLC, localisation, statut |
 | `mouvements_stock` | Entrées/sorties stock |
 | `portail_acces` | Accès portail client |
