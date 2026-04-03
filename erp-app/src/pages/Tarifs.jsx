@@ -93,7 +93,7 @@ export default function Tarifs() {
   }
   function margeBadge(val) {
     if (val == null) return '—'
-    const color = val > 20 ? 'badge-green' : val > 10 ? 'badge-orange' : 'badge-red'
+    const color = val >= 28 ? 'badge-green' : val >= 23 ? 'badge-orange' : 'badge-red'
     return <span className={`badge ${color}`}>{val.toFixed(2)}%</span>
   }
 
@@ -533,15 +533,15 @@ export default function Tarifs() {
                         <th>Produit</th>
                         <th style={{ width: 90 }}>EAN13</th>
                         <th style={{ width: 60 }}>TVA</th>
-                        <th style={{ width: 80 }}>Achat HT</th>
-                        <th style={{ width: 70 }}>Achat TTC</th>
-                        <th style={{ width: 80 }}>Vente HT</th>
-                        <th style={{ width: 70 }}>Vente TTC</th>
+                        <th style={{ width: 78 }}>Achat HT</th>
+                        <th style={{ width: 68 }}>Achat TTC</th>
+                        <th style={{ width: 78 }}>Vente HT</th>
+                        <th style={{ width: 68 }}>Vente TTC</th>
                         <th style={{ width: 68 }}>PVPR HT</th>
-                        <th style={{ width: 80 }}>PVPR TTC</th>
-                        <th style={{ width: 100 }}>Marge HW</th>
-                        <th style={{ width: 100 }}>Marge client</th>
-                        <th style={{ width: 24 }}></th>
+                        <th style={{ width: 78 }}>PVPR TTC</th>
+                        <th style={{ width: 90 }}>Marge HW</th>
+                        <th style={{ width: 90 }}>Marge client</th>
+                        <th style={{ width: 20 }}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -581,17 +581,15 @@ export default function Tarifs() {
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
-                            <td style={{ padding: '3px 4px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 2, whiteSpace: 'nowrap' }}>
-                                <input type="number" step="0.1" key={`mhw-${p.id}-${marge != null ? marge.toFixed(2) : ''}`} defaultValue={marge != null ? marge.toFixed(2) : ''} onKeyDown={e => { if (e.key === 'Enter') { e.target.blur() } }} onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) handleMargeHWChange(p.id, e.target.value) }} placeholder="—" style={{ ...inS, width: 48 }} /><span style={sfx}>%</span>
-                              </div>
-                              {margeHWVal != null && <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'right', marginTop: 1 }}>{margeHWVal.toFixed(2)} €</div>}
+                            <td style={{ padding: '3px 4px', verticalAlign: 'middle' }}>
+                              {margeBadge(marge)}
+                              <input type="number" step="0.1" key={`mhw-${p.id}-${marge != null ? marge.toFixed(2) : ''}`} defaultValue={marge != null ? marge.toFixed(2) : ''} onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }} onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) handleMargeHWChange(p.id, e.target.value) }} placeholder="%" style={{ padding: '2px 3px', fontSize: 10, width: 44, textAlign: 'right', marginTop: 2, display: 'block' }} />
+                              {margeHWVal != null && <div style={{ fontSize: 10, textAlign: 'right', marginTop: 1 }}>{margeHWVal.toFixed(2)} €</div>}
                             </td>
-                            <td style={{ padding: '3px 4px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 2, whiteSpace: 'nowrap' }}>
-                                <input type="number" step="0.1" key={`mcl-${p.id}-${margeClient != null ? margeClient.toFixed(2) : ''}`} defaultValue={margeClient != null ? margeClient.toFixed(2) : ''} onKeyDown={e => { if (e.key === 'Enter') { e.target.blur() } }} onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) handleMargeClientBlur(p.id, e.target.value) }} placeholder="—" style={{ ...inS, width: 48 }} /><span style={sfx}>%</span>
-                              </div>
-                              {margeClientVal != null && <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'right', marginTop: 1 }}>{margeClientVal.toFixed(2)} €</div>}
+                            <td style={{ padding: '3px 4px', verticalAlign: 'middle' }}>
+                              {margeBadge(margeClient)}
+                              <input type="number" step="0.1" key={`mcl-${p.id}-${margeClient != null ? margeClient.toFixed(2) : ''}`} defaultValue={margeClient != null ? margeClient.toFixed(2) : ''} onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }} onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) handleMargeClientBlur(p.id, e.target.value) }} placeholder="%" style={{ padding: '2px 3px', fontSize: 10, width: 44, textAlign: 'right', marginTop: 2, display: 'block' }} />
+                              {margeClientVal != null && <div style={{ fontSize: 10, textAlign: 'right', marginTop: 1 }}>{margeClientVal.toFixed(2)} €</div>}
                             </td>
                             <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           </tr>,
@@ -659,9 +657,9 @@ export default function Tarifs() {
                                                   ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                                                 </td>
                                                 <td style={{ fontSize: 12, padding: '5px 10px', fontWeight: 700 }}>{cr.prixFinal != null ? `${cr.prixFinal.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeHW != null ? <span>{cr.margeHW.toFixed(2)}%{cr.margeHWv != null && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 4 }}>{cr.margeHWv.toFixed(2)} €</span>}</span> : '—'}</td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeHW != null ? <span>{margeBadge(cr.margeHW)}{cr.margeHWv != null && <span style={{ fontSize: 10, marginLeft: 4 }}>{cr.margeHWv.toFixed(2)} €</span>}</span> : '—'}</td>
                                                 <td style={{ fontSize: 12, padding: '5px 10px' }}>{pvprVal ? `${pvprVal.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeClient != null ? <span>{cr.margeClient.toFixed(2)}%{cr.margeClientv != null && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 4 }}>{cr.margeClientv.toFixed(2)} €</span>}</span> : '—'}</td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeClient != null ? <span>{margeBadge(cr.margeClient)}{cr.margeClientv != null && <span style={{ fontSize: 10, marginLeft: 4 }}>{cr.margeClientv.toFixed(2)} €</span>}</span> : '—'}</td>
                                               </tr>
                                             ))}
                                           </tbody>
