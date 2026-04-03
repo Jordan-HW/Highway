@@ -583,13 +583,13 @@ export default function Tarifs() {
                             <td style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
                             <td style={{ padding: '3px 4px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 2, whiteSpace: 'nowrap' }}>
-                                <input type="number" step="0.1" key={`mhw-${p.id}-${marge != null ? marge.toFixed(2) : ''}`} defaultValue={marge != null ? marge.toFixed(2) : ''} onBlur={e => { const v = e.target.value; if (v && parseFloat(v) !== (marge != null ? Math.round(marge * 100) / 100 : null)) handleMargeHWChange(p.id, v) }} placeholder="—" style={{ ...inS, width: 48 }} /><span style={sfx}>%</span>
+                                <input type="number" step="0.1" key={`mhw-${p.id}-${marge != null ? marge.toFixed(2) : ''}`} defaultValue={marge != null ? marge.toFixed(2) : ''} onKeyDown={e => { if (e.key === 'Enter') { e.target.blur() } }} onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) handleMargeHWChange(p.id, e.target.value) }} placeholder="—" style={{ ...inS, width: 48 }} /><span style={sfx}>%</span>
                               </div>
                               {margeHWVal != null && <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'right', marginTop: 1 }}>{margeHWVal.toFixed(2)} €</div>}
                             </td>
                             <td style={{ padding: '3px 4px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 2, whiteSpace: 'nowrap' }}>
-                                <input type="number" step="0.1" key={`mcl-${p.id}-${margeClient != null ? margeClient.toFixed(2) : ''}`} defaultValue={margeClient != null ? margeClient.toFixed(2) : ''} onBlur={e => { const v = e.target.value; if (v && parseFloat(v) !== (margeClient != null ? Math.round(margeClient * 100) / 100 : null)) handleMargeClientBlur(p.id, v) }} placeholder="—" style={{ ...inS, width: 48 }} /><span style={sfx}>%</span>
+                                <input type="number" step="0.1" key={`mcl-${p.id}-${margeClient != null ? margeClient.toFixed(2) : ''}`} defaultValue={margeClient != null ? margeClient.toFixed(2) : ''} onKeyDown={e => { if (e.key === 'Enter') { e.target.blur() } }} onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) handleMargeClientBlur(p.id, e.target.value) }} placeholder="—" style={{ ...inS, width: 48 }} /><span style={sfx}>%</span>
                               </div>
                               {margeClientVal != null && <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'right', marginTop: 1 }}>{margeClientVal.toFixed(2)} €</div>}
                             </td>
