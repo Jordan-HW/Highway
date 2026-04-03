@@ -638,93 +638,69 @@ export default function Tarifs() {
                             <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: src === 'margeClient' ? hl : (df.vente || df.pvpr) ? hlS : undefined }}>{margeClientVal != null ? `${margeClientVal.toFixed(2)} €` : '—'}</td>
                             <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           </tr>,
-                          isExpanded && (
-                            <tr key={`${p.id}-acc`}>
-                              <td colSpan={15} style={{ padding: 0, background: 'var(--surface-2)' }}>
-                                <div style={{ padding: '12px 20px' }}>
-                                  {/* Tableau clients */}
-                                  {(() => {
-                                    const achatVal = achatHT
-                                    const genVal = venteHT
-                                    const pvprHT = pvprVal ? pvprVal / (1 + tva / 100) : null
-                                    const clientRows = clients.map(c => {
-                                      const fixed = getClientVente(p.id, c.id)
-                                      const remisesClient = allRemises.filter(r => r.client_id === c.id)
-                                      const result = genVal ? applyRemisesCascade(genVal, remisesClient, p.id, p.marque_id) : null
-                                      const afterRemises = result?.price ?? null
-                                      const steps = result?.steps || []
-                                      const hasFixed = !!fixed
-                                      const prixFinal = hasFixed ? fixed.prix_vente_ht : afterRemises
-                                      if (!prixFinal && !steps.length) return null
-                                      const margeHW = achatVal && prixFinal ? ((prixFinal - achatVal) / prixFinal * 100) : null
-                                      const margeHWv = achatVal && prixFinal ? prixFinal - achatVal : null
-                                      const margeClient = pvprHT && prixFinal ? ((pvprHT - prixFinal) / pvprHT * 100) : null
-                                      const margeClientv = pvprHT && prixFinal ? pvprHT - prixFinal : null
-                                      const prixFinalTTC = prixFinal ? prixFinal * (1 + tva / 100) : null
-                                      return { nom: c.nom, genVal, steps, afterRemises, fixedPrice: hasFixed ? fixed.prix_vente_ht : null, prixFinal, prixFinalTTC, margeHW, margeHWv, margeClient, margeClientv }
-                                    }).filter(Boolean)
-                                    if (!clientRows.length) return null
-                                    return (
-                                      <div style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)', overflow: 'hidden' }}>
-                                        <table style={{ margin: 0 }}>
-                                          <thead>
-                                            <tr>
-                                              <th style={{ fontSize: 10, padding: '4px 6px' }}>Client</th>
-                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 58 }}>Prix gén.</th>
-                                              <th style={{ fontSize: 10, padding: '4px 6px' }}>Remises</th>
-                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 58 }}>Après rem.</th>
-                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 58 }}>Prix fixé</th>
-                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 58, fontWeight: 700 }}>Final HT</th>
-                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 58 }}>Final TTC</th>
-                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 58 }}>PVPR HT</th>
-                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 58 }}>PVPR TTC</th>
-                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 64 }}>Marge HW</th>
-                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 52 }}>Val. HW</th>
-                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 64 }}>Marge Cl.</th>
-                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 52 }}>Val. Cl.</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {clientRows.map(cr => (
-                                              <tr key={cr.nom} style={{ background: cr.fixedPrice != null ? '#FFF8E7' : undefined }}>
-                                                <td style={{ fontSize: 11, padding: '3px 6px', fontWeight: 500 }}>{cr.nom}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{cr.genVal != null ? `${cr.genVal.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>
-                                                  {cr.steps.length > 0 ? (
-                                                    <span style={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
-                                                      {cr.steps.map((s, i) => (
-                                                        <span key={i} title={`${s.label} → ${s.after.toFixed(2)} €`} style={{ fontSize: 9, background: 'var(--primary-light)', color: 'var(--primary)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>
-                                                          -{s.pct}%
-                                                        </span>
-                                                      ))}
-                                                    </span>
-                                                  ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                                                </td>
-                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{cr.afterRemises != null ? `${cr.afterRemises.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>
-                                                  {cr.fixedPrice != null ? (
-                                                    <span style={{ fontWeight: 600 }}>{cr.fixedPrice.toFixed(2)} € <span style={{ fontSize: 8, background: '#E6C547', color: '#5C4B00', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>FIXÉ</span></span>
-                                                  ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                                                </td>
-                                                <td style={{ fontSize: 11, padding: '3px 6px', fontWeight: 700 }}>{cr.prixFinal != null ? `${cr.prixFinal.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{cr.prixFinalTTC != null ? `${cr.prixFinalTTC.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{pvprVal ? `${pvprVal.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{cr.margeHW != null ? margeBadge(cr.margeHW) : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{cr.margeHWv != null ? `${cr.margeHWv.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{cr.margeClient != null ? margeBadge(cr.margeClient) : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{cr.margeClientv != null ? `${cr.margeClientv.toFixed(2)} €` : '—'}</td>
-                                              </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    )
-                                  })()}
-                                </div>
-                              </td>
-                            </tr>
-                          ),
+                          isExpanded && (() => {
+                            const achatVal = achatHT
+                            const genVal = venteHT
+                            const pvprHTc = pvprVal ? pvprVal / (1 + tva / 100) : null
+                            const clientRows = clients.map(c => {
+                              const fixed = getClientVente(p.id, c.id)
+                              const remisesClient = allRemises.filter(r => r.client_id === c.id)
+                              const result = genVal ? applyRemisesCascade(genVal, remisesClient, p.id, p.marque_id) : null
+                              const afterRemises = result?.price ?? null
+                              const steps = result?.steps || []
+                              const hasFixed = !!fixed
+                              const prixFinal = hasFixed ? fixed.prix_vente_ht : afterRemises
+                              if (!prixFinal && !steps.length) return null
+                              const mHW = achatVal && prixFinal ? ((prixFinal - achatVal) / prixFinal * 100) : null
+                              const mHWv = achatVal && prixFinal ? prixFinal - achatVal : null
+                              const mCl = pvprHTc && prixFinal ? ((pvprHTc - prixFinal) / pvprHTc * 100) : null
+                              const mClv = pvprHTc && prixFinal ? pvprHTc - prixFinal : null
+                              const prixFinalTTC = prixFinal ? prixFinal * (1 + tva / 100) : null
+                              return { id: c.id, nom: c.nom, genVal, steps, afterRemises, fixedPrice: hasFixed ? fixed.prix_vente_ht : null, prixFinal, prixFinalTTC, mHW, mHWv, mCl, mClv }
+                            }).filter(Boolean)
+                            if (!clientRows.length) return null
+                            const cs = { fontSize: 10, padding: '3px 6px', background: 'var(--surface-2)' }
+                            return clientRows.map(cr => (
+                              <tr key={`${p.id}-cl-${cr.id}`} style={{ background: cr.fixedPrice != null ? '#FFF8E7' : 'var(--surface-2)' }}>
+                                {/* Col 1: indicateur */}
+                                <td style={{ ...cs, padding: '3px 2px', textAlign: 'center', color: 'var(--text-muted)' }}>↳</td>
+                                {/* Col 2 (EAN): vide */}
+                                <td style={cs}></td>
+                                {/* Col 3 (Produit): nom client + remises */}
+                                <td style={{ ...cs, fontWeight: 500 }}>
+                                  <span>{cr.nom}</span>
+                                  {cr.steps.length > 0 && <span style={{ marginLeft: 6 }}>{cr.steps.map((s, i) => (
+                                    <span key={i} title={`${s.label} → ${s.after.toFixed(2)} €`} style={{ fontSize: 8, background: 'var(--primary-light)', color: 'var(--primary)', padding: '1px 4px', borderRadius: 3, fontWeight: 600, marginRight: 2 }}>-{s.pct}%</span>
+                                  ))}</span>}
+                                  {cr.fixedPrice != null && <span style={{ fontSize: 8, background: '#E6C547', color: '#5C4B00', padding: '1px 4px', borderRadius: 3, fontWeight: 700, marginLeft: 4 }}>FIXÉ</span>}
+                                </td>
+                                {/* Col 4 (TVA): vide */}
+                                <td style={cs}></td>
+                                {/* Col 5 (Achat HT): prix gén */}
+                                <td style={{ ...cs, color: 'var(--text-muted)' }}>{cr.genVal != null ? `${cr.genVal.toFixed(2)}` : '—'}</td>
+                                {/* Col 6 (Achat TTC): après remises */}
+                                <td style={{ ...cs, color: 'var(--text-muted)' }}>{cr.afterRemises != null && cr.afterRemises !== cr.prixFinal ? `${cr.afterRemises.toFixed(2)}` : ''}</td>
+                                {/* Col 7 = Vente HT → Final HT */}
+                                <td style={{ ...cs, fontWeight: 700 }}>{cr.prixFinal != null ? `${cr.prixFinal.toFixed(2)} €` : '—'}</td>
+                                {/* Col 8 = Vente TTC → Final TTC */}
+                                <td style={cs}>{cr.prixFinalTTC != null ? `${cr.prixFinalTTC.toFixed(2)} €` : '—'}</td>
+                                {/* Col 9 = PVPR HT */}
+                                <td style={cs}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
+                                {/* Col 10 = PVPR TTC */}
+                                <td style={cs}>{pvprVal ? `${pvprVal.toFixed(2)} €` : '—'}</td>
+                                {/* Col 11 = Marge HW */}
+                                <td style={cs}>{cr.mHW != null ? margeBadge(cr.mHW) : '—'}</td>
+                                {/* Col 12 = Val HW */}
+                                <td style={cs}>{cr.mHWv != null ? `${cr.mHWv.toFixed(2)} €` : '—'}</td>
+                                {/* Col 13 = Marge Cl */}
+                                <td style={cs}>{cr.mCl != null ? margeBadge(cr.mCl) : '—'}</td>
+                                {/* Col 14 = Val Cl */}
+                                <td style={cs}>{cr.mClv != null ? `${cr.mClv.toFixed(2)} €` : '—'}</td>
+                                {/* Col 15 = chevron */}
+                                <td style={cs}></td>
+                              </tr>
+                            ))
+                          })(),
                         ]
                       })}
                     </tbody>
