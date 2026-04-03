@@ -539,8 +539,8 @@ export default function Tarifs() {
                         <th style={{ width: 75 }}>Vente TTC</th>
                         <th style={{ width: 75 }}>PVPR HT</th>
                         <th style={{ width: 85 }}>PVPR TTC</th>
-                        <th style={{ width: 65 }}>Marge HW</th>
-                        <th style={{ width: 70 }}>Marge client</th>
+                        <th style={{ width: 70 }}>Marge HW %</th>
+                        <th style={{ width: 70 }}>Marge client %</th>
                         <th style={{ width: 24 }}></th>
                       </tr>
                     </thead>
@@ -578,13 +578,11 @@ export default function Tarifs() {
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 4px' }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inputStyle} /></td>
-                            <td style={{ padding: '3px 4px', position: 'relative' }}>
-                              {margeBadge(marge)}
-                              <input type="number" step="0.1" placeholder="%" onBlur={e => { if (e.target.value) { handleMargeHWChange(p.id, e.target.value); e.target.value = '' } }} style={{ ...inputStyle, width: 50, marginTop: 2, fontSize: 10 }} />
+                            <td style={{ padding: '3px 4px' }}>
+                              <input type="number" step="0.1" key={`mhw-${p.id}-${marge != null ? marge.toFixed(2) : ''}`} defaultValue={marge != null ? marge.toFixed(2) : ''} onBlur={e => { const v = e.target.value; if (v && parseFloat(v) !== (marge != null ? Math.round(marge * 100) / 100 : null)) handleMargeHWChange(p.id, v) }} placeholder="%" style={{ ...inputStyle, width: 58, textAlign: 'right', color: marge != null ? (marge > 20 ? '#27AE60' : marge > 10 ? '#D4840A' : '#C0392B') : undefined }} />
                             </td>
-                            <td style={{ padding: '3px 4px', position: 'relative' }}>
-                              {margeBadge(margeClient)}
-                              <input type="number" step="0.1" placeholder="%" onBlur={e => { if (e.target.value) { handleMargeClientBlur(p.id, e.target.value); e.target.value = '' } }} style={{ ...inputStyle, width: 50, marginTop: 2, fontSize: 10 }} />
+                            <td style={{ padding: '3px 4px' }}>
+                              <input type="number" step="0.1" key={`mcl-${p.id}-${margeClient != null ? margeClient.toFixed(2) : ''}`} defaultValue={margeClient != null ? margeClient.toFixed(2) : ''} onBlur={e => { const v = e.target.value; if (v && parseFloat(v) !== (margeClient != null ? Math.round(margeClient * 100) / 100 : null)) handleMargeClientBlur(p.id, v) }} placeholder="%" style={{ ...inputStyle, width: 58, textAlign: 'right', color: margeClient != null ? (margeClient > 20 ? '#27AE60' : margeClient > 10 ? '#D4840A' : '#C0392B') : undefined }} />
                             </td>
                             <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           </tr>,
