@@ -135,11 +135,30 @@ export default function Tarifs() {
     })
   }
 
-  function isRowDirty(p) {
+  // Compare un champ édité vs original (normalise à 2 décimales pour les prix)
+  function isFieldDirty(editVal, origVal) {
+    const e = editVal === '' || editVal == null ? '' : parseFloat(editVal)
+    const o = origVal === '' || origVal == null ? '' : parseFloat(origVal)
+    if (e === '' && o === '') return false
+    if (e === '' || o === '') return true
+    return Number(Number(e).toFixed(4)) !== Number(Number(o).toFixed(4))
+  }
+
+  function getDirtyFields(p) {
     const edit = rowEdits[p.id]
-    if (!edit) return false
+    if (!edit) return {}
     const orig = getRowValues(p)
-    return String(edit.tva) !== String(orig.tva) || String(edit.achat) !== String(orig.achat) || String(edit.vente) !== String(orig.vente) || String(edit.pvpr) !== String(orig.pvpr)
+    return {
+      tva: String(edit.tva) !== String(orig.tva),
+      achat: isFieldDirty(edit.achat, orig.achat),
+      vente: isFieldDirty(edit.vente, orig.vente),
+      pvpr: isFieldDirty(edit.pvpr, orig.pvpr),
+    }
+  }
+
+  function isRowDirty(p) {
+    const d = getDirtyFields(p)
+    return d.tva || d.achat || d.vente || d.pvpr
   }
 
   const hasDirtyRows = produits.some(p => isRowDirty(p))
@@ -557,6 +576,8 @@ export default function Tarifs() {
                       ) : filteredProduits.map(p => {
                         const edit = getEditRow(p)
                         const dirty = isRowDirty(p)
+                        const df = getDirtyFields(p)
+                        const hl = '#FFF59D' // jaune fluo pour cellules modifiées
                         const tva = parseFloat(edit.tva) || 0
                         const achatHT = edit.achat !== '' ? parseFloat(edit.achat) : null
                         const venteHT = edit.vente !== '' ? parseFloat(edit.vente) : null
@@ -571,24 +592,24 @@ export default function Tarifs() {
                         const sfx = { fontSize: 10, color: 'var(--text-muted)', marginLeft: 2, userSelect: 'none' }
 
                         return [
-                          <tr key={p.id} style={{ background: dirty ? '#FFFDE7' : isExpanded ? 'var(--primary-light)' : undefined }}>
+                          <tr key={p.id} style={{ background: isExpanded ? 'var(--primary-light)' : undefined }}>
                             <td style={{ padding: '3px 6px' }}><Thumb url={p.photo_url} /></td>
                             <td style={{ cursor: 'pointer', padding: '3px 6px' }} onClick={() => toggleAccordion(p.id)}>
                               <div style={{ fontWeight: 500, fontSize: 12 }}>{p.libelle}</div>
                             </td>
                             <td style={{ padding: '3px 6px', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)' }}>{p.ean13 || '—'}</td>
-                            <td style={{ padding: '3px 4px' }}>
+                            <td style={{ padding: '3px 4px', background: df.tva ? hl : undefined }}>
                               <select value={edit.tva} onChange={e => setEditField(p.id, 'tva', parseFloat(e.target.value))} style={{ ...inS, width: 52 }}>
                                 <option value="0">0%</option><option value="5.5">5.5%</option><option value="10">10%</option><option value="20">20%</option>
                               </select>
                             </td>
-                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}><input type="number" step="0.01" value={edit.achat} onChange={e => setEditField(p.id, 'achat', e.target.value)} onBlur={() => formatField(p.id, 'achat')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
-                            <td style={{ padding: '3px 6px', fontSize: 11 }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
-                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}><input type="number" step="0.01" value={edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} onBlur={() => formatField(p.id, 'vente')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
-                            <td style={{ padding: '3px 6px', fontSize: 11 }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
-                            <td style={{ padding: '3px 6px', fontSize: 11 }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
-                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
-                            <td style={{ padding: '3px 4px', verticalAlign: 'middle' }}>
+                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.achat ? hl : undefined }}><input type="number" step="0.01" value={edit.achat} onChange={e => setEditField(p.id, 'achat', e.target.value)} onBlur={() => formatField(p.id, 'achat')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
+                            <td style={{ padding: '3px 6px', fontSize: 11, background: df.achat ? hl : undefined }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
+                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.vente ? hl : undefined }}><input type="number" step="0.01" value={edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} onBlur={() => formatField(p.id, 'vente')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
+                            <td style={{ padding: '3px 6px', fontSize: 11, background: df.vente ? hl : undefined }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
+                            <td style={{ padding: '3px 6px', fontSize: 11, background: df.pvpr ? hl : undefined }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
+                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.pvpr ? hl : undefined }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
+                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', background: df.vente ? hl : undefined }}>
                               {editingMarge === `hw-${p.id}` ? (
                                 <input type="number" step="0.1" autoFocus value={margeInputVal}
                                   onChange={e => setMargeInputVal(e.target.value)}
@@ -597,8 +618,8 @@ export default function Tarifs() {
                                   style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
                               ) : <span style={{ cursor: 'pointer' }} onClick={() => { setMargeInputVal(marge != null ? marge.toFixed(2) : ''); setEditingMarge(`hw-${p.id}`) }}>{margeBadge(marge)}</span>}
                             </td>
-                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle' }}>{margeHWVal != null ? `${margeHWVal.toFixed(2)} €` : '—'}</td>
-                            <td style={{ padding: '3px 4px', verticalAlign: 'middle' }}>
+                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: df.vente ? hl : undefined }}>{margeHWVal != null ? `${margeHWVal.toFixed(2)} €` : '—'}</td>
+                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', background: df.pvpr || df.vente ? hl : undefined }}>
                               {editingMarge === `cl-${p.id}` ? (
                                 <input type="number" step="0.1" autoFocus value={margeInputVal}
                                   onChange={e => setMargeInputVal(e.target.value)}
@@ -607,7 +628,7 @@ export default function Tarifs() {
                                   style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
                               ) : <span style={{ cursor: 'pointer' }} onClick={() => { setMargeInputVal(margeClient != null ? margeClient.toFixed(2) : ''); setEditingMarge(`cl-${p.id}`) }}>{margeBadge(margeClient)}</span>}
                             </td>
-                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle' }}>{margeClientVal != null ? `${margeClientVal.toFixed(2)} €` : '—'}</td>
+                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: df.pvpr || df.vente ? hl : undefined }}>{margeClientVal != null ? `${margeClientVal.toFixed(2)} €` : '—'}</td>
                             <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           </tr>,
                           isExpanded && (
