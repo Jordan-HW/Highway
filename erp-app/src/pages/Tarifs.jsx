@@ -50,9 +50,9 @@ export default function Tarifs() {
   // Photo zoom
   const [photoZoomUrl, setPhotoZoomUrl] = useState(null)
 
-  // Marge editing inline
-  const [editingMarge, setEditingMarge] = useState(null) // 'hw-{id}' or 'cl-{id}'
-  const [margeInputVal, setMargeInputVal] = useState('')
+  // Editing inline (prix + marges)
+  const [editingField, setEditingField] = useState(null) // '{id}-achat' | '{id}-vente' | '{id}-pvpr' | 'hw-{id}' | 'cl-{id}'
+  const [editingVal, setEditingVal] = useState('')
   // Marge client choice popup
   const [margeClientChoice, setMargeClientChoice] = useState(null) // { produitId, margeVal }
 
@@ -595,8 +595,32 @@ export default function Tarifs() {
                         const margeClient = calcMarge(venteHT, pvprHT_row)
                         const margeClientVal = (venteHT != null && pvprHT_row != null) ? pvprHT_row - venteHT : null
                         const isExpanded = expandedId === p.id
-                        const inS = { padding: '2px 3px', fontSize: 11, width: 40, textAlign: 'right' }
+                        const inS = { padding: '2px 3px', fontSize: 11, width: 40, textAlign: 'right', border: '1px solid var(--border)', borderRadius: 3 }
                         const sfx = { fontSize: 10, color: '#1A1820', marginLeft: 1, userSelect: 'none' }
+                        // Style valeur cliquable (sans cadre, soulignement pointillé)
+                        const clickVal = { cursor: 'pointer', fontSize: 11, textAlign: 'right', borderBottom: '1px dashed var(--text-muted)', paddingBottom: 1 }
+
+                        // Helper: champ prix cliquable / éditable
+                        const priceCell = (field, val, bg) => {
+                          const fk = `${p.id}-${field}`
+                          if (editingField === fk) {
+                            return (
+                              <td style={{ padding: '2px 3px', whiteSpace: 'nowrap', background: bg }}>
+                                <input type="number" step="0.01" autoFocus value={editingVal}
+                                  onChange={e => setEditingVal(e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); setEditField(p.id, field, editingVal); formatField(p.id, field); setEditingField(null) } if (e.key === 'Escape') setEditingField(null) }}
+                                  onBlur={() => { setEditField(p.id, field, editingVal); formatField(p.id, field); setEditingField(null) }}
+                                  style={inS} /><span style={sfx}>€</span>
+                              </td>
+                            )
+                          }
+                          const display = val != null ? val.toFixed(2) : '—'
+                          return (
+                            <td style={{ padding: '2px 6px', background: bg }} onClick={() => { setEditingVal(val != null ? val.toFixed(2) : ''); setEditingField(fk) }}>
+                              <span style={clickVal}>{display}</span><span style={sfx}> €</span>
+                            </td>
+                          )
+                        }
 
                         return [
                           <tr key={p.id} style={{ background: isExpanded ? 'var(--primary-light)' : undefined }}>
@@ -613,30 +637,30 @@ export default function Tarifs() {
                                 <span style={sfx}>%</span>
                               </div>
                             </td>
-                            <td style={{ padding: '2px 3px', whiteSpace: 'nowrap', background: df.achat ? (src === 'achat' ? hl : hlS) : undefined }}><input type="number" step="0.01" value={edit.achat} onChange={e => setEditField(p.id, 'achat', e.target.value)} onBlur={() => formatField(p.id, 'achat')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
+                            {priceCell('achat', achatHT, df.achat ? (src === 'achat' ? hl : hlS) : undefined)}
                             <td style={{ padding: '2px 6px', fontSize: 11, background: (df.achat || df.tva) ? hlS : undefined }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
-                            <td style={{ padding: '2px 3px', whiteSpace: 'nowrap', background: df.vente ? (src === 'vente' ? hl : hlS) : undefined }}><input type="number" step="0.01" value={venteHT != null ? venteHT.toFixed(2) : edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} onBlur={() => formatField(p.id, 'vente')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
+                            {priceCell('vente', venteHT, df.vente ? (src === 'vente' ? hl : hlS) : undefined)}
                             <td style={{ padding: '2px 6px', fontSize: 11, background: (df.vente || df.tva) ? hlS : undefined }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '2px 6px', fontSize: 11, background: (df.pvpr || df.tva) ? hlS : undefined }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
-                            <td style={{ padding: '2px 3px', whiteSpace: 'nowrap', background: df.pvpr ? (src === 'pvpr' ? hl : hlS) : undefined }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
+                            {priceCell('pvpr', pvprVal, df.pvpr ? (src === 'pvpr' ? hl : hlS) : undefined)}
                             <td style={{ padding: '3px 4px', verticalAlign: 'middle', background: src === 'margeHW' ? hl : (df.achat || df.vente) ? hlS : undefined }}>
-                              {editingMarge === `hw-${p.id}` ? (
-                                <input type="number" step="0.1" autoFocus value={margeInputVal}
-                                  onChange={e => setMargeInputVal(e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleMargeHWChange(p.id, margeInputVal); setEditingMarge(null) } if (e.key === 'Escape') setEditingMarge(null) }}
-                                  onBlur={() => { handleMargeHWChange(p.id, margeInputVal); setEditingMarge(null) }}
+                              {editingField === `hw-${p.id}` ? (
+                                <input type="number" step="0.1" autoFocus value={editingVal}
+                                  onChange={e => setEditingVal(e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleMargeHWChange(p.id, editingVal); setEditingField(null) } if (e.key === 'Escape') setEditingField(null) }}
+                                  onBlur={() => { handleMargeHWChange(p.id, editingVal); setEditingField(null) }}
                                   style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
-                              ) : <span style={{ cursor: 'pointer' }} onClick={() => { setMargeInputVal(marge != null ? marge.toFixed(2) : ''); setEditingMarge(`hw-${p.id}`) }}>{margeBadge(marge)}</span>}
+                              ) : <span style={{ cursor: 'pointer' }} onClick={() => { setEditingVal(marge != null ? marge.toFixed(2) : ''); setEditingField(`hw-${p.id}`) }}>{margeBadge(marge)}</span>}
                             </td>
                             <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: src === 'margeHW' ? hl : (df.achat || df.vente) ? hlS : undefined }}>{margeHWVal != null ? `${margeHWVal.toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 4px', verticalAlign: 'middle', background: src === 'margeClient' ? hl : (df.vente || df.pvpr) ? hlS : undefined }}>
-                              {editingMarge === `cl-${p.id}` ? (
-                                <input type="number" step="0.1" autoFocus value={margeInputVal}
-                                  onChange={e => setMargeInputVal(e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleMargeClientChange(p.id, margeInputVal); } if (e.key === 'Escape') setEditingMarge(null) }}
-                                  onBlur={() => { handleMargeClientChange(p.id, margeInputVal) }}
+                              {editingField === `cl-${p.id}` ? (
+                                <input type="number" step="0.1" autoFocus value={editingVal}
+                                  onChange={e => setEditingVal(e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleMargeClientChange(p.id, editingVal); } if (e.key === 'Escape') setEditingField(null) }}
+                                  onBlur={() => { handleMargeClientChange(p.id, editingVal) }}
                                   style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
-                              ) : <span style={{ cursor: 'pointer' }} onClick={() => { setMargeInputVal(margeClient != null ? margeClient.toFixed(2) : ''); setEditingMarge(`cl-${p.id}`) }}>{margeBadge(margeClient)}</span>}
+                              ) : <span style={{ cursor: 'pointer' }} onClick={() => { setEditingVal(margeClient != null ? margeClient.toFixed(2) : ''); setEditingField(`cl-${p.id}`) }}>{margeBadge(margeClient)}</span>}
                             </td>
                             <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: src === 'margeClient' ? hl : (df.vente || df.pvpr) ? hlS : undefined }}>{margeClientVal != null ? `${margeClientVal.toFixed(2)} €` : '—'}</td>
                             <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
