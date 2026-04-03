@@ -166,13 +166,17 @@ export default function Tarifs() {
   // Marge HW éditée → recalcule Vente HT = Achat HT / (1 - marge/100)
   function handleMargeHWChange(produitId, margeStr) {
     const marge = parseFloat(margeStr)
-    if (isNaN(marge) || marge >= 100) return
+    console.log('[MARGE HW] margeStr:', margeStr, 'marge:', marge, 'produitId:', produitId)
+    if (isNaN(marge) || marge >= 100) { console.log('[MARGE HW] SKIP: isNaN or >=100'); return }
     const prod = produits.find(pp => pp.id === produitId)
+    console.log('[MARGE HW] prod found:', !!prod)
     setRowEdits(prev => {
       const base = prev[produitId] || getRowValues(prod)
       const achat = parseFloat(base.achat)
-      if (!achat) return prev
+      console.log('[MARGE HW] base.achat:', base.achat, 'parsed achat:', achat, 'base.vente:', base.vente)
+      if (!achat) { console.log('[MARGE HW] SKIP: !achat'); return prev }
       const newVente = (achat / (1 - marge / 100)).toFixed(2)
+      console.log('[MARGE HW] newVente:', newVente, '(was:', base.vente, ')')
       return { ...prev, [produitId]: { ...base, vente: newVente } }
     })
   }
