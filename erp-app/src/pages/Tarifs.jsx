@@ -490,13 +490,14 @@ export default function Tarifs() {
                         <th style={{ width: 85 }}>Vente HT</th>
                         <th style={{ width: 75 }}>Vente TTC</th>
                         <th style={{ width: 85 }}>PVPR TTC</th>
-                        <th style={{ width: 65 }}>Marge</th>
+                        <th style={{ width: 65 }}>Marge HW</th>
+                        <th style={{ width: 70 }}>Marge client</th>
                         <th style={{ width: 24 }}></th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredProduits.length === 0 ? (
-                        <tr><td colSpan={11}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
+                        <tr><td colSpan={12}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
                       ) : filteredProduits.map(p => {
                         const edit = getEditRow(p)
                         const dirty = isRowDirty(p)
@@ -505,6 +506,8 @@ export default function Tarifs() {
                         const venteHT = edit.vente !== '' ? parseFloat(edit.vente) : null
                         const pvprVal = edit.pvpr !== '' ? parseFloat(edit.pvpr) : null
                         const marge = calcMarge(achatHT, venteHT)
+                        const pvprHT_row = pvprVal ? pvprVal / (1 + tva / 100) : null
+                        const margeClient = calcMarge(venteHT, pvprHT_row)
                         const isExpanded = expandedId === p.id
                         const inputStyle = { padding: '3px 5px', fontSize: 11, width: '100%' }
 
@@ -526,11 +529,12 @@ export default function Tarifs() {
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 4px' }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inputStyle} /></td>
                             <td style={{ padding: '3px 4px' }}>{margeBadge(marge)}</td>
+                            <td style={{ padding: '3px 4px' }}>{margeBadge(margeClient)}</td>
                             <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           </tr>,
                           isExpanded && (
                             <tr key={`${p.id}-acc`}>
-                              <td colSpan={11} style={{ padding: 0, background: 'var(--surface-2)' }}>
+                              <td colSpan={12} style={{ padding: 0, background: 'var(--surface-2)' }}>
                                 <div style={{ padding: '12px 20px' }}>
                                   {/* Tableau clients */}
                                   {(() => {
