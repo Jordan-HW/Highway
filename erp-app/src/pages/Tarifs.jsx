@@ -58,6 +58,7 @@ export default function Tarifs() {
   // Historique prix
   const [historiqueModal, setHistoriqueModal] = useState(null) // { produitId, libelle }
   const [historiqueData, setHistoriqueData] = useState([])
+  const [historiqueFiltre, setHistoriqueFiltre] = useState('') // '' = tous, ou 'achat_ht', 'vente_ht', 'pvpr', 'tva'
 
   // Import modal
   const [importModal, setImportModal] = useState(false)
@@ -243,6 +244,7 @@ export default function Tarifs() {
 
   async function openHistorique(produitId, libelle) {
     setHistoriqueModal({ produitId, libelle })
+    setHistoriqueFiltre('')
     const { data } = await supabase.from('tarif_historique').select('*').eq('produit_id', produitId).order('date_changement', { ascending: false }).limit(100)
     setHistoriqueData(data || [])
   }
@@ -1216,38 +1218,55 @@ export default function Tarifs() {
               </div>
               <X size={18} style={{ cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setHistoriqueModal(null)} />
             </div>
+            {/* Filtres par champ */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+              {[{ key: '', label: 'Tout' }, { key: 'achat_ht', label: 'Achat HT' }, { key: 'vente_ht', label: 'Vente HT' }, { key: 'pvpr', label: 'PVPR' }, { key: 'tva', label: 'TVA' }].map(f => (
+                <button key={f.key} className={`btn ${historiqueFiltre === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setHistoriqueFiltre(f.key)} style={{ fontSize: 11, padding: '4px 10px' }}>
+                  {f.label} {f.key && <span style={{ fontSize: 9, opacity: 0.7 }}>({historiqueData.filter(h => h.champ === f.key).length})</span>}
+                </button>
+              ))}
+            </div>
             <div style={{ overflowY: 'auto', flex: 1 }}>
-              {historiqueData.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-                  <Clock size={32} style={{ marginBottom: 8 }} />
-                  <div>Aucun historique pour ce produit</div>
-                </div>
-              ) : (
-                <table style={{ fontSize: 11, width: '100%' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ padding: '6px 8px', textAlign: 'left' }}>Date</th>
-                      <th style={{ padding: '6px 8px', textAlign: 'left' }}>Champ</th>
-                      <th style={{ padding: '6px 8px', textAlign: 'right' }}>Ancien</th>
-                      <th style={{ padding: '6px 8px', textAlign: 'center' }}>→</th>
-                      <th style={{ padding: '6px 8px', textAlign: 'right' }}>Nouveau</th>
-                      <th style={{ padding: '6px 8px', textAlign: 'left' }}>Source</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {historiqueData.map(h => (
-                      <tr key={h.id}>
-                        <td style={{ padding: '4px 8px', fontSize: 10, color: 'var(--text-secondary)' }}>{new Date(h.date_changement).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                        <td style={{ padding: '4px 8px' }}><span className="badge badge-neutral" style={{ fontSize: 10 }}>{champLabels[h.champ] || h.champ}</span></td>
-                        <td style={{ padding: '4px 8px', textAlign: 'right', color: 'var(--text-muted)' }}>{h.ancien_prix != null ? h.ancien_prix.toFixed(2) : '—'}</td>
-                        <td style={{ padding: '4px 8px', textAlign: 'center', color: 'var(--text-muted)' }}>→</td>
-                        <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 600 }}>{h.nouveau_prix != null ? h.nouveau_prix.toFixed(2) : '—'}</td>
-                        <td style={{ padding: '4px 8px', fontSize: 10, color: 'var(--text-secondary)' }}>{h.source === 'import' ? '📥 Import' : '✏️ Manuel'}</td>
+              {(() => {
+                const filtered = historiqueFiltre ? historiqueData.filter(h => h.champ === historiqueFiltre) : historiqueData
+                if (filtered.length === 0) return (
+                  <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                    <Clock size={32} style={{ marginBottom: 8 }} />
+                    <div>{historiqueData.length === 0 ? 'Aucun historique pour ce produit' : 'Aucun changement pour ce champ'}</div>
+                  </div>
+                )
+                return (
+                  <table style={{ fontSize: 11, width: '100%' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ padding: '6px 8px', textAlign: 'left' }}>Date</th>
+                        {!historiqueFiltre && <th style={{ padding: '6px 8px', textAlign: 'left' }}>Champ</th>}
+                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Ancien</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'center' }}></th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Nouveau</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Variation</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left' }}>Source</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+                    </thead>
+                    <tbody>
+                      {filtered.map(h => {
+                        const variation = (h.ancien_prix != null && h.nouveau_prix != null && h.ancien_prix !== 0) ? ((h.nouveau_prix - h.ancien_prix) / h.ancien_prix * 100) : null
+                        return (
+                          <tr key={h.id}>
+                            <td style={{ padding: '4px 8px', fontSize: 10, color: 'var(--text-secondary)' }}>{new Date(h.date_changement).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                            {!historiqueFiltre && <td style={{ padding: '4px 8px' }}><span className="badge badge-neutral" style={{ fontSize: 10 }}>{champLabels[h.champ] || h.champ}</span></td>}
+                            <td style={{ padding: '4px 8px', textAlign: 'right', color: 'var(--text-muted)' }}>{h.ancien_prix != null ? h.ancien_prix.toFixed(2) : '—'}</td>
+                            <td style={{ padding: '4px 8px', textAlign: 'center', color: 'var(--text-muted)' }}>→</td>
+                            <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 600 }}>{h.nouveau_prix != null ? h.nouveau_prix.toFixed(2) : '—'}</td>
+                            <td style={{ padding: '4px 8px', textAlign: 'right', fontSize: 10, color: variation != null ? (variation > 0 ? '#C0392B' : variation < 0 ? '#27AE60' : 'var(--text-muted)') : 'var(--text-muted)' }}>{variation != null ? `${variation > 0 ? '+' : ''}${variation.toFixed(1)}%` : '—'}</td>
+                            <td style={{ padding: '4px 8px', fontSize: 10, color: 'var(--text-secondary)' }}>{h.source === 'import' ? 'Import' : 'Manuel'}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )
+              })()}
             </div>
           </div>
         </div>
