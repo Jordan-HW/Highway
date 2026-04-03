@@ -31,6 +31,7 @@ export default function Tarifs() {
   // Vue par produit — édition inline
   const [expandedId, setExpandedId] = useState(null)
   const [rowEdits, setRowEdits] = useState({}) // { [produitId]: { tva, achat, vente, pvpr } }
+  const [editSource, setEditSource] = useState({}) // { [produitId]: 'achat' | 'vente' | 'pvpr' | 'tva' | 'margeHW' | 'margeClient' }
   const [savingAll, setSavingAll] = useState(false)
   const [allRemises, setAllRemises] = useState([]) // toutes les remises de tous les clients
 
@@ -133,6 +134,7 @@ export default function Tarifs() {
       const base = prev[produitId] || getRowValues(prod)
       return { ...prev, [produitId]: { ...base, [field]: value } }
     })
+    setEditSource(prev => ({ ...prev, [produitId]: field }))
   }
 
   // Compare un champ édité vs original (normalise à 2 décimales pour les prix)
@@ -195,6 +197,7 @@ export default function Tarifs() {
       const newVenteStr = newVente.toFixed(4)
       return { ...prev, [produitId]: { ...base, vente: newVenteStr } }
     })
+    setEditSource(prev => ({ ...prev, [produitId]: 'margeHW' }))
   }
 
   // Marge client éditée → ouvre le choix
@@ -227,6 +230,7 @@ export default function Tarifs() {
         return { ...prev, [produitId]: { ...base, vente: newVente } }
       }
     })
+    setEditSource(prev => ({ ...prev, [margeClientChoice.produitId]: 'margeClient' }))
     setMargeClientChoice(null)
   }
 
@@ -275,7 +279,7 @@ export default function Tarifs() {
     setSavingAll(false)
     if (!hasError) {
       toast(`${dirtyIds.length} produit(s) enregistré(s)`, 'success')
-      setRowEdits({})
+      setRowEdits({}); setEditSource({})
     }
     fetchAll()
   }
@@ -493,7 +497,7 @@ export default function Tarifs() {
       if (item.prix_client_ht && item._client) { const ex = getClientVente(prodId, item._client.id); const payload = { produit_id: prodId, client_id: item._client.id, prix_vente_ht: r2(item.prix_client_ht), remise_pct: null, date_debut: today, notes: 'Import Excel' }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
       updated++
     }
-    setRowEdits({})
+    setRowEdits({}); setEditSource({})
     setImportResult({ updated, failed }); setImportingData(false); setImportStep('done'); fetchAll()
   }
 
@@ -578,7 +582,8 @@ export default function Tarifs() {
                         const edit = getEditRow(p)
                         const dirty = isRowDirty(p)
                         const df = getDirtyFields(p)
-                        const hl = '#FFF176' // jaune fluo vif — champ directement modifié
+                        const src = editSource[p.id] // source du changement
+                        const hl = '#FFF176' // jaune fluo vif — champ source
                         const hlS = '#FFF9C4' // jaune léger — champ impacté
                         const tva = parseFloat(edit.tva) || 0
                         const achatHT = edit.achat !== '' ? parseFloat(edit.achat) : null
@@ -600,25 +605,18 @@ export default function Tarifs() {
                               <div style={{ fontWeight: 500, fontSize: 12 }}>{p.libelle}</div>
                             </td>
                             <td style={{ padding: '3px 6px', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)' }}>{p.ean13 || '—'}</td>
-                            <td style={{ padding: '3px 4px', background: df.tva ? hl : undefined }}>
+                            <td style={{ padding: '3px 4px', background: df.tva ? (src === 'tva' ? hl : hlS) : undefined }}>
                               <select value={edit.tva} onChange={e => setEditField(p.id, 'tva', parseFloat(e.target.value))} style={{ ...inS, width: 52 }}>
                                 <option value="0">0%</option><option value="5.5">5.5%</option><option value="10">10%</option><option value="20">20%</option>
                               </select>
                             </td>
-                            {/* Achat HT : direct si achat changé */}
-                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.achat ? hl : undefined }}><input type="number" step="0.01" value={edit.achat} onChange={e => setEditField(p.id, 'achat', e.target.value)} onBlur={() => formatField(p.id, 'achat')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
-                            {/* Achat TTC : direct si achat changé, impacté si tva changé */}
-                            <td style={{ padding: '3px 6px', fontSize: 11, background: df.achat ? hl : df.tva ? hlS : undefined }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
-                            {/* Vente HT : direct si vente changé */}
-                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.vente ? hl : undefined }}><input type="number" step="0.01" value={venteHT != null ? venteHT.toFixed(2) : edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} onBlur={() => formatField(p.id, 'vente')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
-                            {/* Vente TTC : direct si vente changé, impacté si tva changé */}
-                            <td style={{ padding: '3px 6px', fontSize: 11, background: df.vente ? hl : df.tva ? hlS : undefined }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
-                            {/* PVPR HT : direct si pvpr changé, impacté si tva changé */}
-                            <td style={{ padding: '3px 6px', fontSize: 11, background: df.pvpr ? hl : df.tva ? hlS : undefined }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
-                            {/* PVPR TTC : direct si pvpr changé */}
-                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.pvpr ? hl : undefined }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
-                            {/* Marge HW % : impacté si achat ou vente changé */}
-                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', background: (df.achat || df.vente) ? hlS : undefined }}>
+                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.achat ? (src === 'achat' ? hl : hlS) : undefined }}><input type="number" step="0.01" value={edit.achat} onChange={e => setEditField(p.id, 'achat', e.target.value)} onBlur={() => formatField(p.id, 'achat')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
+                            <td style={{ padding: '3px 6px', fontSize: 11, background: (df.achat || df.tva) ? hlS : undefined }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
+                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.vente ? (src === 'vente' ? hl : hlS) : undefined }}><input type="number" step="0.01" value={venteHT != null ? venteHT.toFixed(2) : edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} onBlur={() => formatField(p.id, 'vente')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
+                            <td style={{ padding: '3px 6px', fontSize: 11, background: (df.vente || df.tva) ? hlS : undefined }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
+                            <td style={{ padding: '3px 6px', fontSize: 11, background: (df.pvpr || df.tva) ? hlS : undefined }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
+                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.pvpr ? (src === 'pvpr' ? hl : hlS) : undefined }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
+                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', background: src === 'margeHW' ? hl : (df.achat || df.vente) ? hlS : undefined }}>
                               {editingMarge === `hw-${p.id}` ? (
                                 <input type="number" step="0.1" autoFocus value={margeInputVal}
                                   onChange={e => setMargeInputVal(e.target.value)}
@@ -627,10 +625,8 @@ export default function Tarifs() {
                                   style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
                               ) : <span style={{ cursor: 'pointer' }} onClick={() => { setMargeInputVal(marge != null ? marge.toFixed(2) : ''); setEditingMarge(`hw-${p.id}`) }}>{margeBadge(marge)}</span>}
                             </td>
-                            {/* Marge HW € : impacté si achat ou vente changé */}
-                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: (df.achat || df.vente) ? hlS : undefined }}>{margeHWVal != null ? `${margeHWVal.toFixed(2)} €` : '—'}</td>
-                            {/* Marge client % : impacté si vente ou pvpr changé */}
-                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', background: (df.vente || df.pvpr) ? hlS : undefined }}>
+                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: src === 'margeHW' ? hl : (df.achat || df.vente) ? hlS : undefined }}>{margeHWVal != null ? `${margeHWVal.toFixed(2)} €` : '—'}</td>
+                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', background: src === 'margeClient' ? hl : (df.vente || df.pvpr) ? hlS : undefined }}>
                               {editingMarge === `cl-${p.id}` ? (
                                 <input type="number" step="0.1" autoFocus value={margeInputVal}
                                   onChange={e => setMargeInputVal(e.target.value)}
@@ -639,8 +635,7 @@ export default function Tarifs() {
                                   style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
                               ) : <span style={{ cursor: 'pointer' }} onClick={() => { setMargeInputVal(margeClient != null ? margeClient.toFixed(2) : ''); setEditingMarge(`cl-${p.id}`) }}>{margeBadge(margeClient)}</span>}
                             </td>
-                            {/* Marge client € : impacté si vente ou pvpr changé */}
-                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: (df.vente || df.pvpr) ? hlS : undefined }}>{margeClientVal != null ? `${margeClientVal.toFixed(2)} €` : '—'}</td>
+                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: src === 'margeClient' ? hl : (df.vente || df.pvpr) ? hlS : undefined }}>{margeClientVal != null ? `${margeClientVal.toFixed(2)} €` : '—'}</td>
                             <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           </tr>,
                           isExpanded && (
@@ -1163,7 +1158,7 @@ export default function Tarifs() {
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: 'var(--surface)', borderTop: '2px solid var(--primary)', padding: '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 -4px 16px rgba(0,0,0,0.1)' }}>
           <span style={{ fontSize: 13, fontWeight: 500 }}>{dirtyIds.length} produit(s) modifié(s)</span>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn btn-secondary" onClick={() => setRowEdits({})} style={{ fontSize: 12 }}>Annuler</button>
+            <button className="btn btn-secondary" onClick={() => { setRowEdits({}); setEditSource({}) }} style={{ fontSize: 12 }}>Annuler</button>
             <button className="btn btn-primary" onClick={saveAllDirty} disabled={savingAll} style={{ fontSize: 12, padding: '7px 24px', gap: 6 }}>
               <Save size={14} /> {savingAll ? 'Enregistrement...' : 'Enregistrer tout'}
             </button>
