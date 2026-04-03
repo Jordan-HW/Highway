@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent, Package, Users } from 'lucide-react'
+import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent, Package, Users, Clock } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 // ── Helpers ──
@@ -55,6 +55,9 @@ export default function Tarifs() {
   const [editingVal, setEditingVal] = useState('')
   // Marge client choice popup
   const [margeClientChoice, setMargeClientChoice] = useState(null) // { produitId, margeVal }
+  // Historique prix
+  const [historiqueModal, setHistoriqueModal] = useState(null) // { produitId, libelle }
+  const [historiqueData, setHistoriqueData] = useState([])
 
   // Import modal
   const [importModal, setImportModal] = useState(false)
@@ -238,7 +241,23 @@ export default function Tarifs() {
     setExpandedId(prev => prev === produitId ? null : produitId)
   }
 
+  async function openHistorique(produitId, libelle) {
+    setHistoriqueModal({ produitId, libelle })
+    const { data } = await supabase.from('tarif_historique').select('*').eq('produit_id', produitId).order('date_changement', { ascending: false }).limit(100)
+    setHistoriqueData(data || [])
+  }
+
+  const champLabels = { achat_ht: 'Achat HT', vente_ht: 'Vente HT', pvpr: 'PVPR TTC', tva: 'TVA %' }
+
   const dirtyIds = produits.filter(p => isRowDirty(p)).map(p => p.id)
+
+  // Log un changement de prix dans l'historique
+  async function logPriceChange(produitId, champ, ancienPrix, nouveauPrix, source = 'manuel') {
+    const a = ancienPrix != null && ancienPrix !== '' ? parseFloat(ancienPrix) : null
+    const n = nouveauPrix != null && nouveauPrix !== '' ? parseFloat(nouveauPrix) : null
+    if (a === n) return // pas de changement réel
+    await supabase.from('tarif_historique').insert({ produit_id: produitId, champ, ancien_prix: a, nouveau_prix: n, source })
+  }
 
   async function saveAllDirty() {
     if (!dirtyIds.length) return
@@ -250,9 +269,12 @@ export default function Tarifs() {
     for (const produitId of dirtyIds) {
       const prod = produits.find(pp => pp.id === produitId)
       const edit = getEditRow(prod)
+      const orig = getRowValues(prod)
 
       if (edit.achat !== '' && edit.achat !== null) {
-        const payload = { produit_id: produitId, prix_achat_ht: r2(edit.achat), date_debut: today }
+        const newVal = r2(edit.achat)
+        await logPriceChange(produitId, 'achat_ht', orig.achat, newVal, 'manuel')
+        const payload = { produit_id: produitId, prix_achat_ht: newVal, date_debut: today }
         const existing = getLastAchat(produitId)
         const { error } = existing
           ? await supabase.from('tarifs_achat').update(payload).eq('id', existing.id)
@@ -261,7 +283,9 @@ export default function Tarifs() {
       }
 
       if (edit.vente !== '' && edit.vente !== null) {
-        const payload = { produit_id: produitId, client_id: null, prix_vente_ht: r2(edit.vente), remise_pct: null, date_debut: today }
+        const newVal = r2(edit.vente)
+        await logPriceChange(produitId, 'vente_ht', orig.vente, newVal, 'manuel')
+        const payload = { produit_id: produitId, client_id: null, prix_vente_ht: newVal, remise_pct: null, date_debut: today }
         const existing = getGeneralVente(produitId)
         const { error } = existing
           ? await supabase.from('tarifs_vente').update(payload).eq('id', existing.id)
@@ -270,8 +294,14 @@ export default function Tarifs() {
       }
 
       const prodUpdate = { taux_tva: parseFloat(edit.tva) }
-      if (edit.pvpr !== '' && edit.pvpr !== null) prodUpdate.pvpr = r2(edit.pvpr)
-      else prodUpdate.pvpr = null
+      if (edit.pvpr !== '' && edit.pvpr !== null) {
+        const newPvpr = r2(edit.pvpr)
+        await logPriceChange(produitId, 'pvpr', orig.pvpr, newPvpr, 'manuel')
+        prodUpdate.pvpr = newPvpr
+      } else prodUpdate.pvpr = null
+      if (String(edit.tva) !== String(orig.tva)) {
+        await logPriceChange(produitId, 'tva', orig.tva, parseFloat(edit.tva), 'manuel')
+      }
       const { error: errProd } = await supabase.from('produits').update(prodUpdate).eq('id', produitId)
       if (errProd) { toast('Erreur PVPR/TVA : ' + errProd.message, 'error'); hasError = true }
     }
@@ -491,10 +521,14 @@ export default function Tarifs() {
         if (tvaVal > 0 && tvaVal < 1) tvaVal = tvaVal * 100 // 0.055 → 5.5, 0.20 → 20
         prodUpdate.taux_tva = tvaVal
       }
-      if (Object.keys(prodUpdate).length) { const { error } = await supabase.from('produits').update(prodUpdate).eq('id', prodId); if (error) failed++ }
-      if (item.prix_achat_ht) { const ex = getLastAchat(prodId); const payload = { produit_id: prodId, prix_achat_ht: r2(item.prix_achat_ht), date_debut: today }; const { error } = ex ? await supabase.from('tarifs_achat').update(payload).eq('id', ex.id) : await supabase.from('tarifs_achat').insert(payload); if (error) { failed++; continue } }
-      if (item.prix_vente_ht) { const ex = getGeneralVente(prodId); const payload = { produit_id: prodId, client_id: null, prix_vente_ht: r2(item.prix_vente_ht), remise_pct: null, date_debut: today }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
-      if (item.prix_client_ht && item._client) { const ex = getClientVente(prodId, item._client.id); const payload = { produit_id: prodId, client_id: item._client.id, prix_vente_ht: r2(item.prix_client_ht), remise_pct: null, date_debut: today, notes: 'Import Excel' }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
+      if (Object.keys(prodUpdate).length) {
+        if (prodUpdate.pvpr) await logPriceChange(prodId, 'pvpr', item._produit.pvpr, prodUpdate.pvpr, 'import')
+        if (prodUpdate.taux_tva) await logPriceChange(prodId, 'tva', item._produit.taux_tva, prodUpdate.taux_tva, 'import')
+        const { error } = await supabase.from('produits').update(prodUpdate).eq('id', prodId); if (error) failed++
+      }
+      if (item.prix_achat_ht) { const ex = getLastAchat(prodId); await logPriceChange(prodId, 'achat_ht', ex?.prix_achat_ht, r2(item.prix_achat_ht), 'import'); const payload = { produit_id: prodId, prix_achat_ht: r2(item.prix_achat_ht), date_debut: today }; const { error } = ex ? await supabase.from('tarifs_achat').update(payload).eq('id', ex.id) : await supabase.from('tarifs_achat').insert(payload); if (error) { failed++; continue } }
+      if (item.prix_vente_ht) { const ex = getGeneralVente(prodId); await logPriceChange(prodId, 'vente_ht', ex?.prix_vente_ht, r2(item.prix_vente_ht), 'import'); const payload = { produit_id: prodId, client_id: null, prix_vente_ht: r2(item.prix_vente_ht), remise_pct: null, date_debut: today }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
+      if (item.prix_client_ht && item._client) { const ex = getClientVente(prodId, item._client.id); await logPriceChange(prodId, 'vente_client_' + item._client.nom, ex?.prix_vente_ht, r2(item.prix_client_ht), 'import'); const payload = { produit_id: prodId, client_id: item._client.id, prix_vente_ht: r2(item.prix_client_ht), remise_pct: null, date_debut: today, notes: 'Import Excel' }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
       updated++
     }
     setRowEdits({}); setEditSource({})
@@ -665,7 +699,10 @@ export default function Tarifs() {
                               ) : <span style={{ cursor: 'pointer' }} onClick={() => { setEditingVal(margeClient != null ? margeClient.toFixed(2) : ''); setEditingField(`cl-${p.id}`) }}>{margeBadge(margeClient)}</span>}
                             </td>
                             <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: src === 'margeClient' ? hl : (df.vente || df.pvpr) ? hlS : undefined }}>{margeClientVal != null ? `${margeClientVal.toFixed(2)} €` : '—'}</td>
-                            <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
+                            <td style={{ padding: '3px 2px', whiteSpace: 'nowrap' }}>
+                              <Clock size={12} style={{ cursor: 'pointer', color: 'var(--text-muted)', marginRight: 2 }} onClick={() => openHistorique(p.id, p.libelle)} />
+                              <span style={{ cursor: 'pointer' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</span>
+                            </td>
                           </tr>,
                           isExpanded && (() => {
                             const achatVal = achatHT
@@ -1165,6 +1202,54 @@ export default function Tarifs() {
       {photoZoomUrl && (
         <div onClick={() => setPhotoZoomUrl(null)} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
           <img src={photoZoomUrl} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
+        </div>
+      )}
+
+      {/* Historique prix */}
+      {historiqueModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setHistoriqueModal(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, padding: '24px 28px', maxWidth: 640, width: '90vw', maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 15 }}>Historique des prix</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{historiqueModal.libelle}</div>
+              </div>
+              <X size={18} style={{ cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setHistoriqueModal(null)} />
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {historiqueData.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                  <Clock size={32} style={{ marginBottom: 8 }} />
+                  <div>Aucun historique pour ce produit</div>
+                </div>
+              ) : (
+                <table style={{ fontSize: 11, width: '100%' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: '6px 8px', textAlign: 'left' }}>Date</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'left' }}>Champ</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'right' }}>Ancien</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'center' }}>→</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'right' }}>Nouveau</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'left' }}>Source</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historiqueData.map(h => (
+                      <tr key={h.id}>
+                        <td style={{ padding: '4px 8px', fontSize: 10, color: 'var(--text-secondary)' }}>{new Date(h.date_changement).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                        <td style={{ padding: '4px 8px' }}><span className="badge badge-neutral" style={{ fontSize: 10 }}>{champLabels[h.champ] || h.champ}</span></td>
+                        <td style={{ padding: '4px 8px', textAlign: 'right', color: 'var(--text-muted)' }}>{h.ancien_prix != null ? h.ancien_prix.toFixed(2) : '—'}</td>
+                        <td style={{ padding: '4px 8px', textAlign: 'center', color: 'var(--text-muted)' }}>→</td>
+                        <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 600 }}>{h.nouveau_prix != null ? h.nouveau_prix.toFixed(2) : '—'}</td>
+                        <td style={{ padding: '4px 8px', fontSize: 10, color: 'var(--text-secondary)' }}>{h.source === 'import' ? '📥 Import' : '✏️ Manuel'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
