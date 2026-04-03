@@ -698,7 +698,7 @@ export default function Tarifs() {
                                 {/* Col 5 (Achat HT): prix gén */}
                                 <td style={{ ...cs, color: 'var(--text-muted)' }}>{cr.genVal != null ? `${cr.genVal.toFixed(2)}` : '—'}</td>
                                 {/* Col 6 (Achat TTC): après remises */}
-                                <td style={{ ...cs, color: 'var(--text-muted)' }}>{cr.afterRemises != null && cr.afterRemises !== cr.prixFinal ? `${cr.afterRemises.toFixed(2)}` : ''}</td>
+                                <td style={{ ...cs, color: 'var(--text-muted)' }}>{cr.afterRemises != null ? `${cr.afterRemises.toFixed(2)}` : '—'}</td>
                                 {/* Col 7 = Vente HT → Final HT */}
                                 <td style={{ ...cs, fontWeight: 700 }}>{cr.prixFinal != null ? `${cr.prixFinal.toFixed(2)} €` : '—'}</td>
                                 {/* Col 8 = Vente TTC → Final TTC */}
