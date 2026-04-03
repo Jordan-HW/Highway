@@ -660,7 +660,26 @@ export default function Tarifs() {
                             }).filter(Boolean)
                             if (!clientRows.length) return null
                             const cs = { fontSize: 10, padding: '3px 6px', background: 'var(--surface-2)' }
-                            return clientRows.map(cr => (
+                            const hs = { fontSize: 9, padding: '2px 6px', background: 'var(--surface-2)', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)' }
+                            return [
+                              <tr key={`${p.id}-cl-hdr`}>
+                                <td style={hs}></td>
+                                <td style={hs}></td>
+                                <td style={hs}>Client</td>
+                                <td style={hs}></td>
+                                <td style={hs}>Prix gén.</td>
+                                <td style={hs}>Ap. rem.</td>
+                                <td style={{ ...hs, fontWeight: 700, color: 'var(--text-primary)' }}>Final HT</td>
+                                <td style={hs}>Final TTC</td>
+                                <td style={hs}>PVPR HT</td>
+                                <td style={hs}>PVPR TTC</td>
+                                <td style={hs}>Marge HW</td>
+                                <td style={hs}>Val. HW</td>
+                                <td style={hs}>Marge Cl.</td>
+                                <td style={hs}>Val. Cl.</td>
+                                <td style={hs}></td>
+                              </tr>,
+                              ...clientRows.map(cr => (
                               <tr key={`${p.id}-cl-${cr.id}`} style={{ background: cr.fixedPrice != null ? '#FFF8E7' : 'var(--surface-2)' }}>
                                 {/* Col 1: indicateur */}
                                 <td style={{ ...cs, padding: '3px 2px', textAlign: 'center', color: 'var(--text-muted)' }}>↳</td>
@@ -699,7 +718,7 @@ export default function Tarifs() {
                                 {/* Col 15 = chevron */}
                                 <td style={cs}></td>
                               </tr>
-                            ))
+                            ))]
                           })(),
                         ]
                       })}
