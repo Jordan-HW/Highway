@@ -578,7 +578,8 @@ export default function Tarifs() {
                         const edit = getEditRow(p)
                         const dirty = isRowDirty(p)
                         const df = getDirtyFields(p)
-                        const hl = '#FFF59D' // jaune fluo pour cellules modifiées
+                        const hl = '#FFF176' // jaune fluo vif — champ directement modifié
+                        const hlS = '#FFF9C4' // jaune léger — champ impacté
                         const tva = parseFloat(edit.tva) || 0
                         const achatHT = edit.achat !== '' ? parseFloat(edit.achat) : null
                         const venteHT = edit.vente !== '' ? parseFloat(edit.vente) : null
@@ -604,13 +605,20 @@ export default function Tarifs() {
                                 <option value="0">0%</option><option value="5.5">5.5%</option><option value="10">10%</option><option value="20">20%</option>
                               </select>
                             </td>
+                            {/* Achat HT : direct si achat changé */}
                             <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.achat ? hl : undefined }}><input type="number" step="0.01" value={edit.achat} onChange={e => setEditField(p.id, 'achat', e.target.value)} onBlur={() => formatField(p.id, 'achat')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
-                            <td style={{ padding: '3px 6px', fontSize: 11, background: df.achat ? hl : undefined }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
+                            {/* Achat TTC : direct si achat changé, impacté si tva changé */}
+                            <td style={{ padding: '3px 6px', fontSize: 11, background: df.achat ? hl : df.tva ? hlS : undefined }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
+                            {/* Vente HT : direct si vente changé */}
                             <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.vente ? hl : undefined }}><input type="number" step="0.01" value={venteHT != null ? venteHT.toFixed(2) : edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} onBlur={() => formatField(p.id, 'vente')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
-                            <td style={{ padding: '3px 6px', fontSize: 11, background: df.vente ? hl : undefined }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
-                            <td style={{ padding: '3px 6px', fontSize: 11, background: df.pvpr ? hl : undefined }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
+                            {/* Vente TTC : direct si vente changé, impacté si tva changé */}
+                            <td style={{ padding: '3px 6px', fontSize: 11, background: df.vente ? hl : df.tva ? hlS : undefined }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
+                            {/* PVPR HT : direct si pvpr changé, impacté si tva changé */}
+                            <td style={{ padding: '3px 6px', fontSize: 11, background: df.pvpr ? hl : df.tva ? hlS : undefined }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
+                            {/* PVPR TTC : direct si pvpr changé */}
                             <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.pvpr ? hl : undefined }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
-                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', background: df.vente ? hl : undefined }}>
+                            {/* Marge HW % : impacté si achat ou vente changé */}
+                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', background: (df.achat || df.vente) ? hlS : undefined }}>
                               {editingMarge === `hw-${p.id}` ? (
                                 <input type="number" step="0.1" autoFocus value={margeInputVal}
                                   onChange={e => setMargeInputVal(e.target.value)}
@@ -619,8 +627,10 @@ export default function Tarifs() {
                                   style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
                               ) : <span style={{ cursor: 'pointer' }} onClick={() => { setMargeInputVal(marge != null ? marge.toFixed(2) : ''); setEditingMarge(`hw-${p.id}`) }}>{margeBadge(marge)}</span>}
                             </td>
-                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: df.vente ? hl : undefined }}>{margeHWVal != null ? `${margeHWVal.toFixed(2)} €` : '—'}</td>
-                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', background: df.pvpr || df.vente ? hl : undefined }}>
+                            {/* Marge HW € : impacté si achat ou vente changé */}
+                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: (df.achat || df.vente) ? hlS : undefined }}>{margeHWVal != null ? `${margeHWVal.toFixed(2)} €` : '—'}</td>
+                            {/* Marge client % : impacté si vente ou pvpr changé */}
+                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', background: (df.vente || df.pvpr) ? hlS : undefined }}>
                               {editingMarge === `cl-${p.id}` ? (
                                 <input type="number" step="0.1" autoFocus value={margeInputVal}
                                   onChange={e => setMargeInputVal(e.target.value)}
@@ -629,7 +639,8 @@ export default function Tarifs() {
                                   style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
                               ) : <span style={{ cursor: 'pointer' }} onClick={() => { setMargeInputVal(margeClient != null ? margeClient.toFixed(2) : ''); setEditingMarge(`cl-${p.id}`) }}>{margeBadge(margeClient)}</span>}
                             </td>
-                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: df.pvpr || df.vente ? hl : undefined }}>{margeClientVal != null ? `${margeClientVal.toFixed(2)} €` : '—'}</td>
+                            {/* Marge client € : impacté si vente ou pvpr changé */}
+                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: (df.vente || df.pvpr) ? hlS : undefined }}>{margeClientVal != null ? `${margeClientVal.toFixed(2)} €` : '—'}</td>
                             <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           </tr>,
                           isExpanded && (
