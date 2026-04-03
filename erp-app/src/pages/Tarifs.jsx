@@ -167,11 +167,13 @@ export default function Tarifs() {
     const marge = parseFloat(margeStr)
     if (isNaN(marge) || marge >= 100) return
     const prod = produits.find(pp => pp.id === produitId)
-    const edit = rowEdits[produitId] || getRowValues(prod)
-    const achat = parseFloat(edit.achat)
-    if (!achat) return
-    const newVente = (achat / (1 - marge / 100)).toFixed(2)
-    setRowEdits(prev => ({ ...prev, [produitId]: { ...edit, vente: newVente } }))
+    setRowEdits(prev => {
+      const base = prev[produitId] || getRowValues(prod)
+      const achat = parseFloat(base.achat)
+      if (!achat) return prev
+      const newVente = (achat / (1 - marge / 100)).toFixed(2)
+      return { ...prev, [produitId]: { ...base, vente: newVente } }
+    })
   }
 
   // Marge client éditée → ouvre le choix de répercussion
@@ -187,22 +189,23 @@ export default function Tarifs() {
     if (!margeClientChoice) return
     const { produitId, margeVal } = margeClientChoice
     const prod = produits.find(pp => pp.id === produitId)
-    const edit = rowEdits[produitId] || getRowValues(prod)
-    const tva = parseFloat(edit.tva) || 0
-
-    if (target === 'pvpr') {
-      const venteHT = parseFloat(edit.vente)
-      if (!venteHT) { setMargeClientChoice(null); return }
-      const pvprHT = venteHT / (1 - margeVal / 100)
-      const pvprTTC = (pvprHT * (1 + tva / 100)).toFixed(2)
-      setRowEdits(prev => ({ ...prev, [produitId]: { ...edit, pvpr: pvprTTC } }))
-    } else {
-      const pvprTTC = parseFloat(edit.pvpr)
-      if (!pvprTTC) { setMargeClientChoice(null); return }
-      const pvprHT = pvprTTC / (1 + tva / 100)
-      const newVente = (pvprHT * (1 - margeVal / 100)).toFixed(2)
-      setRowEdits(prev => ({ ...prev, [produitId]: { ...edit, vente: newVente } }))
-    }
+    setRowEdits(prev => {
+      const base = prev[produitId] || getRowValues(prod)
+      const tva = parseFloat(base.tva) || 0
+      if (target === 'pvpr') {
+        const venteHT = parseFloat(base.vente)
+        if (!venteHT) return prev
+        const pvprHT = venteHT / (1 - margeVal / 100)
+        const pvprTTC = (pvprHT * (1 + tva / 100)).toFixed(2)
+        return { ...prev, [produitId]: { ...base, pvpr: pvprTTC } }
+      } else {
+        const pvprTTC = parseFloat(base.pvpr)
+        if (!pvprTTC) return prev
+        const pvprHT = pvprTTC / (1 + tva / 100)
+        const newVente = (pvprHT * (1 - margeVal / 100)).toFixed(2)
+        return { ...prev, [produitId]: { ...base, vente: newVente } }
+      }
+    })
     setMargeClientChoice(null)
   }
 
@@ -540,14 +543,16 @@ export default function Tarifs() {
                         <th style={{ width: 68 }}>Vente TTC</th>
                         <th style={{ width: 68 }}>PVPR HT</th>
                         <th style={{ width: 78 }}>PVPR TTC</th>
-                        <th style={{ width: 90 }}>Marge HW</th>
-                        <th style={{ width: 90 }}>Marge client</th>
+                        <th style={{ width: 72 }}>Marge HW</th>
+                        <th style={{ width: 58 }}>€</th>
+                        <th style={{ width: 72 }}>Marge client</th>
+                        <th style={{ width: 58 }}>€</th>
                         <th style={{ width: 20 }}></th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredProduits.length === 0 ? (
-                        <tr><td colSpan={13}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
+                        <tr><td colSpan={15}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
                       ) : filteredProduits.map(p => {
                         const edit = getEditRow(p)
                         const dirty = isRowDirty(p)
@@ -582,31 +587,23 @@ export default function Tarifs() {
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
-                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', cursor: 'pointer' }} onClick={() => { if (editingMarge !== `hw-${p.id}`) setEditingMarge(`hw-${p.id}`) }}>
+                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', cursor: 'pointer' }} onClick={() => setEditingMarge(`hw-${p.id}`)}>
                               {editingMarge === `hw-${p.id}` ? (
-                                <input type="number" step="0.1" autoFocus defaultValue={marge != null ? marge.toFixed(2) : ''} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditingMarge(null) }} onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) handleMargeHWChange(p.id, e.target.value); setEditingMarge(null) }} style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
-                              ) : (
-                                <div>
-                                  <div>{margeBadge(marge)}</div>
-                                  {margeHWVal != null && <div style={{ fontSize: 10, textAlign: 'right', marginTop: 1 }}>{margeHWVal.toFixed(2)} €</div>}
-                                </div>
-                              )}
+                                <input type="number" step="0.1" autoFocus defaultValue={marge != null ? marge.toFixed(2) : ''} onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const v = parseFloat(e.target.value); if (!isNaN(v)) handleMargeHWChange(p.id, e.target.value); setEditingMarge(null) } if (e.key === 'Escape') setEditingMarge(null) }} onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) handleMargeHWChange(p.id, e.target.value); setEditingMarge(null) }} style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
+                              ) : margeBadge(marge)}
                             </td>
-                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', cursor: 'pointer' }} onClick={() => { if (editingMarge !== `cl-${p.id}`) setEditingMarge(`cl-${p.id}`) }}>
+                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle' }}>{margeHWVal != null ? `${margeHWVal.toFixed(2)} €` : '—'}</td>
+                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', cursor: 'pointer' }} onClick={() => setEditingMarge(`cl-${p.id}`)}>
                               {editingMarge === `cl-${p.id}` ? (
-                                <input type="number" step="0.1" autoFocus defaultValue={margeClient != null ? margeClient.toFixed(2) : ''} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditingMarge(null) }} onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) handleMargeClientBlur(p.id, e.target.value); else setEditingMarge(null) }} style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
-                              ) : (
-                                <div>
-                                  <div>{margeBadge(margeClient)}</div>
-                                  {margeClientVal != null && <div style={{ fontSize: 10, textAlign: 'right', marginTop: 1 }}>{margeClientVal.toFixed(2)} €</div>}
-                                </div>
-                              )}
+                                <input type="number" step="0.1" autoFocus defaultValue={margeClient != null ? margeClient.toFixed(2) : ''} onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleMargeClientBlur(p.id, e.target.value) } if (e.key === 'Escape') setEditingMarge(null) }} onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) handleMargeClientBlur(p.id, e.target.value); else setEditingMarge(null) }} style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
+                              ) : margeBadge(margeClient)}
                             </td>
+                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle' }}>{margeClientVal != null ? `${margeClientVal.toFixed(2)} €` : '—'}</td>
                             <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           </tr>,
                           isExpanded && (
                             <tr key={`${p.id}-acc`}>
-                              <td colSpan={13} style={{ padding: 0, background: 'var(--surface-2)' }}>
+                              <td colSpan={15} style={{ padding: 0, background: 'var(--surface-2)' }}>
                                 <div style={{ padding: '12px 20px' }}>
                                   {/* Tableau clients */}
                                   {(() => {
