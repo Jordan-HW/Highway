@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent, Package, Users } from 'lucide-react'
@@ -49,11 +49,11 @@ export default function Tarifs() {
   // Photo zoom
   const [photoZoomUrl, setPhotoZoomUrl] = useState(null)
 
-  // Marge editing
-  const [editingMarge, setEditingMarge] = useState(null) // 'hw-{id}' or 'cl-{id}'
-  const [margeInputVal, setMargeInputVal] = useState('')
-  // Marge client choice popup
-  const [margeClientChoice, setMargeClientChoice] = useState(null) // { produitId, margeVal }
+  // Popups marge
+  const [margeHWPopup, setMargeHWPopup] = useState(null) // { produitId }
+  const [margeHWInput, setMargeHWInput] = useState('')
+  const [margeClientPopup, setMargeClientPopup] = useState(null) // { produitId }
+  const [margeClientInput, setMargeClientInput] = useState('')
 
   // Import modal
   const [importModal, setImportModal] = useState(false)
@@ -163,36 +163,29 @@ export default function Tarifs() {
     })
   }
 
-  // Marge HW éditée → recalcule Vente HT = Achat HT / (1 - marge/100)
-  function handleMargeHWChange(produitId, margeStr) {
-    const marge = parseFloat(margeStr)
-    console.log('[MARGE HW] margeStr:', margeStr, 'marge:', marge, 'produitId:', produitId)
-    if (isNaN(marge) || marge >= 100) { console.log('[MARGE HW] SKIP: isNaN or >=100'); return }
+  // Applique la marge HW depuis la popup
+  function applyMargeHW() {
+    if (!margeHWPopup) return
+    const marge = parseFloat(margeHWInput)
+    if (isNaN(marge) || marge >= 100) { setMargeHWPopup(null); return }
+    const { produitId } = margeHWPopup
     const prod = produits.find(pp => pp.id === produitId)
-    console.log('[MARGE HW] prod found:', !!prod)
     setRowEdits(prev => {
       const base = prev[produitId] || getRowValues(prod)
       const achat = parseFloat(base.achat)
-      console.log('[MARGE HW] base.achat:', base.achat, 'parsed achat:', achat, 'base.vente:', base.vente)
-      if (!achat) { console.log('[MARGE HW] SKIP: !achat'); return prev }
+      if (!achat) return prev
       const newVente = (achat / (1 - marge / 100)).toFixed(2)
-      console.log('[MARGE HW] newVente:', newVente, '(was:', base.vente, ')')
       return { ...prev, [produitId]: { ...base, vente: newVente } }
     })
+    setMargeHWPopup(null)
   }
 
-  // Marge client éditée → ouvre le choix de répercussion
-  function handleMargeClientBlur(produitId, margeStr) {
-    const marge = parseFloat(margeStr)
-    if (isNaN(marge) || marge >= 100) { setEditingMarge(null); return }
-    setEditingMarge(null)
-    setMargeClientChoice({ produitId, margeVal: marge })
-  }
-
-  // Applique le choix marge client
-  function applyMargeClientChoice(target) {
-    if (!margeClientChoice) return
-    const { produitId, margeVal } = margeClientChoice
+  // Applique la marge client depuis la popup
+  function applyMargeClient(target) {
+    if (!margeClientPopup) return
+    const marge = parseFloat(margeClientInput)
+    if (isNaN(marge) || marge >= 100) { setMargeClientPopup(null); return }
+    const { produitId } = margeClientPopup
     const prod = produits.find(pp => pp.id === produitId)
     setRowEdits(prev => {
       const base = prev[produitId] || getRowValues(prod)
@@ -200,18 +193,18 @@ export default function Tarifs() {
       if (target === 'pvpr') {
         const venteHT = parseFloat(base.vente)
         if (!venteHT) return prev
-        const pvprHT = venteHT / (1 - margeVal / 100)
+        const pvprHT = venteHT / (1 - marge / 100)
         const pvprTTC = (pvprHT * (1 + tva / 100)).toFixed(2)
         return { ...prev, [produitId]: { ...base, pvpr: pvprTTC } }
       } else {
         const pvprTTC = parseFloat(base.pvpr)
         if (!pvprTTC) return prev
         const pvprHT = pvprTTC / (1 + tva / 100)
-        const newVente = (pvprHT * (1 - margeVal / 100)).toFixed(2)
+        const newVente = (pvprHT * (1 - marge / 100)).toFixed(2)
         return { ...prev, [produitId]: { ...base, vente: newVente } }
       }
     })
-    setMargeClientChoice(null)
+    setMargeClientPopup(null)
   }
 
   function toggleAccordion(produitId) {
@@ -592,24 +585,12 @@ export default function Tarifs() {
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
-                            <td style={{ padding: '3px 4px', verticalAlign: 'middle' }}>
-                              {editingMarge === `hw-${p.id}` ? (
-                                <input type="number" step="0.1" autoFocus value={margeInputVal}
-                                  onChange={e => setMargeInputVal(e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const v = parseFloat(margeInputVal); if (!isNaN(v)) handleMargeHWChange(p.id, margeInputVal); setEditingMarge(null) } if (e.key === 'Escape') setEditingMarge(null) }}
-                                  onBlur={() => { const v = parseFloat(margeInputVal); if (!isNaN(v)) handleMargeHWChange(p.id, margeInputVal); setEditingMarge(null) }}
-                                  style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
-                              ) : <span style={{ cursor: 'pointer' }} onClick={() => { setMargeInputVal(marge != null ? marge.toFixed(2) : ''); setEditingMarge(`hw-${p.id}`) }}>{margeBadge(marge)}</span>}
+                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', cursor: 'pointer' }} onClick={() => { setMargeHWInput(marge != null ? marge.toFixed(2) : ''); setMargeHWPopup({ produitId: p.id }) }}>
+                              {margeBadge(marge)}
                             </td>
                             <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle' }}>{margeHWVal != null ? `${margeHWVal.toFixed(2)} €` : '—'}</td>
-                            <td style={{ padding: '3px 4px', verticalAlign: 'middle' }}>
-                              {editingMarge === `cl-${p.id}` ? (
-                                <input type="number" step="0.1" autoFocus value={margeInputVal}
-                                  onChange={e => setMargeInputVal(e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleMargeClientBlur(p.id, margeInputVal) } if (e.key === 'Escape') setEditingMarge(null) }}
-                                  onBlur={() => { const v = parseFloat(margeInputVal); if (!isNaN(v)) handleMargeClientBlur(p.id, margeInputVal); else setEditingMarge(null) }}
-                                  style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
-                              ) : <span style={{ cursor: 'pointer' }} onClick={() => { setMargeInputVal(margeClient != null ? margeClient.toFixed(2) : ''); setEditingMarge(`cl-${p.id}`) }}>{margeBadge(margeClient)}</span>}
+                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', cursor: 'pointer' }} onClick={() => { setMargeClientInput(margeClient != null ? margeClient.toFixed(2) : ''); setMargeClientPopup({ produitId: p.id }) }}>
+                              {margeBadge(margeClient)}
                             </td>
                             <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle' }}>{margeClientVal != null ? `${margeClientVal.toFixed(2)} €` : '—'}</td>
                             <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
@@ -1111,17 +1092,36 @@ export default function Tarifs() {
         </div>
       )}
 
-      {/* Choix marge client */}
-      {margeClientChoice && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setMargeClientChoice(null)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, padding: '24px 28px', maxWidth: 360, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Répercuter la marge client sur :</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16 }}>Marge saisie : {margeClientChoice.margeVal.toFixed(1)}%</div>
+      {/* Popup marge HW */}
+      {margeHWPopup && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setMargeHWPopup(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, padding: '24px 28px', maxWidth: 340, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Définir la marge Highway</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <input type="number" step="0.1" autoFocus value={margeHWInput} onChange={e => setMargeHWInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') applyMargeHW() }} style={{ flex: 1, padding: '8px 12px', fontSize: 14, textAlign: 'right', borderRadius: 6, border: '1px solid var(--border)' }} />
+              <span style={{ fontSize: 14, fontWeight: 600 }}>%</span>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16 }}>Recalcule le prix de vente HT général</div>
+            <button className="btn btn-primary" onClick={applyMargeHW} style={{ width: '100%', fontSize: 13, padding: '10px' }}>Appliquer</button>
+          </div>
+        </div>
+      )}
+
+      {/* Popup marge client */}
+      {margeClientPopup && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setMargeClientPopup(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, padding: '24px 28px', maxWidth: 380, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Définir la marge client</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <input type="number" step="0.1" autoFocus value={margeClientInput} onChange={e => setMargeClientInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault() }} style={{ flex: 1, padding: '8px 12px', fontSize: 14, textAlign: 'right', borderRadius: 6, border: '1px solid var(--border)' }} />
+              <span style={{ fontSize: 14, fontWeight: 600 }}>%</span>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16 }}>Répercuter sur :</div>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button className="btn btn-primary" onClick={() => applyMargeClientChoice('pvpr')} style={{ flex: 1, fontSize: 12, padding: '10px 12px' }}>
+              <button className="btn btn-primary" onClick={() => applyMargeClient('pvpr')} style={{ flex: 1, fontSize: 12, padding: '10px 12px' }}>
                 → PVPR TTC
               </button>
-              <button className="btn btn-secondary" onClick={() => applyMargeClientChoice('vente')} style={{ flex: 1, fontSize: 12, padding: '10px 12px' }}>
+              <button className="btn btn-secondary" onClick={() => applyMargeClient('vente')} style={{ flex: 1, fontSize: 12, padding: '10px 12px' }}>
                 → Prix de vente HT
               </button>
             </div>
