@@ -666,7 +666,7 @@ export default function Tarifs() {
                                 <td style={hs}></td>
                                 <td style={hs}></td>
                                 <td style={hs}>Client</td>
-                                <td style={hs}></td>
+                                <td style={hs}>Prix fixé</td>
                                 <td style={hs}>Prix gén.</td>
                                 <td style={hs}>Ap. rem.</td>
                                 <td style={{ ...hs, fontWeight: 700, color: 'var(--text-primary)' }}>Final HT</td>
@@ -693,8 +693,8 @@ export default function Tarifs() {
                                   ))}</span>}
                                   {cr.fixedPrice != null && <span style={{ fontSize: 8, background: '#E6C547', color: '#5C4B00', padding: '1px 4px', borderRadius: 3, fontWeight: 700, marginLeft: 4 }}>FIXÉ</span>}
                                 </td>
-                                {/* Col 4 (TVA): vide */}
-                                <td style={cs}></td>
+                                {/* Col 4: prix fixé */}
+                                <td style={cs}>{cr.fixedPrice != null ? <span style={{ fontWeight: 600 }}>{cr.fixedPrice.toFixed(2)}</span> : ''}</td>
                                 {/* Col 5 (Achat HT): prix gén */}
                                 <td style={{ ...cs, color: 'var(--text-muted)' }}>{cr.genVal != null ? `${cr.genVal.toFixed(2)}` : '—'}</td>
                                 {/* Col 6 (Achat TTC): après remises */}
