@@ -47,11 +47,11 @@ Highway/
             ├── Login.jsx          ✅ auth via RPC sécurisé
             ├── Dashboard.jsx      ✅ stats globales
             ├── Marques.jsx        ✅ CRUD marques + contacts multiples + catégories par marque
-            ├── Produits.jsx       ✅ Articles — volet droit fiche produit + CRUD
+            ├── Produits.jsx       ✅ Catalogue — volet droit fiche produit + CRUD
             ├── ImportProduits.jsx ✅ import Excel avec mapping colonnes
-            ├── Clients.jsx        ✅ CRUD complet + onglets (infos, contacts, logistique, facturation)
+            ├── Clients.jsx        ✅ CRUD complet
             ├── Stock.jsx          ✅ lots + alertes DLC
-            ├── Tarifs.jsx         ✅ Référencement et Tarifs — vue produit/client, remises cascade, prix fixés
+            ├── Tarifs.jsx         ✅ gestion tarifs achat/vente/clients + marges + historique
             ├── Utilisateurs.jsx   ✅ gestion via RPC sécurisé
             ├── Fournisseurs.jsx   ✅ gestion fournisseurs
             └── Placeholders.jsx   ⏳ CommandesVente, CommandesAchat, Expeditions, Factures
@@ -73,6 +73,8 @@ Highway/
 | `clients` | RLS + policy "allow all" |
 | `lots` | RLS + policy "allow all" |
 | `portail_acces` | RLS + policy "allow all" |
+| `tarif_historique` | RLS + policy "allow all" |
+| `client_remises` | RLS + policy "allow all" |
 
 ### Fonctions RPC sécurisées (SECURITY DEFINER)
 
@@ -117,8 +119,7 @@ Highway/
 
 ### Font
 - **Poppins** (Google Fonts) partout — titres, corps, sidebar, login, codes
-- Tailles harmonisées : 11px tableaux/badges, 12px labels, 13px base, 18px titres page
-- **Tableaux compacts** : photos 28px, padding 3px 6px, font-size 11px, codes mono 10px
+- Tailles harmonisées : 13px base, 12px labels/sous-titres, 11px headers table/badges, 18px titres page
 
 ### Couleurs CSS (index.css)
 ```css
@@ -168,46 +169,26 @@ logo color: #D4B8F0          /* violet clair */
 - **Nomenclature catégories** : choix par marque entre générale ou spécifique
 - **Catégories générales** : gérées via bouton dédié dans le header de la page
 
-### Articles (Produits)
-- **Tableau compact** : même format visuel que Référencement & Tarifs (photos 28px, lignes 11px)
+### Catalogue (Produits)
 - **Clic sur ligne** → volet droit 620px (pas de modal) avec fiche complète
 - **6 onglets** : Général, Colisage, Conservation, Ingrédients, Douane, Tarifs
-- **Onglet Tarifs** : lecture seule — TVA, prix achat HT/TTC, prix vente HT/TTC, marge, PVPR TTC + lien vers Référencement & Tarifs
 - **Traduction auto** : description et ingrédients VO → FR via Google Translate
 - **Type conditionnement** : unités (PCB) ou kg (poids colis)
 - **Tooltip DLC** : icone info expliquant DLC/DLUO/DDM
-- **Photo** : cliquable pour zoom plein écran (overlay noir, zoom-out au clic)
+- **Photo** : cliquable pour zoom plein écran
 - **Modal création** séparée (nouveau produit uniquement)
 - **Statuts** affichés avec majuscule (Actif, En référencement, Arrêté, Inactif)
-- **Flèches spinner** masquées sur tous les inputs number (CSS global)
 
-### Clients
-- Modale 640px avec **4 onglets** : Infos générales, Contacts, Logistique, Facturation
-- **Contacts multiples** : même pattern que Marques (ligne compacte lecture, crayon pour éditer)
-- Mode lecture/édition par section avec crayon
-
-### Référencement et Tarifs
-- **Vue par produit** : tableau compact avec édition inline directe (pas besoin de déplier)
-  - Colonnes : Photo (zoom clic), Produit, EAN13, TVA (select), Achat HT (input), Achat TTC (calculé), Vente HT (input), Vente TTC (calculé), PVPR TTC (input), Marge
-  - **Formatage** : 2 décimales au blur sur les prix, prix TTC calculés en temps réel
-  - **Enregistrement global** : barre fixe en bas dès qu'une modif est faite (N produit(s) modifié(s) + Annuler + Enregistrer tout)
-  - **Protection** : `beforeunload` si modifications non sauvées
-  - **Dépliage** (clic nom/chevron) → tableau clients en lecture seule :
-    - Colonnes : Client, Prix général, Remises (badges cascade), Après remises, Prix fixé, Prix final HT, Marge HW, PVPR TTC, Marge client
-    - Badge **FIXÉ** (jaune) quand un prix override existe
-  - **Calcul marges** : taux de marque (vente - achat) / vente. Marge client = (PVPR_HT - prix_client) / PVPR_HT (PVPR converti en HT via TVA produit)
-- **Vue par client** : sélection client → tableau de tous les produits
-  - **Toggle référencement** : checkbox pour référencer/déréférencer un produit chez le client
-  - Prix vente HT général, après remises (calculé), prix fixé (éditable), prix effectif
-  - Bouton X par ligne + bouton "Supprimer tous les prix fixés"
-- **Remises en cascade** (par client) :
-  - Chaque remise : label, pourcentage, fournisseur (marque), scope (tous produits ou sélection)
-  - Product picker avec photos/recherche pour la sélection
-  - Preview cascade : affiche l'enchaînement et le résultat
-  - Logique : prix général → remises cascade → prix effectif (sauf si prix fixé = override)
-- **Import Excel** : mapping colonnes (EAN13, TVA, Prix achat HT, Prix vente général HT, PVPR TTC, Client, Prix client HT), validation, aperçu
-  - TVA : gère formats `5%`, `0.055`, `5.5` (normalisation auto)
-  - Prix : arrondi 2 décimales à l'écriture en base
+### Référencement & Tarifs (Tarifs.jsx)
+- **Vue par produit** : tableau inline avec colonnes EAN, Produit, TVA, Achat HT/TTC, Vente HT/TTC, PVPR HT/TTC, Marge HW %/€, Marge Client %/€
+- **Champs cliquables** : prix et TVA affichés sans cadre (soulignement pointillé), input au clic, validation au blur/Entrée
+- **Marges éditables** : clic sur badge marge → input, recalcul automatique du prix de vente (marge HW) ou choix répercussion PVPR/vente (marge client)
+- **Calcul marges** : Marge HW = (Vente-Achat)/Vente, Marge Client = (PVPR HT-Vente)/PVPR HT. Badges colorés : vert ≥28%, orange ≥23%, rouge <23%
+- **Surlignage intelligent** : jaune vif (#FFF176) sur le champ source du changement, jaune léger (#FFF9C4) sur les champs impactés
+- **Accordéon clients** : lignes `<tr>` dans le même tableau (colonnes alignées). Affiche : nom client, remises, prix fixé, prix gén., après remises, Final HT/TTC, PVPR, marges
+- **Historique des prix** : icône horloge par produit → modale avec filtres par champ (Achat/Vente/PVPR/TVA), tableau ancien→nouveau + variation %, source (manuel/import)
+- **Enregistrement global** : barre fixe en bas, surlignage par cellule des modifications en attente
+- **Import Excel** : mapping colonnes, normalisation TVA, validation, import en masse avec logging historique
 
 ---
 
@@ -218,13 +199,12 @@ logo color: #D4B8F0          /* violet clair */
 | `marques` | Marques distribuées — champs : nom, code, pays, devise, delai_livraison_jours, conditions_paiement, adresse, notes, actif, **nomenclature_specifique** |
 | `marque_contacts` | Contacts par marque — champs : marque_id (FK), prenom, nom, fonction, email, telephone |
 | `categories` | Catégories produits — champs : nom, parent_id, **marque_id** (FK nullable, null = générale) |
-| `produits` | Catalogue produits — champs classiques + **description_fr**, **type_conditionnement** (unites/kg), **poids_colis_kg**, **longueur/largeur/hauteur_colis_cm**, **poids_produit_brut_kg**, **poids_produit_net_kg**, **taux_tva** (5.5 par défaut), **pvpr** (prix recommandé consommateur TTC) |
+| `produits` | Catalogue produits — champs classiques + **description_fr**, **type_conditionnement** (unites/kg), **poids_colis_kg**, **longueur/largeur/hauteur_colis_cm**, **poids_produit_brut_kg**, **poids_produit_net_kg** |
 | `clients` | Clients (centrale/indépendant/grossiste) |
-| `client_contacts` | Contacts par client — champs : client_id (FK), prenom, nom, fonction, email, telephone |
-| `client_produit_references` | Référencement produit par client — champs : client_id (FK), produit_id (FK), UNIQUE |
-| `client_remises` | Remises en cascade par client — champs : client_id (FK), label, pourcentage, marque_id (FK nullable), produit_ids (uuid[] nullable = tous), ordre |
-| `tarifs_achat` | Prix achat HT par produit — champs : produit_id, **prix_achat_ht**, date_debut |
-| `tarifs_vente` | Prix vente HT général (client_id NULL) ou prix fixé client (client_id renseigné) — champs : produit_id, client_id, **prix_vente_ht**, remise_pct, date_debut |
+| `tarifs_achat` | Prix achat HT par produit — champs : produit_id, prix_achat_ht, date_debut |
+| `tarifs_vente` | Prix vente HT général (client_id=null) ou par client — champs : produit_id, client_id, prix_vente_ht, remise_pct, date_debut, notes |
+| `tarif_historique` | **Historique des changements de prix** — champs : produit_id, champ (achat_ht/vente_ht/pvpr/tva), ancien_prix, nouveau_prix, date_changement, source (manuel/import) |
+| `client_remises` | Remises en cascade par client — champs : client_id, label, pourcentage, ordre, marque_id, produit_ids |
 | `lots` | Lots avec DLC, localisation, statut |
 | `mouvements_stock` | Entrées/sorties stock |
 | `portail_acces` | Accès portail client |
@@ -237,20 +217,14 @@ logo color: #D4B8F0          /* violet clair */
 
 ---
 
-## Sidebar (navigation)
-- **Catalogue** (section) : Marques, Articles
-- **Commercial** (section) : Clients, Fournisseurs, Référencement et Tarifs
-- **Logistique** (section) : Stock, Commandes achat, Commandes vente, Expéditions
-- **Finance** (section) : Factures
-- **Admin** (section, admin only) : Utilisateurs
-
 ## Fonctionnalités à construire (par priorité)
 1. ⏳ **Commandes vente** — saisie, suivi, statuts
 2. ⏳ **Commandes achat** — vers marques/fournisseurs
 3. ⏳ **Expéditions** — préparation + envoi
 4. ⏳ **Factures** — génération PDF
 5. ⏳ **Portail client** — app séparée, login client, catalogue filtré, commandes
-6. ⏳ **Intégration EDI** — Carrefour, Franprix
+6. ✅ **Tarification client** — prix spécifiques par client, remises en cascade
+7. ⏳ **Intégration EDI** — Carrefour, Franprix
 
 ---
 
