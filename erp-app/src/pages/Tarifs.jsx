@@ -49,6 +49,8 @@ export default function Tarifs() {
   // Photo zoom
   const [photoZoomUrl, setPhotoZoomUrl] = useState(null)
 
+  // Marge editing
+  const [editingMarge, setEditingMarge] = useState(null) // 'hw-{id}' or 'cl-{id}'
   // Marge client choice popup
   const [margeClientChoice, setMargeClientChoice] = useState(null) // { produitId, margeVal }
 
@@ -175,7 +177,8 @@ export default function Tarifs() {
   // Marge client éditée → ouvre le choix de répercussion
   function handleMargeClientBlur(produitId, margeStr) {
     const marge = parseFloat(margeStr)
-    if (isNaN(marge) || marge >= 100) return
+    if (isNaN(marge) || marge >= 100) { setEditingMarge(null); return }
+    setEditingMarge(null)
     setMargeClientChoice({ produitId, margeVal: marge })
   }
 
@@ -188,14 +191,12 @@ export default function Tarifs() {
     const tva = parseFloat(edit.tva) || 0
 
     if (target === 'pvpr') {
-      // Recalcule PVPR : PVPR HT = Vente HT / (1 - marge/100), PVPR TTC = PVPR HT * (1 + TVA)
       const venteHT = parseFloat(edit.vente)
       if (!venteHT) { setMargeClientChoice(null); return }
       const pvprHT = venteHT / (1 - margeVal / 100)
       const pvprTTC = (pvprHT * (1 + tva / 100)).toFixed(2)
       setRowEdits(prev => ({ ...prev, [produitId]: { ...edit, pvpr: pvprTTC } }))
     } else {
-      // Recalcule Vente HT = PVPR HT * (1 - marge/100)
       const pvprTTC = parseFloat(edit.pvpr)
       if (!pvprTTC) { setMargeClientChoice(null); return }
       const pvprHT = pvprTTC / (1 + tva / 100)
@@ -581,15 +582,25 @@ export default function Tarifs() {
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
-                            <td style={{ padding: '3px 4px', verticalAlign: 'middle' }}>
-                              {margeBadge(marge)}
-                              <input type="number" step="0.1" key={`mhw-${p.id}-${marge != null ? marge.toFixed(2) : ''}`} defaultValue={marge != null ? marge.toFixed(2) : ''} onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }} onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) handleMargeHWChange(p.id, e.target.value) }} placeholder="%" style={{ padding: '2px 3px', fontSize: 10, width: 44, textAlign: 'right', marginTop: 2, display: 'block' }} />
-                              {margeHWVal != null && <div style={{ fontSize: 10, textAlign: 'right', marginTop: 1 }}>{margeHWVal.toFixed(2)} €</div>}
+                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', cursor: 'pointer' }} onClick={() => { if (editingMarge !== `hw-${p.id}`) setEditingMarge(`hw-${p.id}`) }}>
+                              {editingMarge === `hw-${p.id}` ? (
+                                <input type="number" step="0.1" autoFocus defaultValue={marge != null ? marge.toFixed(2) : ''} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditingMarge(null) }} onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) handleMargeHWChange(p.id, e.target.value); setEditingMarge(null) }} style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
+                              ) : (
+                                <div>
+                                  <div>{margeBadge(marge)}</div>
+                                  {margeHWVal != null && <div style={{ fontSize: 10, textAlign: 'right', marginTop: 1 }}>{margeHWVal.toFixed(2)} €</div>}
+                                </div>
+                              )}
                             </td>
-                            <td style={{ padding: '3px 4px', verticalAlign: 'middle' }}>
-                              {margeBadge(margeClient)}
-                              <input type="number" step="0.1" key={`mcl-${p.id}-${margeClient != null ? margeClient.toFixed(2) : ''}`} defaultValue={margeClient != null ? margeClient.toFixed(2) : ''} onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }} onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) handleMargeClientBlur(p.id, e.target.value) }} placeholder="%" style={{ padding: '2px 3px', fontSize: 10, width: 44, textAlign: 'right', marginTop: 2, display: 'block' }} />
-                              {margeClientVal != null && <div style={{ fontSize: 10, textAlign: 'right', marginTop: 1 }}>{margeClientVal.toFixed(2)} €</div>}
+                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', cursor: 'pointer' }} onClick={() => { if (editingMarge !== `cl-${p.id}`) setEditingMarge(`cl-${p.id}`) }}>
+                              {editingMarge === `cl-${p.id}` ? (
+                                <input type="number" step="0.1" autoFocus defaultValue={margeClient != null ? margeClient.toFixed(2) : ''} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditingMarge(null) }} onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) handleMargeClientBlur(p.id, e.target.value); else setEditingMarge(null) }} style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
+                              ) : (
+                                <div>
+                                  <div>{margeBadge(margeClient)}</div>
+                                  {margeClientVal != null && <div style={{ fontSize: 10, textAlign: 'right', marginTop: 1 }}>{margeClientVal.toFixed(2)} €</div>}
+                                </div>
+                              )}
                             </td>
                             <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           </tr>,
