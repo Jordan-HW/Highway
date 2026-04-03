@@ -490,6 +490,7 @@ export default function Tarifs() {
                         <th style={{ width: 85 }}>Vente HT</th>
                         <th style={{ width: 75 }}>Vente TTC</th>
                         <th style={{ width: 85 }}>PVPR TTC</th>
+                        <th style={{ width: 75 }}>PVPR HT</th>
                         <th style={{ width: 65 }}>Marge HW</th>
                         <th style={{ width: 70 }}>Marge client</th>
                         <th style={{ width: 24 }}></th>
@@ -497,7 +498,7 @@ export default function Tarifs() {
                     </thead>
                     <tbody>
                       {filteredProduits.length === 0 ? (
-                        <tr><td colSpan={12}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
+                        <tr><td colSpan={13}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
                       ) : filteredProduits.map(p => {
                         const edit = getEditRow(p)
                         const dirty = isRowDirty(p)
@@ -528,13 +529,14 @@ export default function Tarifs() {
                             <td style={{ padding: '3px 4px' }}><input type="number" step="0.01" value={edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} onBlur={() => formatField(p.id, 'vente')} placeholder="0.00" style={inputStyle} /></td>
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 4px' }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inputStyle} /></td>
+                            <td style={{ padding: '3px 6px', fontSize: 11 }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 4px' }}>{margeBadge(marge)}</td>
                             <td style={{ padding: '3px 4px' }}>{margeBadge(margeClient)}</td>
                             <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           </tr>,
                           isExpanded && (
                             <tr key={`${p.id}-acc`}>
-                              <td colSpan={12} style={{ padding: 0, background: 'var(--surface-2)' }}>
+                              <td colSpan={13} style={{ padding: 0, background: 'var(--surface-2)' }}>
                                 <div style={{ padding: '12px 20px' }}>
                                   {/* Tableau clients */}
                                   {(() => {
