@@ -49,6 +49,9 @@ export default function Tarifs() {
   // Photo zoom
   const [photoZoomUrl, setPhotoZoomUrl] = useState(null)
 
+  // Marge client choice popup
+  const [margeClientChoice, setMargeClientChoice] = useState(null) // { produitId, margeVal }
+
   // Import modal
   const [importModal, setImportModal] = useState(false)
   const [importStep, setImportStep] = useState('upload')
@@ -155,6 +158,51 @@ export default function Tarifs() {
       if (isNaN(val)) return prev
       return { ...prev, [produitId]: { ...edit, [field]: val.toFixed(2) } }
     })
+  }
+
+  // Marge HW éditée → recalcule Vente HT = Achat HT / (1 - marge/100)
+  function handleMargeHWChange(produitId, margeStr) {
+    const marge = parseFloat(margeStr)
+    if (isNaN(marge) || marge >= 100) return
+    const prod = produits.find(pp => pp.id === produitId)
+    const edit = rowEdits[produitId] || getRowValues(prod)
+    const achat = parseFloat(edit.achat)
+    if (!achat) return
+    const newVente = (achat / (1 - marge / 100)).toFixed(2)
+    setRowEdits(prev => ({ ...prev, [produitId]: { ...edit, vente: newVente } }))
+  }
+
+  // Marge client éditée → ouvre le choix de répercussion
+  function handleMargeClientBlur(produitId, margeStr) {
+    const marge = parseFloat(margeStr)
+    if (isNaN(marge) || marge >= 100) return
+    setMargeClientChoice({ produitId, margeVal: marge })
+  }
+
+  // Applique le choix marge client
+  function applyMargeClientChoice(target) {
+    if (!margeClientChoice) return
+    const { produitId, margeVal } = margeClientChoice
+    const prod = produits.find(pp => pp.id === produitId)
+    const edit = rowEdits[produitId] || getRowValues(prod)
+    const tva = parseFloat(edit.tva) || 0
+
+    if (target === 'pvpr') {
+      // Recalcule PVPR : PVPR HT = Vente HT / (1 - marge/100), PVPR TTC = PVPR HT * (1 + TVA)
+      const venteHT = parseFloat(edit.vente)
+      if (!venteHT) { setMargeClientChoice(null); return }
+      const pvprHT = venteHT / (1 - margeVal / 100)
+      const pvprTTC = (pvprHT * (1 + tva / 100)).toFixed(2)
+      setRowEdits(prev => ({ ...prev, [produitId]: { ...edit, pvpr: pvprTTC } }))
+    } else {
+      // Recalcule Vente HT = PVPR HT * (1 - marge/100)
+      const pvprTTC = parseFloat(edit.pvpr)
+      if (!pvprTTC) { setMargeClientChoice(null); return }
+      const pvprHT = pvprTTC / (1 + tva / 100)
+      const newVente = (pvprHT * (1 - margeVal / 100)).toFixed(2)
+      setRowEdits(prev => ({ ...prev, [produitId]: { ...edit, vente: newVente } }))
+    }
+    setMargeClientChoice(null)
   }
 
   function toggleAccordion(produitId) {
@@ -530,8 +578,14 @@ export default function Tarifs() {
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 4px' }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inputStyle} /></td>
-                            <td style={{ padding: '3px 4px' }}>{margeBadge(marge)}</td>
-                            <td style={{ padding: '3px 4px' }}>{margeBadge(margeClient)}</td>
+                            <td style={{ padding: '3px 4px', position: 'relative' }}>
+                              {margeBadge(marge)}
+                              <input type="number" step="0.1" placeholder="%" onBlur={e => { if (e.target.value) { handleMargeHWChange(p.id, e.target.value); e.target.value = '' } }} style={{ ...inputStyle, width: 50, marginTop: 2, fontSize: 10 }} />
+                            </td>
+                            <td style={{ padding: '3px 4px', position: 'relative' }}>
+                              {margeBadge(margeClient)}
+                              <input type="number" step="0.1" placeholder="%" onBlur={e => { if (e.target.value) { handleMargeClientBlur(p.id, e.target.value); e.target.value = '' } }} style={{ ...inputStyle, width: 50, marginTop: 2, fontSize: 10 }} />
+                            </td>
                             <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           </tr>,
                           isExpanded && (
@@ -1026,6 +1080,24 @@ export default function Tarifs() {
       {photoZoomUrl && (
         <div onClick={() => setPhotoZoomUrl(null)} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
           <img src={photoZoomUrl} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
+        </div>
+      )}
+
+      {/* Choix marge client */}
+      {margeClientChoice && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setMargeClientChoice(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, padding: '24px 28px', maxWidth: 360, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Répercuter la marge client sur :</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16 }}>Marge saisie : {margeClientChoice.margeVal.toFixed(1)}%</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn btn-primary" onClick={() => applyMargeClientChoice('pvpr')} style={{ flex: 1, fontSize: 12, padding: '10px 12px' }}>
+                → PVPR TTC
+              </button>
+              <button className="btn btn-secondary" onClick={() => applyMargeClientChoice('vente')} style={{ flex: 1, fontSize: 12, padding: '10px 12px' }}>
+                → Prix de vente HT
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
