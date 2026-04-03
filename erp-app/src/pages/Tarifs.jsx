@@ -533,14 +533,14 @@ export default function Tarifs() {
                         <th>Produit</th>
                         <th style={{ width: 90 }}>EAN13</th>
                         <th style={{ width: 60 }}>TVA</th>
-                        <th style={{ width: 85 }}>Achat HT</th>
-                        <th style={{ width: 75 }}>Achat TTC</th>
-                        <th style={{ width: 85 }}>Vente HT</th>
-                        <th style={{ width: 75 }}>Vente TTC</th>
-                        <th style={{ width: 75 }}>PVPR HT</th>
-                        <th style={{ width: 85 }}>PVPR TTC</th>
-                        <th style={{ width: 70 }}>Marge HW %</th>
-                        <th style={{ width: 70 }}>Marge client %</th>
+                        <th style={{ width: 80 }}>Achat HT</th>
+                        <th style={{ width: 70 }}>Achat TTC</th>
+                        <th style={{ width: 80 }}>Vente HT</th>
+                        <th style={{ width: 70 }}>Vente TTC</th>
+                        <th style={{ width: 68 }}>PVPR HT</th>
+                        <th style={{ width: 80 }}>PVPR TTC</th>
+                        <th style={{ width: 100 }}>Marge HW</th>
+                        <th style={{ width: 100 }}>Marge client</th>
                         <th style={{ width: 24 }}></th>
                       </tr>
                     </thead>
@@ -555,10 +555,13 @@ export default function Tarifs() {
                         const venteHT = edit.vente !== '' ? parseFloat(edit.vente) : null
                         const pvprVal = edit.pvpr !== '' ? parseFloat(edit.pvpr) : null
                         const marge = calcMarge(achatHT, venteHT)
+                        const margeHWVal = (achatHT != null && venteHT != null) ? venteHT - achatHT : null
                         const pvprHT_row = pvprVal ? pvprVal / (1 + tva / 100) : null
                         const margeClient = calcMarge(venteHT, pvprHT_row)
+                        const margeClientVal = (venteHT != null && pvprHT_row != null) ? pvprHT_row - venteHT : null
                         const isExpanded = expandedId === p.id
-                        const inputStyle = { padding: '3px 5px', fontSize: 11, width: '100%' }
+                        const inS = { padding: '3px 4px', fontSize: 11, width: 62, textAlign: 'right' }
+                        const sfx = { fontSize: 10, color: 'var(--text-muted)', marginLeft: 2, userSelect: 'none' }
 
                         return [
                           <tr key={p.id} style={{ background: dirty ? '#FFFDE7' : isExpanded ? 'var(--primary-light)' : undefined }}>
@@ -568,21 +571,27 @@ export default function Tarifs() {
                             </td>
                             <td style={{ padding: '3px 6px', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)' }}>{p.ean13 || '—'}</td>
                             <td style={{ padding: '3px 4px' }}>
-                              <select value={edit.tva} onChange={e => setEditField(p.id, 'tva', parseFloat(e.target.value))} style={{ ...inputStyle, width: 52 }}>
+                              <select value={edit.tva} onChange={e => setEditField(p.id, 'tva', parseFloat(e.target.value))} style={{ ...inS, width: 52 }}>
                                 <option value="0">0%</option><option value="5.5">5.5%</option><option value="10">10%</option><option value="20">20%</option>
                               </select>
                             </td>
-                            <td style={{ padding: '3px 4px' }}><input type="number" step="0.01" value={edit.achat} onChange={e => setEditField(p.id, 'achat', e.target.value)} onBlur={() => formatField(p.id, 'achat')} placeholder="0.00" style={inputStyle} /></td>
+                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}><input type="number" step="0.01" value={edit.achat} onChange={e => setEditField(p.id, 'achat', e.target.value)} onBlur={() => formatField(p.id, 'achat')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
-                            <td style={{ padding: '3px 4px' }}><input type="number" step="0.01" value={edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} onBlur={() => formatField(p.id, 'vente')} placeholder="0.00" style={inputStyle} /></td>
+                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}><input type="number" step="0.01" value={edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} onBlur={() => formatField(p.id, 'vente')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 6px', fontSize: 11 }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
-                            <td style={{ padding: '3px 4px' }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inputStyle} /></td>
+                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
                             <td style={{ padding: '3px 4px' }}>
-                              <input type="number" step="0.1" key={`mhw-${p.id}-${marge != null ? marge.toFixed(2) : ''}`} defaultValue={marge != null ? marge.toFixed(2) : ''} onBlur={e => { const v = e.target.value; if (v && parseFloat(v) !== (marge != null ? Math.round(marge * 100) / 100 : null)) handleMargeHWChange(p.id, v) }} placeholder="%" style={{ ...inputStyle, width: 58, textAlign: 'right', color: marge != null ? (marge > 20 ? '#27AE60' : marge > 10 ? '#D4840A' : '#C0392B') : undefined }} />
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 2, whiteSpace: 'nowrap' }}>
+                                <input type="number" step="0.1" key={`mhw-${p.id}-${marge != null ? marge.toFixed(2) : ''}`} defaultValue={marge != null ? marge.toFixed(2) : ''} onBlur={e => { const v = e.target.value; if (v && parseFloat(v) !== (marge != null ? Math.round(marge * 100) / 100 : null)) handleMargeHWChange(p.id, v) }} placeholder="—" style={{ ...inS, width: 48 }} /><span style={sfx}>%</span>
+                              </div>
+                              {margeHWVal != null && <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'right', marginTop: 1 }}>{margeHWVal.toFixed(2)} €</div>}
                             </td>
                             <td style={{ padding: '3px 4px' }}>
-                              <input type="number" step="0.1" key={`mcl-${p.id}-${margeClient != null ? margeClient.toFixed(2) : ''}`} defaultValue={margeClient != null ? margeClient.toFixed(2) : ''} onBlur={e => { const v = e.target.value; if (v && parseFloat(v) !== (margeClient != null ? Math.round(margeClient * 100) / 100 : null)) handleMargeClientBlur(p.id, v) }} placeholder="%" style={{ ...inputStyle, width: 58, textAlign: 'right', color: margeClient != null ? (margeClient > 20 ? '#27AE60' : margeClient > 10 ? '#D4840A' : '#C0392B') : undefined }} />
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 2, whiteSpace: 'nowrap' }}>
+                                <input type="number" step="0.1" key={`mcl-${p.id}-${margeClient != null ? margeClient.toFixed(2) : ''}`} defaultValue={margeClient != null ? margeClient.toFixed(2) : ''} onBlur={e => { const v = e.target.value; if (v && parseFloat(v) !== (margeClient != null ? Math.round(margeClient * 100) / 100 : null)) handleMargeClientBlur(p.id, v) }} placeholder="—" style={{ ...inS, width: 48 }} /><span style={sfx}>%</span>
+                              </div>
+                              {margeClientVal != null && <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'right', marginTop: 1 }}>{margeClientVal.toFixed(2)} €</div>}
                             </td>
                             <td style={{ cursor: 'pointer', padding: '3px 4px' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           </tr>,
@@ -605,8 +614,10 @@ export default function Tarifs() {
                                       const prixFinal = hasFixed ? fixed.prix_vente_ht : afterRemises
                                       if (!prixFinal && !steps.length) return null
                                       const margeHW = achatVal && prixFinal ? ((prixFinal - achatVal) / prixFinal * 100) : null
+                                      const margeHWv = achatVal && prixFinal ? prixFinal - achatVal : null
                                       const margeClient = pvprHT && prixFinal ? ((pvprHT - prixFinal) / pvprHT * 100) : null
-                                      return { nom: c.nom, genVal, steps, afterRemises, fixedPrice: hasFixed ? fixed.prix_vente_ht : null, prixFinal, margeHW, margeClient }
+                                      const margeClientv = pvprHT && prixFinal ? pvprHT - prixFinal : null
+                                      return { nom: c.nom, genVal, steps, afterRemises, fixedPrice: hasFixed ? fixed.prix_vente_ht : null, prixFinal, margeHW, margeHWv, margeClient, margeClientv }
                                     }).filter(Boolean)
                                     if (!clientRows.length) return null
                                     return (
@@ -629,7 +640,7 @@ export default function Tarifs() {
                                             {clientRows.map(cr => (
                                               <tr key={cr.nom} style={{ background: cr.fixedPrice != null ? '#FFF8E7' : undefined }}>
                                                 <td style={{ fontSize: 12, padding: '5px 10px', fontWeight: 500 }}>{cr.nom}</td>
-                                                <td style={{ fontSize: 12, padding: '5px 10px', color: 'var(--text-secondary)' }}>{cr.genVal != null ? `${cr.genVal.toFixed(2)} €` : '—'}</td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.genVal != null ? `${cr.genVal.toFixed(2)} €` : '—'}</td>
                                                 <td style={{ fontSize: 12, padding: '5px 10px' }}>
                                                   {cr.steps.length > 0 ? (
                                                     <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -641,16 +652,16 @@ export default function Tarifs() {
                                                     </span>
                                                   ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                                                 </td>
-                                                <td style={{ fontSize: 12, padding: '5px 10px', color: cr.steps.length > 0 ? 'var(--primary)' : 'var(--text-muted)' }}>{cr.afterRemises != null ? `${cr.afterRemises.toFixed(2)} €` : '—'}</td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.afterRemises != null ? `${cr.afterRemises.toFixed(2)} €` : '—'}</td>
                                                 <td style={{ fontSize: 12, padding: '5px 10px' }}>
                                                   {cr.fixedPrice != null ? (
                                                     <span style={{ fontWeight: 600 }}>{cr.fixedPrice.toFixed(2)} € <span style={{ fontSize: 9, background: '#E6C547', color: '#5C4B00', padding: '1px 5px', borderRadius: 3, fontWeight: 700 }}>FIXÉ</span></span>
                                                   ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                                                 </td>
                                                 <td style={{ fontSize: 12, padding: '5px 10px', fontWeight: 700 }}>{cr.prixFinal != null ? `${cr.prixFinal.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeHW != null ? margeBadge(cr.margeHW) : '—'}</td>
-                                                <td style={{ fontSize: 12, padding: '5px 10px', color: 'var(--text-secondary)' }}>{pvprVal ? `${pvprVal.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeClient != null ? margeBadge(cr.margeClient) : '—'}</td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeHW != null ? <span>{cr.margeHW.toFixed(2)}%{cr.margeHWv != null && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 4 }}>{cr.margeHWv.toFixed(2)} €</span>}</span> : '—'}</td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>{pvprVal ? `${pvprVal.toFixed(2)} €` : '—'}</td>
+                                                <td style={{ fontSize: 12, padding: '5px 10px' }}>{cr.margeClient != null ? <span>{cr.margeClient.toFixed(2)}%{cr.margeClientv != null && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 4 }}>{cr.margeClientv.toFixed(2)} €</span>}</span> : '—'}</td>
                                               </tr>
                                             ))}
                                           </tbody>
