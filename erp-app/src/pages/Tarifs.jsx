@@ -606,9 +606,9 @@ export default function Tarifs() {
                               <div style={{ fontWeight: 500, fontSize: 12 }}>{p.libelle}</div>
                             </td>
                             <td style={{ padding: '2px 3px', background: df.tva ? (src === 'tva' ? hl : hlS) : undefined, whiteSpace: 'nowrap' }}>
-                              <select value={edit.tva} onChange={e => setEditField(p.id, 'tva', parseFloat(e.target.value))} style={{ padding: '2px 2px', fontSize: 11, width: 46 }}>
-                                <option value="0">0 %</option><option value="5.5">5.5 %</option><option value="10">10 %</option><option value="20">20 %</option>
-                              </select>
+                              <select value={edit.tva} onChange={e => setEditField(p.id, 'tva', parseFloat(e.target.value))} style={{ padding: '2px 2px', fontSize: 11, width: 36 }}>
+                                <option value="0">0</option><option value="5.5">5.5</option><option value="10">10</option><option value="20">20</option>
+                              </select><span style={sfx}>%</span>
                             </td>
                             <td style={{ padding: '2px 3px', whiteSpace: 'nowrap', background: df.achat ? (src === 'achat' ? hl : hlS) : undefined }}><input type="number" step="0.01" value={edit.achat} onChange={e => setEditField(p.id, 'achat', e.target.value)} onBlur={() => formatField(p.id, 'achat')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
                             <td style={{ padding: '2px 6px', fontSize: 11, background: (df.achat || df.tva) ? hlS : undefined }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
