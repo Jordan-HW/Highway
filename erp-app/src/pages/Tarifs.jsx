@@ -660,7 +660,8 @@ export default function Tarifs() {
                                       const margeHWv = achatVal && prixFinal ? prixFinal - achatVal : null
                                       const margeClient = pvprHT && prixFinal ? ((pvprHT - prixFinal) / pvprHT * 100) : null
                                       const margeClientv = pvprHT && prixFinal ? pvprHT - prixFinal : null
-                                      return { nom: c.nom, genVal, steps, afterRemises, fixedPrice: hasFixed ? fixed.prix_vente_ht : null, prixFinal, margeHW, margeHWv, margeClient, margeClientv }
+                                      const prixFinalTTC = prixFinal ? prixFinal * (1 + tva / 100) : null
+                                      return { nom: c.nom, genVal, steps, afterRemises, fixedPrice: hasFixed ? fixed.prix_vente_ht : null, prixFinal, prixFinalTTC, margeHW, margeHWv, margeClient, margeClientv }
                                     }).filter(Boolean)
                                     if (!clientRows.length) return null
                                     return (
@@ -668,25 +669,27 @@ export default function Tarifs() {
                                         <table style={{ margin: 0 }}>
                                           <thead>
                                             <tr>
-                                              <th style={{ fontSize: 10, padding: '4px 8px' }}>Client</th>
-                                              <th style={{ fontSize: 10, padding: '4px 8px', width: 72 }}>Prix gén. HT</th>
-                                              <th style={{ fontSize: 10, padding: '4px 8px' }}>Remises</th>
-                                              <th style={{ fontSize: 10, padding: '4px 8px', width: 72 }}>Après rem.</th>
-                                              <th style={{ fontSize: 10, padding: '4px 8px', width: 72 }}>Prix fixé</th>
-                                              <th style={{ fontSize: 10, padding: '4px 8px', width: 72, fontWeight: 700 }}>Final HT</th>
-                                              <th style={{ fontSize: 10, padding: '4px 8px', width: 62 }}>Marge HW</th>
-                                              <th style={{ fontSize: 10, padding: '4px 8px', width: 52 }}>Val. HW</th>
-                                              <th style={{ fontSize: 10, padding: '4px 8px', width: 72 }}>PVPR TTC</th>
-                                              <th style={{ fontSize: 10, padding: '4px 8px', width: 62 }}>Marge Cl.</th>
-                                              <th style={{ fontSize: 10, padding: '4px 8px', width: 52 }}>Val. Cl.</th>
+                                              <th style={{ fontSize: 10, padding: '4px 6px' }}>Client</th>
+                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 58 }}>Prix gén.</th>
+                                              <th style={{ fontSize: 10, padding: '4px 6px' }}>Remises</th>
+                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 58 }}>Après rem.</th>
+                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 58 }}>Prix fixé</th>
+                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 58, fontWeight: 700 }}>Final HT</th>
+                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 58 }}>Final TTC</th>
+                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 58 }}>PVPR HT</th>
+                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 58 }}>PVPR TTC</th>
+                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 64 }}>Marge HW</th>
+                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 52 }}>Val. HW</th>
+                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 64 }}>Marge Cl.</th>
+                                              <th style={{ fontSize: 10, padding: '4px 6px', width: 52 }}>Val. Cl.</th>
                                             </tr>
                                           </thead>
                                           <tbody>
                                             {clientRows.map(cr => (
                                               <tr key={cr.nom} style={{ background: cr.fixedPrice != null ? '#FFF8E7' : undefined }}>
-                                                <td style={{ fontSize: 11, padding: '3px 8px', fontWeight: 500 }}>{cr.nom}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 8px' }}>{cr.genVal != null ? `${cr.genVal.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 8px' }}>
+                                                <td style={{ fontSize: 11, padding: '3px 6px', fontWeight: 500 }}>{cr.nom}</td>
+                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{cr.genVal != null ? `${cr.genVal.toFixed(2)} €` : '—'}</td>
+                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>
                                                   {cr.steps.length > 0 ? (
                                                     <span style={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
                                                       {cr.steps.map((s, i) => (
@@ -697,18 +700,20 @@ export default function Tarifs() {
                                                     </span>
                                                   ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                                                 </td>
-                                                <td style={{ fontSize: 11, padding: '3px 8px' }}>{cr.afterRemises != null ? `${cr.afterRemises.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 8px' }}>
+                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{cr.afterRemises != null ? `${cr.afterRemises.toFixed(2)} €` : '—'}</td>
+                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>
                                                   {cr.fixedPrice != null ? (
-                                                    <span style={{ fontWeight: 600 }}>{cr.fixedPrice.toFixed(2)} € <span style={{ fontSize: 9, background: '#E6C547', color: '#5C4B00', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>FIXÉ</span></span>
+                                                    <span style={{ fontWeight: 600 }}>{cr.fixedPrice.toFixed(2)} € <span style={{ fontSize: 8, background: '#E6C547', color: '#5C4B00', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>FIXÉ</span></span>
                                                   ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                                                 </td>
-                                                <td style={{ fontSize: 11, padding: '3px 8px', fontWeight: 700 }}>{cr.prixFinal != null ? `${cr.prixFinal.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 8px' }}>{cr.margeHW != null ? margeBadge(cr.margeHW) : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 8px' }}>{cr.margeHWv != null ? `${cr.margeHWv.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 8px' }}>{pvprVal ? `${pvprVal.toFixed(2)} €` : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 8px' }}>{cr.margeClient != null ? margeBadge(cr.margeClient) : '—'}</td>
-                                                <td style={{ fontSize: 11, padding: '3px 8px' }}>{cr.margeClientv != null ? `${cr.margeClientv.toFixed(2)} €` : '—'}</td>
+                                                <td style={{ fontSize: 11, padding: '3px 6px', fontWeight: 700 }}>{cr.prixFinal != null ? `${cr.prixFinal.toFixed(2)} €` : '—'}</td>
+                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{cr.prixFinalTTC != null ? `${cr.prixFinalTTC.toFixed(2)} €` : '—'}</td>
+                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
+                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{pvprVal ? `${pvprVal.toFixed(2)} €` : '—'}</td>
+                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{cr.margeHW != null ? margeBadge(cr.margeHW) : '—'}</td>
+                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{cr.margeHWv != null ? `${cr.margeHWv.toFixed(2)} €` : '—'}</td>
+                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{cr.margeClient != null ? margeBadge(cr.margeClient) : '—'}</td>
+                                                <td style={{ fontSize: 11, padding: '3px 6px' }}>{cr.margeClientv != null ? `${cr.margeClientv.toFixed(2)} €` : '—'}</td>
                                               </tr>
                                             ))}
                                           </tbody>
