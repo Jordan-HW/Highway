@@ -629,13 +629,15 @@ export default function Tarifs() {
                             <td style={{ cursor: 'pointer', padding: '2px 6px' }} onClick={() => toggleAccordion(p.id)}>
                               <div style={{ fontWeight: 500, fontSize: 12 }}>{p.libelle}</div>
                             </td>
-                            <td style={{ padding: '2px 3px', background: df.tva ? (src === 'tva' ? hl : hlS) : undefined }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <select value={edit.tva} onChange={e => setEditField(p.id, 'tva', parseFloat(e.target.value))} style={{ padding: '2px 2px', fontSize: 11, flex: 1, minWidth: 0 }}>
-                                  <option value="0">0</option><option value="5.5">5.5</option><option value="10">10</option><option value="20">20</option>
-                                </select>
-                                <span style={sfx}>%</span>
-                              </div>
+                            <td style={{ padding: '2px 6px', background: df.tva ? (src === 'tva' ? hl : hlS) : undefined }} onClick={() => { if (editingField !== `${p.id}-tva`) setEditingField(`${p.id}-tva`) }}>
+                              {editingField === `${p.id}-tva` ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <select autoFocus value={edit.tva} onChange={e => { setEditField(p.id, 'tva', parseFloat(e.target.value)); setEditingField(null) }} onBlur={() => setEditingField(null)} style={{ padding: '2px 2px', fontSize: 11, flex: 1, minWidth: 0 }}>
+                                    <option value="0">0</option><option value="5.5">5.5</option><option value="10">10</option><option value="20">20</option>
+                                  </select>
+                                  <span style={sfx}>%</span>
+                                </div>
+                              ) : <span style={clickVal}>{tva}<span style={sfx}> %</span></span>}
                             </td>
                             {priceCell('achat', achatHT, df.achat ? (src === 'achat' ? hl : hlS) : undefined)}
                             <td style={{ padding: '2px 6px', fontSize: 11, background: (df.achat || df.tva) ? hlS : undefined }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
