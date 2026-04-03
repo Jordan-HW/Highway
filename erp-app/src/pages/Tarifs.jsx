@@ -182,7 +182,7 @@ export default function Tarifs() {
     })
   }
 
-  // Marge HW éditée → recalcule Vente HT
+  // Marge HW éditée → recalcule Vente HT (précision 4 déc pour détecter les micro-changements)
   function handleMargeHWChange(produitId, margeStr) {
     const marge = parseFloat(margeStr)
     if (isNaN(marge) || marge >= 100) return
@@ -191,8 +191,9 @@ export default function Tarifs() {
       const base = prev[produitId] || getRowValues(prod)
       const achat = parseFloat(base.achat)
       if (!achat) return prev
-      const newVente = (achat / (1 - marge / 100)).toFixed(2)
-      return { ...prev, [produitId]: { ...base, vente: newVente } }
+      const newVente = achat / (1 - marge / 100)
+      const newVenteStr = newVente.toFixed(4)
+      return { ...prev, [produitId]: { ...base, vente: newVenteStr } }
     })
   }
 
@@ -222,7 +223,7 @@ export default function Tarifs() {
         const pvprTTC = parseFloat(base.pvpr)
         if (!pvprTTC) return prev
         const pvprHT = pvprTTC / (1 + tva / 100)
-        const newVente = (pvprHT * (1 - margeVal / 100)).toFixed(2)
+        const newVente = (pvprHT * (1 - margeVal / 100)).toFixed(4)
         return { ...prev, [produitId]: { ...base, vente: newVente } }
       }
     })
@@ -605,7 +606,7 @@ export default function Tarifs() {
                             </td>
                             <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.achat ? hl : undefined }}><input type="number" step="0.01" value={edit.achat} onChange={e => setEditField(p.id, 'achat', e.target.value)} onBlur={() => formatField(p.id, 'achat')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
                             <td style={{ padding: '3px 6px', fontSize: 11, background: df.achat ? hl : undefined }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
-                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.vente ? hl : undefined }}><input type="number" step="0.01" value={edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} onBlur={() => formatField(p.id, 'vente')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
+                            <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.vente ? hl : undefined }}><input type="number" step="0.01" value={venteHT != null ? venteHT.toFixed(2) : edit.vente} onChange={e => setEditField(p.id, 'vente', e.target.value)} onBlur={() => formatField(p.id, 'vente')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
                             <td style={{ padding: '3px 6px', fontSize: 11, background: df.vente ? hl : undefined }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 6px', fontSize: 11, background: df.pvpr ? hl : undefined }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 4px', whiteSpace: 'nowrap', background: df.pvpr ? hl : undefined }}><input type="number" step="0.01" value={edit.pvpr} onChange={e => setEditField(p.id, 'pvpr', e.target.value)} onBlur={() => formatField(p.id, 'pvpr')} placeholder="0.00" style={inS} /><span style={sfx}>€</span></td>
