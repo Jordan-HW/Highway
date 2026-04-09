@@ -1011,7 +1011,7 @@ export default function Tarifs() {
                           <th>Remises appliquées</th>
                           <th style={{ width: 72 }}>Prix fixé</th>
                           <th style={{ width: 72 }}>Prix effectif</th>
-                          <th style={{ width: 64 }}>Marge</th>
+                          <th style={{ width: 64 }}>Marge HW</th>
                         </tr>
                       </thead>
                       <tbody>
