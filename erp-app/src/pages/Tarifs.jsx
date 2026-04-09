@@ -1008,6 +1008,7 @@ export default function Tarifs() {
                           <th>Marque</th>
                           <th style={{ width: 58 }}>Vente HT</th>
                           <th style={{ width: 62 }}>Ap. remises</th>
+                          <th>Remises appliquées</th>
                           <th style={{ width: 72 }}>Prix fixé</th>
                           <th style={{ width: 72 }}>Prix effectif</th>
                           <th style={{ width: 64 }}>Marge</th>
@@ -1021,7 +1022,8 @@ export default function Tarifs() {
                           const ct = clientTarifsMap[p.id]
                           const remiseResult = genPrice ? applyRemisesCascade(genPrice, clientRemises, p.id, p.marque_id) : null
                           const afterRemises = remiseResult?.price ?? null
-                          const hasRemises = clientRemises.length > 0 && afterRemises !== genPrice
+                          const remiseSteps = remiseResult?.steps || []
+                          const hasRemises = remiseSteps.length > 0
                           const isFixed = ct?.prix_vente_ht != null && ct?.prix_vente_ht !== ''
                           const effectif = isFixed ? parseFloat(ct.prix_vente_ht) : afterRemises
                           const achat = getLastAchat(p.id)
@@ -1047,6 +1049,17 @@ export default function Tarifs() {
                               <td style={{ padding: '2px 6px' }}>{genPrice != null ? `${Number(genPrice).toFixed(2)} €` : '—'}</td>
                               <td style={{ padding: '2px 6px', color: hasRemises ? 'var(--primary)' : 'var(--text-muted)' }}>
                                 {afterRemises != null ? `${afterRemises.toFixed(2)} €` : '—'}
+                              </td>
+                              <td style={{ padding: '2px 6px' }}>
+                                {remiseSteps.length > 0 ? (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                                    {remiseSteps.map((s, i) => (
+                                      <span key={i} title={`${s.label} → ${s.after.toFixed(2)} €`} style={{ fontSize: 8, background: 'var(--primary-light)', color: 'var(--primary)', padding: '1px 4px', borderRadius: 3, fontWeight: 600 }}>
+                                        {s.label} -{s.pct}%
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                               </td>
                               <td style={{ padding: '2px 6px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
