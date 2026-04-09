@@ -412,6 +412,7 @@ export default function Tarifs() {
     setSavingRemise(false)
     if (error) return toast('Erreur : ' + error.message, 'error')
     setClientRemises(prev => [...prev, data])
+    setAllRemises(prev => [...prev, data])
   }
 
   function updateRemiseLocal(id, field, value) {
@@ -424,12 +425,14 @@ export default function Tarifs() {
     const { error } = await supabase.from('client_remises').update(payload).eq('id', id)
     setSavingRemise(false)
     if (error) return toast('Erreur : ' + error.message, 'error')
+    setAllRemises(prev => prev.map(r => r.id === id ? remise : r))
   }
 
   async function deleteRemise(id) {
     const { error } = await supabase.from('client_remises').delete().eq('id', id)
     if (error) return toast('Erreur : ' + error.message, 'error')
     setClientRemises(prev => prev.filter(r => r.id !== id))
+    setAllRemises(prev => prev.filter(r => r.id !== id))
     if (pickerRemiseId === id) setPickerRemiseId(null)
   }
 
@@ -996,18 +999,18 @@ export default function Tarifs() {
                     </div>
 
                     {/* Produits table */}
-                    <table>
+                    <table style={{ fontSize: 11 }}>
                       <thead>
                         <tr>
-                          <th style={{ width: 44 }}></th>
-                          <th style={{ width: 40 }}>Réf.</th>
+                          <th style={{ width: 28 }}></th>
+                          <th style={{ width: 28 }}>Réf.</th>
                           <th>Produit</th>
                           <th>Marque</th>
-                          <th>Vente HT</th>
-                          <th>Après remises</th>
-                          <th>Prix fixé</th>
-                          <th>Prix effectif</th>
-                          <th>Marge</th>
+                          <th style={{ width: 58 }}>Vente HT</th>
+                          <th style={{ width: 62 }}>Ap. remises</th>
+                          <th style={{ width: 72 }}>Prix fixé</th>
+                          <th style={{ width: 72 }}>Prix effectif</th>
+                          <th style={{ width: 64 }}>Marge</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1026,50 +1029,50 @@ export default function Tarifs() {
 
                           return (
                             <tr key={p.id} style={{ opacity: isRef ? 1 : 0.5, background: isFixed ? '#FFF8E7' : undefined }}>
-                              <td><Thumb url={p.photo_url} /></td>
-                              <td>
+                              <td style={{ padding: '2px 4px' }}><Thumb url={p.photo_url} /></td>
+                              <td style={{ padding: '2px 4px' }}>
                                 <button onClick={() => toggleRef(p.id)} disabled={savingRef === p.id} style={{
-                                  width: 28, height: 28, borderRadius: 6, border: `2px solid ${isRef ? 'var(--primary)' : 'var(--border)'}`,
+                                  width: 22, height: 22, borderRadius: 4, border: `2px solid ${isRef ? 'var(--primary)' : 'var(--border)'}`,
                                   background: isRef ? 'var(--primary)' : 'var(--surface)', cursor: 'pointer',
                                   display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s',
                                 }}>
-                                  {isRef && <Check size={14} color="#fff" strokeWidth={3} />}
+                                  {isRef && <Check size={11} color="#fff" strokeWidth={3} />}
                                 </button>
                               </td>
-                              <td>
-                                <div style={{ fontWeight: 500 }}>{p.libelle}</div>
-                                {p.ean13 && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.ean13}</div>}
+                              <td style={{ padding: '2px 6px' }}>
+                                <div style={{ fontWeight: 500, fontSize: 12 }}>{p.libelle}</div>
+                                {p.ean13 && <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.ean13}</div>}
                               </td>
-                              <td>{p.marques?.nom || '—'}</td>
-                              <td>{genPrice != null ? `${Number(genPrice).toFixed(2)} €` : '—'}</td>
-                              <td style={{ color: hasRemises ? 'var(--primary)' : 'var(--text-muted)' }}>
+                              <td style={{ padding: '2px 6px' }}>{p.marques?.nom || '—'}</td>
+                              <td style={{ padding: '2px 6px' }}>{genPrice != null ? `${Number(genPrice).toFixed(2)} €` : '—'}</td>
+                              <td style={{ padding: '2px 6px', color: hasRemises ? 'var(--primary)' : 'var(--text-muted)' }}>
                                 {afterRemises != null ? `${afterRemises.toFixed(2)} €` : '—'}
                               </td>
-                              <td>
+                              <td style={{ padding: '2px 6px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                   <input type="number" step="0.01"
                                     value={ct?.prix_vente_ht ?? ''}
                                     onChange={e => setClientTarifsMap(prev => ({ ...prev, [p.id]: { ...prev[p.id], prix_vente_ht: e.target.value, produit_id: p.id, client_id: selectedClient.id } }))}
                                     onBlur={e => saveClientPrix(p.id, e.target.value)}
                                     placeholder="—"
-                                    style={{ width: 80, padding: '3px 6px', fontSize: 12, borderRadius: 4, border: isFixed ? '1px solid #E6C547' : '1px solid var(--border)', background: isFixed ? '#FFF8E7' : 'var(--surface)' }}
+                                    style={{ width: 60, padding: '2px 4px', fontSize: 11, borderRadius: 3, border: isFixed ? '1px solid #E6C547' : '1px solid var(--border)', background: isFixed ? '#FFF8E7' : 'var(--surface)' }}
                                   />
                                   {isFixed && (
-                                    <button className="btn-icon" onClick={() => clearFixedPrice(p.id)} title="Supprimer le prix fixé" style={{ color: '#C0392B', padding: 2 }}>
-                                      <X size={12} />
+                                    <button className="btn-icon" onClick={() => clearFixedPrice(p.id)} title="Supprimer le prix fixé" style={{ color: '#C0392B', padding: 1 }}>
+                                      <X size={11} />
                                     </button>
                                   )}
                                 </div>
                               </td>
-                              <td style={{ fontWeight: 600 }}>
+                              <td style={{ padding: '2px 6px', fontWeight: 600 }}>
                                 {effectif != null ? (
-                                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                                     {effectif.toFixed(2)} €
-                                    {isFixed && <span style={{ fontSize: 9, background: '#E6C547', color: '#5C4B00', padding: '1px 5px', borderRadius: 3, fontWeight: 700 }}>FIXÉ</span>}
+                                    {isFixed && <span style={{ fontSize: 8, background: '#E6C547', color: '#5C4B00', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>FIXÉ</span>}
                                   </span>
                                 ) : '—'}
                               </td>
-                              <td>{margeBadge(marge)}</td>
+                              <td style={{ padding: '3px 4px' }}>{margeBadge(marge)}</td>
                             </tr>
                           )
                         })}
