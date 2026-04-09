@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent, Package, Users, Clock } from 'lucide-react'
+import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent, Package, Users, Clock, Eye, EyeOff } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 // ── Helpers ──
@@ -43,6 +43,7 @@ export default function Tarifs() {
   const [showRemises, setShowRemises] = useState(false)
   const [savingRemise, setSavingRemise] = useState(false)
   const [savingRef, setSavingRef] = useState(null)
+  const [hideNonRef, setHideNonRef] = useState(false)
   // Remise product picker
   const [pickerRemiseId, setPickerRemiseId] = useState(null)
   const [pickerSearch, setPickerSearch] = useState('')
@@ -837,6 +838,9 @@ export default function Tarifs() {
                               <Trash2 size={13} /> Supprimer tous les prix fixés ({Object.values(clientTarifsMap).filter(t => t?.id).length})
                             </button>
                           )}
+                          <button className={`btn ${hideNonRef ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setHideNonRef(!hideNonRef)} style={{ fontSize: 11 }}>
+                            {hideNonRef ? <EyeOff size={13} /> : <Eye size={13} />} {hideNonRef ? 'Référencés seuls' : 'Tous les produits'}
+                          </button>
                           <button className={`btn ${showRemises ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowRemises(!showRemises)} style={{ fontSize: 12 }}>
                             <Percent size={14} /> Remises ({clientRemises.length})
                           </button>
@@ -1015,7 +1019,7 @@ export default function Tarifs() {
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredProduits.map(p => {
+                        {filteredProduits.filter(p => !hideNonRef || clientRefs.has(p.id)).map(p => {
                           const isRef = clientRefs.has(p.id)
                           const general = getGeneralVente(p.id)
                           const genPrice = general?.prix_vente_ht || null
