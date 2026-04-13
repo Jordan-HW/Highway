@@ -1037,6 +1037,7 @@ export default function Tarifs() {
                           <th style={{ width: 72 }}>Prix fixé</th>
                           <th style={{ width: 72 }}>Prix effectif</th>
                           <th style={{ width: 64 }}>Marge HW</th>
+                          <th style={{ width: 64 }}>Marge Cl.</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1053,6 +1054,10 @@ export default function Tarifs() {
                           const effectif = isFixed ? parseFloat(ct.prix_vente_ht) : afterRemises
                           const achat = getLastAchat(p.id)
                           const marge = calcMarge(achat?.prix_achat_ht, effectif)
+                          const tva = parseFloat(p.taux_tva) || 5.5
+                          const pvpTTC = p.pvpr != null && p.pvpr !== '' ? parseFloat(p.pvpr) : null
+                          const pvpHT = pvpTTC ? pvpTTC / (1 + tva / 100) : null
+                          const margeCl = calcMarge(effectif, pvpHT)
 
                           return (
                             <tr key={p.id} style={{ opacity: isRef ? 1 : 0.5, background: isFixed ? '#FFF8E7' : undefined }}>
@@ -1111,6 +1116,7 @@ export default function Tarifs() {
                                 ) : '—'}
                               </td>
                               <td style={{ padding: '3px 4px' }}>{margeBadge(marge)}</td>
+                              <td style={{ padding: '3px 4px' }}>{margeBadge(margeCl)}</td>
                             </tr>
                           )
                         })}
