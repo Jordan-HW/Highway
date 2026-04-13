@@ -392,9 +392,16 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
           {panelTab === 'tarifs' && (() => {
             const tva = product.taux_tva ?? 5.5
             const achatHT = tarifAchat?.prix_achat_ht
-            const venteHT = tarifVenteGeneral?.prix_vente_ht
+            const cessionHT = tarifVenteGeneral?.prix_vente_ht
+            const pvpTTC = product.pvpr != null && product.pvpr !== '' ? Number(product.pvpr) : null
+            const pvpHT = pvpTTC ? pvpTTC / (1 + tva / 100) : null
             const fmt = v => v != null ? `${Number(v).toFixed(2)} €` : null
             const ttc = (ht) => ht != null ? `${(Number(ht) * (1 + tva / 100)).toFixed(2)} €` : null
+            const margeHW = (achatHT && cessionHT && cessionHT !== 0) ? ((cessionHT - achatHT) / cessionHT * 100) : null
+            const margeHWVal = (achatHT != null && cessionHT != null) ? cessionHT - achatHT : null
+            const margeClient = (cessionHT && pvpHT && pvpHT !== 0) ? ((pvpHT - cessionHT) / pvpHT * 100) : null
+            const margeClientVal = (cessionHT != null && pvpHT != null) ? pvpHT - cessionHT : null
+            const badgeColor = v => v >= 28 ? '#27AE60' : v >= 23 ? '#D4840A' : '#C0392B'
             return loadingTarifs ? <div className="loading">Chargement des tarifs...</div> : (
               <>
                 <ReadRow label="TVA" value={`${tva} %`} />
@@ -403,17 +410,29 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
 
                 <hr className="divider" />
 
-                <ReadRow label="Prix vente HT" value={fmt(venteHT)} />
-                <ReadRow label="Prix vente TTC" value={ttc(venteHT)} />
-                <ReadRow label="Marge" value={
-                  achatHT && venteHT
-                    ? `${(((venteHT - achatHT) / achatHT) * 100).toFixed(1)} %`
+                <ReadRow label="Prix de cession HT" value={fmt(cessionHT)} />
+                <ReadRow label="Prix de cession TTC" value={ttc(cessionHT)} />
+                <ReadRow label="Marge HW" value={
+                  margeHW != null
+                    ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ color: badgeColor(margeHW), fontWeight: 600 }}>{margeHW.toFixed(2)} %</span>
+                        {margeHWVal != null && <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>({margeHWVal.toFixed(2)} €)</span>}
+                      </span>
                     : null
                 } />
 
                 <hr className="divider" />
 
-                <ReadRow label="PVPR TTC" value={product.pvpr != null && product.pvpr !== '' ? fmt(product.pvpr) : null} />
+                <ReadRow label="PVC HT" value={fmt(pvpHT)} />
+                <ReadRow label="PVC TTC" value={fmt(pvpTTC)} />
+                <ReadRow label="Marge Client" value={
+                  margeClient != null
+                    ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ color: badgeColor(margeClient), fontWeight: 600 }}>{margeClient.toFixed(2)} %</span>
+                        {margeClientVal != null && <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>({margeClientVal.toFixed(2)} €)</span>}
+                      </span>
+                    : null
+                } />
 
                 <div style={{ marginTop: 16 }}>
                   <a href="/tarifs" style={{ fontSize: 12, color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}>Modifier dans Référencement & Tarifs →</a>

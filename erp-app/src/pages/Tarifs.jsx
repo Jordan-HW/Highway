@@ -61,6 +61,9 @@ export default function Tarifs() {
   const [historiqueData, setHistoriqueData] = useState([])
   const [historiqueFiltre, setHistoriqueFiltre] = useState('') // '' = tous, ou 'achat_ht', 'vente_ht', 'pvpr', 'tva'
 
+  // Variations récentes (dernier changement achat par produit)
+  const [recentVariations, setRecentVariations] = useState({}) // { [produitId]: { variation: number, date: string } }
+
   // Import modal
   const [importModal, setImportModal] = useState(false)
   const [importStep, setImportStep] = useState('upload')
@@ -74,13 +77,15 @@ export default function Tarifs() {
 
   async function fetchAll() {
     setLoading(true)
-    const [{ data: prods }, { data: mqs }, { data: cls }, { data: ta }, { data: tv }, { data: ar }] = await Promise.all([
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    const [{ data: prods }, { data: mqs }, { data: cls }, { data: ta }, { data: tv }, { data: ar }, { data: recentHist }] = await Promise.all([
       supabase.from('produits').select('*, marques(nom)').eq('statut', 'actif').order('libelle'),
       supabase.from('marques').select('id, nom').eq('actif', true).order('nom'),
       supabase.from('clients').select('id, nom, type').order('nom'),
       supabase.from('tarifs_achat').select('*').order('date_debut', { ascending: false }),
       supabase.from('tarifs_vente').select('*').order('date_debut', { ascending: false }),
       supabase.from('client_remises').select('*').order('ordre'),
+      supabase.from('tarif_historique').select('*').eq('champ', 'achat_ht').gte('date_changement', thirtyDaysAgo).order('date_changement', { ascending: false }),
     ])
     setProduits(prods || [])
     setMarques(mqs || [])
@@ -88,6 +93,17 @@ export default function Tarifs() {
     setTarifsAchat(ta || [])
     setTarifsVente(tv || [])
     setAllRemises(ar || [])
+    // Build recent variations map (most recent achat change per product in last 30 days)
+    const varMap = {}
+    for (const h of (recentHist || [])) {
+      if (!varMap[h.produit_id] && h.ancien_prix != null && h.nouveau_prix != null && h.ancien_prix !== 0) {
+        varMap[h.produit_id] = {
+          variation: ((h.nouveau_prix - h.ancien_prix) / h.ancien_prix * 100),
+          date: h.date_changement
+        }
+      }
+    }
+    setRecentVariations(varMap)
     setLoading(false)
   }
 
@@ -189,7 +205,7 @@ export default function Tarifs() {
     })
   }
 
-  // Marge HW éditée → recalcule Vente HT (précision 4 déc pour détecter les micro-changements)
+  // Marge HW éditée → recalcule Prix de cession HT (précision 4 déc pour détecter les micro-changements)
   function handleMargeHWChange(produitId, margeStr) {
     const marge = parseFloat(margeStr)
     if (isNaN(marge) || marge >= 100) return
@@ -250,7 +266,7 @@ export default function Tarifs() {
     setHistoriqueData(data || [])
   }
 
-  const champLabels = { achat_ht: 'Achat HT', vente_ht: 'Vente HT', pvpr: 'PVPR TTC', tva: 'TVA %' }
+  const champLabels = { achat_ht: 'Achat HT', vente_ht: 'Cession HT', pvpr: 'PVC TTC', tva: 'TVA %' }
 
   const dirtyIds = produits.filter(p => isRowDirty(p)).map(p => p.id)
 
@@ -306,7 +322,7 @@ export default function Tarifs() {
         await logPriceChange(produitId, 'tva', orig.tva, parseFloat(edit.tva), 'manuel')
       }
       const { error: errProd } = await supabase.from('produits').update(prodUpdate).eq('id', produitId)
-      if (errProd) { toast('Erreur PVPR/TVA : ' + errProd.message, 'error'); hasError = true }
+      if (errProd) { toast('Erreur PVC/TVA : ' + errProd.message, 'error'); hasError = true }
     }
 
     setSavingAll(false)
@@ -452,8 +468,8 @@ export default function Tarifs() {
     { key: 'ean13', label: 'EAN13 (clé) *' },
     { key: 'taux_tva', label: 'TVA (%)' },
     { key: 'prix_achat_ht', label: 'Prix achat fournisseur HT' },
-    { key: 'prix_vente_ht', label: 'Prix vente général HT' },
-    { key: 'pvpr', label: 'Prix recommandé consommateur TTC (PVPR)' },
+    { key: 'prix_vente_ht', label: 'Prix de cession général HT' },
+    { key: 'pvpr', label: 'Prix de vente consommateur TTC (PVC)' },
     { key: 'client_nom', label: 'Client (nom)' },
     { key: 'prix_client_ht', label: 'Prix client HT' },
   ]
@@ -464,8 +480,8 @@ export default function Tarifs() {
       ean: 'ean13', ean13: 'ean13', 'code barre': 'ean13', barcode: 'ean13', 'code barres': 'ean13', 'code ean': 'ean13',
       tva: 'taux_tva', 'taux tva': 'taux_tva', 'tva %': 'taux_tva', 'taux de tva': 'taux_tva',
       'prix achat': 'prix_achat_ht', 'achat ht': 'prix_achat_ht', 'prix achat ht': 'prix_achat_ht', 'achat fournisseur': 'prix_achat_ht', 'prix fournisseur': 'prix_achat_ht',
-      'prix vente': 'prix_vente_ht', 'vente ht': 'prix_vente_ht', 'prix vente ht': 'prix_vente_ht', 'tarif general': 'prix_vente_ht', 'prix vente general': 'prix_vente_ht', 'vente general': 'prix_vente_ht',
-      pvpr: 'pvpr', 'prix public': 'pvpr', 'prix recommande': 'pvpr', 'prix consommateur': 'pvpr', 'pvpr ttc': 'pvpr', 'prix recommande ttc': 'pvpr',
+      'prix vente': 'prix_vente_ht', 'vente ht': 'prix_vente_ht', 'prix vente ht': 'prix_vente_ht', 'tarif general': 'prix_vente_ht', 'prix vente general': 'prix_vente_ht', 'vente general': 'prix_vente_ht', 'prix cession': 'prix_vente_ht', 'cession ht': 'prix_vente_ht', 'prix de cession': 'prix_vente_ht',
+      pvpr: 'pvpr', 'prix public': 'pvpr', 'prix recommande': 'pvpr', 'prix consommateur': 'pvpr', 'pvpr ttc': 'pvpr', 'prix recommande ttc': 'pvpr', pvc: 'pvpr', 'pvc ttc': 'pvpr', 'prix vente consommateur': 'pvpr',
       client: 'client_nom', 'nom client': 'client_nom',
       'prix client': 'prix_client_ht', 'tarif client': 'prix_client_ht', 'prix client ht': 'prix_client_ht',
     }
@@ -519,7 +535,7 @@ export default function Tarifs() {
     for (const item of importValidation.toProcess) {
       const prodId = item._produit.id
       const r2 = v => Math.round(parseFloat(v) * 100) / 100
-      // PVPR + TVA sur fiche produit
+      // PVC + TVA sur fiche produit
       const prodUpdate = {}
       if (item.pvpr) prodUpdate.pvpr = r2(item.pvpr)
       if (item.taux_tva) {
@@ -604,10 +620,10 @@ export default function Tarifs() {
                         <th style={{ width: 56 }}>TVA</th>
                         <th style={{ width: 58 }}>Achat HT</th>
                         <th style={{ width: 58 }}>Achat TTC</th>
-                        <th style={{ width: 58 }}>Vente HT</th>
-                        <th style={{ width: 58 }}>Vente TTC</th>
-                        <th style={{ width: 58 }}>PVPR HT</th>
-                        <th style={{ width: 58 }}>PVPR TTC</th>
+                        <th style={{ width: 58 }}>Cession HT</th>
+                        <th style={{ width: 62 }}>Cession TTC</th>
+                        <th style={{ width: 58 }}>PVC HT</th>
+                        <th style={{ width: 58 }}>PVC TTC</th>
                         <th style={{ width: 64 }}>Marge HW</th>
                         <th style={{ width: 52 }}>Val. HW</th>
                         <th style={{ width: 64 }}>Marge Cl.</th>
@@ -706,7 +722,12 @@ export default function Tarifs() {
                             </td>
                             <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: src === 'margeClient' ? hl : (df.vente || df.pvpr) ? hlS : undefined }}>{margeClientVal != null ? `${margeClientVal.toFixed(2)} €` : '—'}</td>
                             <td style={{ padding: '3px 2px', whiteSpace: 'nowrap' }}>
-                              <Clock size={12} style={{ cursor: 'pointer', color: 'var(--text-muted)', marginRight: 2 }} onClick={() => openHistorique(p.id, p.libelle)} />
+                              <Clock size={12} style={{ cursor: 'pointer', color: 'var(--text-muted)', marginRight: 1 }} onClick={() => openHistorique(p.id, p.libelle)} />
+                              {recentVariations[p.id] && (() => {
+                                const v = recentVariations[p.id].variation
+                                const isUp = v > 0
+                                return <span style={{ fontSize: 9, fontWeight: 600, color: isUp ? '#C0392B' : '#27AE60', marginRight: 2, cursor: 'pointer' }} onClick={() => openHistorique(p.id, p.libelle)} title={`Variation achat récente`}>{isUp ? '↑' : '↓'}{Math.abs(v).toFixed(1)}%</span>
+                              })()}
                               <span style={{ cursor: 'pointer' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</span>
                             </td>
                           </tr>,
@@ -743,8 +764,8 @@ export default function Tarifs() {
                                 <td style={hs}>Ap. rem.</td>
                                 <td style={{ ...hs, fontWeight: 700, color: 'var(--text-primary)' }}>Final HT</td>
                                 <td style={hs}>Final TTC</td>
-                                <td style={hs}>PVPR HT</td>
-                                <td style={hs}>PVPR TTC</td>
+                                <td style={hs}>PVC HT</td>
+                                <td style={hs}>PVC TTC</td>
                                 <td style={hs}>Marge HW</td>
                                 <td style={hs}>Val. HW</td>
                                 <td style={hs}>Marge Cl.</td>
@@ -771,13 +792,13 @@ export default function Tarifs() {
                                 <td style={{ ...cs, color: 'var(--text-muted)' }}>{cr.genVal != null ? `${cr.genVal.toFixed(2)}` : '—'}</td>
                                 {/* Col 6 (Achat TTC): après remises */}
                                 <td style={{ ...cs, color: 'var(--text-muted)' }}>{cr.afterRemises != null ? `${cr.afterRemises.toFixed(2)}` : '—'}</td>
-                                {/* Col 7 = Vente HT → Final HT */}
+                                {/* Col 7 = Cession HT → Final HT */}
                                 <td style={{ ...cs, fontWeight: 700 }}>{cr.prixFinal != null ? `${cr.prixFinal.toFixed(2)} €` : '—'}</td>
-                                {/* Col 8 = Vente TTC → Final TTC */}
+                                {/* Col 8 = Cession TTC → Final TTC */}
                                 <td style={cs}>{cr.prixFinalTTC != null ? `${cr.prixFinalTTC.toFixed(2)} €` : '—'}</td>
-                                {/* Col 9 = PVPR HT */}
+                                {/* Col 9 = PVC HT */}
                                 <td style={cs}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
-                                {/* Col 10 = PVPR TTC */}
+                                {/* Col 10 = PVC TTC */}
                                 <td style={cs}>{pvprVal ? `${pvprVal.toFixed(2)} €` : '—'}</td>
                                 {/* Col 11 = Marge HW */}
                                 <td style={cs}>{cr.mHW != null ? margeBadge(cr.mHW) : '—'}</td>
@@ -859,7 +880,7 @@ export default function Tarifs() {
 
                           {clientRemises.length === 0 ? (
                             <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-muted)', fontSize: 13 }}>
-                              Aucune remise. Les prix de vente s'appliquent tels quels.
+                              Aucune remise. Les prix de cession s'appliquent tels quels.
                             </div>
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1010,7 +1031,7 @@ export default function Tarifs() {
                           <th style={{ width: 28 }}>Réf.</th>
                           <th>Produit</th>
                           <th>Marque</th>
-                          <th style={{ width: 58 }}>Vente HT</th>
+                          <th style={{ width: 58 }}>Cession HT</th>
                           <th style={{ width: 62 }}>Ap. remises</th>
                           <th>Remises appliquées</th>
                           <th style={{ width: 72 }}>Prix fixé</th>
@@ -1184,7 +1205,7 @@ export default function Tarifs() {
                   {importValidation.toProcess.length > 0 && (
                     <div className="table-container" style={{ maxHeight: 250, overflowY: 'auto' }}>
                       <table>
-                        <thead><tr><th>EAN</th><th>Produit</th><th>Achat</th><th>Vente</th><th>PVPR</th><th>Client</th><th>Prix client</th></tr></thead>
+                        <thead><tr><th>EAN</th><th>Produit</th><th>Achat</th><th>Cession</th><th>PVC</th><th>Client</th><th>Prix client</th></tr></thead>
                         <tbody>
                           {importValidation.toProcess.slice(0, 30).map((item, i) => (
                             <tr key={i}>
@@ -1240,7 +1261,7 @@ export default function Tarifs() {
             </div>
             {/* Filtres par champ */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-              {[{ key: '', label: 'Tout' }, { key: 'achat_ht', label: 'Achat HT' }, { key: 'vente_ht', label: 'Vente HT' }, { key: 'pvpr', label: 'PVPR' }, { key: 'tva', label: 'TVA' }].map(f => (
+              {[{ key: '', label: 'Tout' }, { key: 'achat_ht', label: 'Achat HT' }, { key: 'vente_ht', label: 'Cession HT' }, { key: 'pvpr', label: 'PVC' }, { key: 'tva', label: 'TVA' }].map(f => (
                 <button key={f.key} className={`btn ${historiqueFiltre === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setHistoriqueFiltre(f.key)} style={{ fontSize: 11, padding: '4px 10px' }}>
                   {f.label} {f.key && <span style={{ fontSize: 9, opacity: 0.7 }}>({historiqueData.filter(h => h.champ === f.key).length})</span>}
                 </button>
@@ -1300,10 +1321,10 @@ export default function Tarifs() {
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16 }}>Marge saisie : {margeClientChoice.margeVal.toFixed(1)}%</div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="btn btn-primary" onClick={() => applyMargeClientChoice('pvpr')} style={{ flex: 1, fontSize: 12, padding: '10px 12px' }}>
-                → PVPR TTC
+                → PVC TTC
               </button>
               <button className="btn btn-secondary" onClick={() => applyMargeClientChoice('vente')} style={{ flex: 1, fontSize: 12, padding: '10px 12px' }}>
-                → Prix de vente HT
+                → Prix de cession HT
               </button>
             </div>
           </div>
