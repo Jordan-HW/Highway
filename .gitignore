@@ -1,1 +1,3 @@
 supabase-query.sh
+erp-app/node_modules/
+erp-app/dist/
