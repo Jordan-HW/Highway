@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent, Package, Users, Clock, Eye, EyeOff } from 'lucide-react'
+import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent, Package, Users, Clock, Eye, EyeOff, Settings2, GripVertical, ChevronUp } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 // ── Helpers ──
@@ -15,6 +15,108 @@ function applyRemisesCascade(basePrice, remises, produitId, marqueId) {
     steps.push({ label: r.label || 'Remise', pct: r.pourcentage, after: Math.round(price * 100) / 100 })
   }
   return { price: Math.round(price * 100) / 100, steps }
+}
+
+// ── Column definitions ──
+const PRODUCT_COLUMNS = [
+  { id: 'photo', label: '', width: 28, fixed: true },
+  { id: 'ean', label: 'EAN13', width: 78 },
+  { id: 'produit', label: 'Produit', fixed: true },
+  { id: 'tva', label: 'TVA', width: 56 },
+  { id: 'achatHT', label: 'Achat HT', width: 58 },
+  { id: 'achatTTC', label: 'Achat TTC', width: 58 },
+  { id: 'cessionHT', label: 'Cession HT', width: 58 },
+  { id: 'cessionTTC', label: 'Cession TTC', width: 62 },
+  { id: 'pvcHT', label: 'PVC HT', width: 58 },
+  { id: 'pvcTTC', label: 'PVC TTC', width: 58 },
+  { id: 'margeHW', label: 'Marge HW', width: 64 },
+  { id: 'valHW', label: 'Val. HW', width: 52 },
+  { id: 'margeCl', label: 'Marge Cl.', width: 64 },
+  { id: 'valCl', label: 'Val. Cl.', width: 52 },
+  { id: 'actions', label: '', width: 18, fixed: true },
+]
+
+const CLIENT_COLUMNS = [
+  { id: 'photo', label: '', width: 28, fixed: true },
+  { id: 'ref', label: 'Réf.', width: 28, fixed: true },
+  { id: 'produit', label: 'Produit', fixed: true },
+  { id: 'marque', label: 'Marque' },
+  { id: 'cessionHT', label: 'Cession HT', width: 58 },
+  { id: 'apRemises', label: 'Ap. remises', width: 62 },
+  { id: 'remises', label: 'Remises appliquées' },
+  { id: 'prixFixe', label: 'Prix fixé', width: 72 },
+  { id: 'prixEffectif', label: 'Prix effectif', width: 72 },
+  { id: 'margeHW', label: 'Marge HW', width: 64 },
+  { id: 'margeCl', label: 'Marge Cl.', width: 64 },
+]
+
+function loadColConfig(key, columns) {
+  try {
+    const saved = localStorage.getItem(key)
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      // Ensure all columns are present in order (handle new columns added later)
+      const allIds = columns.map(c => c.id)
+      const order = [...(parsed.order || []).filter(id => allIds.includes(id))]
+      allIds.forEach(id => { if (!order.includes(id)) order.push(id) })
+      return { order, hidden: (parsed.hidden || []).filter(id => allIds.includes(id)) }
+    }
+  } catch {}
+  return { order: columns.map(c => c.id), hidden: [] }
+}
+
+function saveColConfig(key, config) {
+  localStorage.setItem(key, JSON.stringify(config))
+}
+
+function ColumnSettingsDropdown({ columns, config, onUpdate, onClose }) {
+  const movableIds = config.order.filter(id => {
+    const col = columns.find(c => c.id === id)
+    return col && !col.fixed && col.label
+  })
+
+  function toggleCol(id) {
+    const hidden = config.hidden.includes(id)
+      ? config.hidden.filter(x => x !== id)
+      : [...config.hidden, id]
+    onUpdate({ ...config, hidden })
+  }
+
+  function moveCol(id, direction) {
+    const order = [...config.order]
+    const idx = order.indexOf(id)
+    const swap = idx + direction
+    if (swap < 0 || swap >= order.length) return
+    const targetCol = columns.find(c => c.id === order[swap])
+    if (targetCol?.fixed) return
+    ;[order[idx], order[swap]] = [order[swap], order[idx]]
+    onUpdate({ ...config, order })
+  }
+
+  return (
+    <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 50, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 6px 24px rgba(0,0,0,0.14)', padding: '14px 12px', minWidth: 230, marginTop: 4 }}
+      onClick={e => e.stopPropagation()}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
+        <span style={{ fontSize: 12, fontWeight: 600 }}>Colonnes visibles</span>
+        <button onClick={() => onUpdate({ order: columns.map(c => c.id), hidden: [] })} style={{ fontSize: 10, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Réinitialiser</button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        {movableIds.map(id => {
+          const col = columns.find(c => c.id === id)
+          if (!col) return null
+          const isHidden = config.hidden.includes(id)
+          return (
+            <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 6px', borderRadius: 5, background: isHidden ? 'var(--surface-2)' : 'transparent', transition: 'background .1s' }}>
+              <input type="checkbox" checked={!isHidden} onChange={() => toggleCol(id)} style={{ accentColor: 'var(--primary)', cursor: 'pointer', margin: 0 }} />
+              <span style={{ flex: 1, fontSize: 11, opacity: isHidden ? 0.45 : 1, fontWeight: isHidden ? 400 : 500 }}>{col.label}</span>
+              <button onClick={() => moveCol(id, -1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1, color: 'var(--text-muted)' }}><ChevronUp size={13} /></button>
+              <button onClick={() => moveCol(id, 1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1, color: 'var(--text-muted)' }}><ChevronDown size={13} /></button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 export default function Tarifs() {
@@ -47,6 +149,26 @@ export default function Tarifs() {
   // Remise product picker
   const [pickerRemiseId, setPickerRemiseId] = useState(null)
   const [pickerSearch, setPickerSearch] = useState('')
+
+  // Column config
+  const [prodColConfig, setProdColConfig] = useState(() => loadColConfig('highway_tarifs_cols_produit', PRODUCT_COLUMNS))
+  const [clientColConfig, setClientColConfig] = useState(() => loadColConfig('highway_tarifs_cols_client', CLIENT_COLUMNS))
+  const [showColSettings, setShowColSettings] = useState(false)
+
+  function updateColConfig(type, newConfig) {
+    if (type === 'produit') { setProdColConfig(newConfig); saveColConfig('highway_tarifs_cols_produit', newConfig) }
+    else { setClientColConfig(newConfig); saveColConfig('highway_tarifs_cols_client', newConfig) }
+  }
+
+  function getVisibleCols(type) {
+    const config = type === 'produit' ? prodColConfig : clientColConfig
+    const allCols = type === 'produit' ? PRODUCT_COLUMNS : CLIENT_COLUMNS
+    return config.order.filter(id => !config.hidden.includes(id) && allCols.some(c => c.id === id))
+  }
+
+  function colDef(type, colId) {
+    return (type === 'produit' ? PRODUCT_COLUMNS : CLIENT_COLUMNS).find(c => c.id === colId)
+  }
 
   // Photo zoom
   const [photoZoomUrl, setPhotoZoomUrl] = useState(null)
@@ -579,12 +701,28 @@ export default function Tarifs() {
 
       <div className="page-body">
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button className={`btn ${view === 'produit' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setView('produit'); setSelectedClient(null); setExpandedId(null) }}>
+          <button className={`btn ${view === 'produit' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setView('produit'); setSelectedClient(null); setExpandedId(null); setShowColSettings(false) }}>
             <Package size={15} /> Vue par produit
           </button>
-          <button className={`btn ${view === 'client' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setView('client'); setSelectedClient(null); setExpandedId(null) }}>
+          <button className={`btn ${view === 'client' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setView('client'); setSelectedClient(null); setExpandedId(null); setShowColSettings(false) }}>
             <Users size={15} /> Vue par client
           </button>
+          <div style={{ marginLeft: 'auto', position: 'relative' }}>
+            <button className={`btn ${showColSettings ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowColSettings(!showColSettings)} title="Configurer les colonnes">
+              <Settings2 size={15} />
+            </button>
+            {showColSettings && (
+              <>
+                <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setShowColSettings(false)} />
+                <ColumnSettingsDropdown
+                  columns={view === 'produit' || (view === 'client' && !selectedClient) ? PRODUCT_COLUMNS : CLIENT_COLUMNS}
+                  config={view === 'produit' || (view === 'client' && !selectedClient) ? prodColConfig : clientColConfig}
+                  onUpdate={cfg => updateColConfig(view === 'produit' || (view === 'client' && !selectedClient) ? 'produit' : 'client', cfg)}
+                  onClose={() => setShowColSettings(false)}
+                />
+              </>
+            )}
+          </div>
         </div>
 
         <div className="filters-bar">
@@ -610,30 +748,21 @@ export default function Tarifs() {
             {loading ? <div className="loading">Chargement...</div> : (
               <>
                 {/* ══════════ VUE PAR PRODUIT ══════════ */}
-                {view === 'produit' && (
+                {view === 'produit' && (() => {
+                  const visCols = getVisibleCols('produit')
+                  return (
                   <table style={{ fontSize: 11 }}>
                     <thead>
                       <tr>
-                        <th style={{ width: 28 }}></th>
-                        <th style={{ width: 78 }}>EAN13</th>
-                        <th>Produit</th>
-                        <th style={{ width: 56 }}>TVA</th>
-                        <th style={{ width: 58 }}>Achat HT</th>
-                        <th style={{ width: 58 }}>Achat TTC</th>
-                        <th style={{ width: 58 }}>Cession HT</th>
-                        <th style={{ width: 62 }}>Cession TTC</th>
-                        <th style={{ width: 58 }}>PVC HT</th>
-                        <th style={{ width: 58 }}>PVC TTC</th>
-                        <th style={{ width: 64 }}>Marge HW</th>
-                        <th style={{ width: 52 }}>Val. HW</th>
-                        <th style={{ width: 64 }}>Marge Cl.</th>
-                        <th style={{ width: 52 }}>Val. Cl.</th>
-                        <th style={{ width: 18 }}></th>
+                        {visCols.map(colId => {
+                          const c = colDef('produit', colId)
+                          return <th key={colId} style={c.width ? { width: c.width } : undefined}>{c.label}</th>
+                        })}
                       </tr>
                     </thead>
                     <tbody>
                       {filteredProduits.length === 0 ? (
-                        <tr><td colSpan={15}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
+                        <tr><td colSpan={visCols.length}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
                       ) : filteredProduits.map(p => {
                         const edit = getEditRow(p)
                         const dirty = isRowDirty(p)
@@ -678,58 +807,61 @@ export default function Tarifs() {
                           )
                         }
 
+                        // Build cells map for dynamic column rendering
+                        const cells = {
+                          photo: <td key="photo" style={{ padding: '2px 4px' }}><Thumb url={p.photo_url} /></td>,
+                          ean: <td key="ean" style={{ padding: '2px 6px', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{p.ean13 || '—'}</td>,
+                          produit: <td key="produit" style={{ cursor: 'pointer', padding: '2px 6px' }} onClick={() => toggleAccordion(p.id)}><div style={{ fontWeight: 500, fontSize: 12 }}>{p.libelle}</div></td>,
+                          tva: <td key="tva" style={{ padding: '2px 6px', background: df.tva ? (src === 'tva' ? hl : hlS) : undefined }} onClick={() => { if (editingField !== `${p.id}-tva`) setEditingField(`${p.id}-tva`) }}>
+                            {editingField === `${p.id}-tva` ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <select autoFocus value={edit.tva} onChange={e => { setEditField(p.id, 'tva', parseFloat(e.target.value)); setEditingField(null) }} onBlur={() => setEditingField(null)} style={{ padding: '2px 2px', fontSize: 11, flex: 1, minWidth: 0 }}>
+                                  <option value="0">0</option><option value="5.5">5.5</option><option value="10">10</option><option value="20">20</option>
+                                </select>
+                                <span style={sfx}>%</span>
+                              </div>
+                            ) : <span style={clickVal}>{tva}<span style={sfx}> %</span></span>}
+                          </td>,
+                          achatHT: priceCell('achat', achatHT, df.achat ? (src === 'achat' ? hl : hlS) : undefined),
+                          achatTTC: <td key="achatTTC" style={{ padding: '2px 6px', fontSize: 11, background: (df.achat || df.tva) ? hlS : undefined }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>,
+                          cessionHT: priceCell('vente', venteHT, df.vente ? (src === 'vente' ? hl : hlS) : undefined),
+                          cessionTTC: <td key="cessionTTC" style={{ padding: '2px 6px', fontSize: 11, background: (df.vente || df.tva) ? hlS : undefined }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>,
+                          pvcHT: <td key="pvcHT" style={{ padding: '2px 6px', fontSize: 11, background: (df.pvpr || df.tva) ? hlS : undefined }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>,
+                          pvcTTC: priceCell('pvpr', pvprVal, df.pvpr ? (src === 'pvpr' ? hl : hlS) : undefined),
+                          margeHW: <td key="margeHW" style={{ padding: '3px 4px', verticalAlign: 'middle', background: src === 'margeHW' ? hl : (df.achat || df.vente) ? hlS : undefined }}>
+                            {editingField === `hw-${p.id}` ? (
+                              <input type="number" step="0.1" autoFocus value={editingVal}
+                                onChange={e => setEditingVal(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleMargeHWChange(p.id, editingVal); setEditingField(null) } if (e.key === 'Escape') setEditingField(null) }}
+                                onBlur={() => { handleMargeHWChange(p.id, editingVal); setEditingField(null) }}
+                                style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
+                            ) : <span style={{ cursor: 'pointer' }} onClick={() => { setEditingVal(marge != null ? marge.toFixed(2) : ''); setEditingField(`hw-${p.id}`) }}>{margeBadge(marge)}</span>}
+                          </td>,
+                          valHW: <td key="valHW" style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: src === 'margeHW' ? hl : (df.achat || df.vente) ? hlS : undefined }}>{margeHWVal != null ? `${margeHWVal.toFixed(2)} €` : '—'}</td>,
+                          margeCl: <td key="margeCl" style={{ padding: '3px 4px', verticalAlign: 'middle', background: src === 'margeClient' ? hl : (df.vente || df.pvpr) ? hlS : undefined }}>
+                            {editingField === `cl-${p.id}` ? (
+                              <input type="number" step="0.1" autoFocus value={editingVal}
+                                onChange={e => setEditingVal(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleMargeClientChange(p.id, editingVal); } if (e.key === 'Escape') setEditingField(null) }}
+                                onBlur={() => { handleMargeClientChange(p.id, editingVal) }}
+                                style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
+                            ) : <span style={{ cursor: 'pointer' }} onClick={() => { setEditingVal(margeClient != null ? margeClient.toFixed(2) : ''); setEditingField(`cl-${p.id}`) }}>{margeBadge(margeClient)}</span>}
+                          </td>,
+                          valCl: <td key="valCl" style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: src === 'margeClient' ? hl : (df.vente || df.pvpr) ? hlS : undefined }}>{margeClientVal != null ? `${margeClientVal.toFixed(2)} €` : '—'}</td>,
+                          actions: <td key="actions" style={{ padding: '3px 2px', whiteSpace: 'nowrap' }}>
+                            <Clock size={12} style={{ cursor: 'pointer', color: 'var(--text-muted)', marginRight: 1 }} onClick={() => openHistorique(p.id, p.libelle)} />
+                            {recentVariations[p.id] && (() => {
+                              const v = recentVariations[p.id].variation
+                              const isUp = v > 0
+                              return <span style={{ fontSize: 9, fontWeight: 600, color: isUp ? '#C0392B' : '#27AE60', marginRight: 2, cursor: 'pointer' }} onClick={() => openHistorique(p.id, p.libelle)} title={`Variation achat récente`}>{isUp ? '↑' : '↓'}{Math.abs(v).toFixed(1)}%</span>
+                            })()}
+                            <span style={{ cursor: 'pointer' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</span>
+                          </td>,
+                        }
+
                         return [
                           <tr key={p.id} style={{ background: isExpanded ? 'var(--primary-light)' : undefined }}>
-                            <td style={{ padding: '2px 4px' }}><Thumb url={p.photo_url} /></td>
-                            <td style={{ padding: '2px 6px', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{p.ean13 || '—'}</td>
-                            <td style={{ cursor: 'pointer', padding: '2px 6px' }} onClick={() => toggleAccordion(p.id)}>
-                              <div style={{ fontWeight: 500, fontSize: 12 }}>{p.libelle}</div>
-                            </td>
-                            <td style={{ padding: '2px 6px', background: df.tva ? (src === 'tva' ? hl : hlS) : undefined }} onClick={() => { if (editingField !== `${p.id}-tva`) setEditingField(`${p.id}-tva`) }}>
-                              {editingField === `${p.id}-tva` ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  <select autoFocus value={edit.tva} onChange={e => { setEditField(p.id, 'tva', parseFloat(e.target.value)); setEditingField(null) }} onBlur={() => setEditingField(null)} style={{ padding: '2px 2px', fontSize: 11, flex: 1, minWidth: 0 }}>
-                                    <option value="0">0</option><option value="5.5">5.5</option><option value="10">10</option><option value="20">20</option>
-                                  </select>
-                                  <span style={sfx}>%</span>
-                                </div>
-                              ) : <span style={clickVal}>{tva}<span style={sfx}> %</span></span>}
-                            </td>
-                            {priceCell('achat', achatHT, df.achat ? (src === 'achat' ? hl : hlS) : undefined)}
-                            <td style={{ padding: '2px 6px', fontSize: 11, background: (df.achat || df.tva) ? hlS : undefined }}>{achatHT != null ? `${(achatHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
-                            {priceCell('vente', venteHT, df.vente ? (src === 'vente' ? hl : hlS) : undefined)}
-                            <td style={{ padding: '2px 6px', fontSize: 11, background: (df.vente || df.tva) ? hlS : undefined }}>{venteHT != null ? `${(venteHT * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>
-                            <td style={{ padding: '2px 6px', fontSize: 11, background: (df.pvpr || df.tva) ? hlS : undefined }}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
-                            {priceCell('pvpr', pvprVal, df.pvpr ? (src === 'pvpr' ? hl : hlS) : undefined)}
-                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', background: src === 'margeHW' ? hl : (df.achat || df.vente) ? hlS : undefined }}>
-                              {editingField === `hw-${p.id}` ? (
-                                <input type="number" step="0.1" autoFocus value={editingVal}
-                                  onChange={e => setEditingVal(e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleMargeHWChange(p.id, editingVal); setEditingField(null) } if (e.key === 'Escape') setEditingField(null) }}
-                                  onBlur={() => { handleMargeHWChange(p.id, editingVal); setEditingField(null) }}
-                                  style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
-                              ) : <span style={{ cursor: 'pointer' }} onClick={() => { setEditingVal(marge != null ? marge.toFixed(2) : ''); setEditingField(`hw-${p.id}`) }}>{margeBadge(marge)}</span>}
-                            </td>
-                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: src === 'margeHW' ? hl : (df.achat || df.vente) ? hlS : undefined }}>{margeHWVal != null ? `${margeHWVal.toFixed(2)} €` : '—'}</td>
-                            <td style={{ padding: '3px 4px', verticalAlign: 'middle', background: src === 'margeClient' ? hl : (df.vente || df.pvpr) ? hlS : undefined }}>
-                              {editingField === `cl-${p.id}` ? (
-                                <input type="number" step="0.1" autoFocus value={editingVal}
-                                  onChange={e => setEditingVal(e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleMargeClientChange(p.id, editingVal); } if (e.key === 'Escape') setEditingField(null) }}
-                                  onBlur={() => { handleMargeClientChange(p.id, editingVal) }}
-                                  style={{ padding: '3px 4px', fontSize: 11, width: '100%', textAlign: 'right' }} />
-                              ) : <span style={{ cursor: 'pointer' }} onClick={() => { setEditingVal(margeClient != null ? margeClient.toFixed(2) : ''); setEditingField(`cl-${p.id}`) }}>{margeBadge(margeClient)}</span>}
-                            </td>
-                            <td style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: src === 'margeClient' ? hl : (df.vente || df.pvpr) ? hlS : undefined }}>{margeClientVal != null ? `${margeClientVal.toFixed(2)} €` : '—'}</td>
-                            <td style={{ padding: '3px 2px', whiteSpace: 'nowrap' }}>
-                              <Clock size={12} style={{ cursor: 'pointer', color: 'var(--text-muted)', marginRight: 1 }} onClick={() => openHistorique(p.id, p.libelle)} />
-                              {recentVariations[p.id] && (() => {
-                                const v = recentVariations[p.id].variation
-                                const isUp = v > 0
-                                return <span style={{ fontSize: 9, fontWeight: 600, color: isUp ? '#C0392B' : '#27AE60', marginRight: 2, cursor: 'pointer' }} onClick={() => openHistorique(p.id, p.libelle)} title={`Variation achat récente`}>{isUp ? '↑' : '↓'}{Math.abs(v).toFixed(1)}%</span>
-                              })()}
-                              <span style={{ cursor: 'pointer' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</span>
-                            </td>
+                            {visCols.map(colId => cells[colId])}
                           </tr>,
                           isExpanded && (() => {
                             const achatVal = achatHT
@@ -754,70 +886,64 @@ export default function Tarifs() {
                             if (!clientRows.length) return null
                             const cs = { fontSize: 10, padding: '3px 6px', background: 'var(--surface-2)' }
                             const hs = { fontSize: 9, padding: '2px 6px', background: 'var(--surface-2)', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)' }
+                            // Accordion header cells
+                            const hdrCells = {
+                              photo: <td key="photo" style={hs}></td>,
+                              ean: <td key="ean" style={hs}></td>,
+                              produit: <td key="produit" style={hs}>Client</td>,
+                              tva: <td key="tva" style={hs}>Prix fixé</td>,
+                              achatHT: <td key="achatHT" style={hs}>Prix gén.</td>,
+                              achatTTC: <td key="achatTTC" style={hs}>Ap. rem.</td>,
+                              cessionHT: <td key="cessionHT" style={{ ...hs, fontWeight: 700, color: 'var(--text-primary)' }}>Final HT</td>,
+                              cessionTTC: <td key="cessionTTC" style={hs}>Final TTC</td>,
+                              pvcHT: <td key="pvcHT" style={hs}>PVC HT</td>,
+                              pvcTTC: <td key="pvcTTC" style={hs}>PVC TTC</td>,
+                              margeHW: <td key="margeHW" style={hs}>Marge HW</td>,
+                              valHW: <td key="valHW" style={hs}>Val. HW</td>,
+                              margeCl: <td key="margeCl" style={hs}>Marge Cl.</td>,
+                              valCl: <td key="valCl" style={hs}>Val. Cl.</td>,
+                              actions: <td key="actions" style={hs}></td>,
+                            }
                             return [
                               <tr key={`${p.id}-cl-hdr`}>
-                                <td style={hs}></td>
-                                <td style={hs}></td>
-                                <td style={hs}>Client</td>
-                                <td style={hs}>Prix fixé</td>
-                                <td style={hs}>Prix gén.</td>
-                                <td style={hs}>Ap. rem.</td>
-                                <td style={{ ...hs, fontWeight: 700, color: 'var(--text-primary)' }}>Final HT</td>
-                                <td style={hs}>Final TTC</td>
-                                <td style={hs}>PVC HT</td>
-                                <td style={hs}>PVC TTC</td>
-                                <td style={hs}>Marge HW</td>
-                                <td style={hs}>Val. HW</td>
-                                <td style={hs}>Marge Cl.</td>
-                                <td style={hs}>Val. Cl.</td>
-                                <td style={hs}></td>
+                                {visCols.map(colId => hdrCells[colId])}
                               </tr>,
-                              ...clientRows.map(cr => (
-                              <tr key={`${p.id}-cl-${cr.id}`} style={{ background: cr.fixedPrice != null ? '#FFF8E7' : 'var(--surface-2)' }}>
-                                {/* Col 1: indicateur */}
-                                <td style={{ ...cs, padding: '3px 2px', textAlign: 'center', color: 'var(--text-muted)' }}>↳</td>
-                                {/* Col 2 (EAN): vide */}
-                                <td style={cs}></td>
-                                {/* Col 3 (Produit): nom client + remises */}
-                                <td style={{ ...cs, fontWeight: 500 }}>
-                                  <span>{cr.nom}</span>
-                                  {cr.steps.length > 0 && <span style={{ marginLeft: 6 }}>{cr.steps.map((s, i) => (
-                                    <span key={i} title={`${s.label} → ${s.after.toFixed(2)} €`} style={{ fontSize: 8, background: 'var(--primary-light)', color: 'var(--primary)', padding: '1px 4px', borderRadius: 3, fontWeight: 600, marginRight: 2 }}>-{s.pct}%</span>
-                                  ))}</span>}
-                                  {cr.fixedPrice != null && <span style={{ fontSize: 8, background: '#E6C547', color: '#5C4B00', padding: '1px 4px', borderRadius: 3, fontWeight: 700, marginLeft: 4 }}>FIXÉ</span>}
-                                </td>
-                                {/* Col 4: prix fixé */}
-                                <td style={cs}>{cr.fixedPrice != null ? <span style={{ fontWeight: 600 }}>{cr.fixedPrice.toFixed(2)}</span> : ''}</td>
-                                {/* Col 5 (Achat HT): prix gén */}
-                                <td style={{ ...cs, color: 'var(--text-muted)' }}>{cr.genVal != null ? `${cr.genVal.toFixed(2)}` : '—'}</td>
-                                {/* Col 6 (Achat TTC): après remises */}
-                                <td style={{ ...cs, color: 'var(--text-muted)' }}>{cr.afterRemises != null ? `${cr.afterRemises.toFixed(2)}` : '—'}</td>
-                                {/* Col 7 = Cession HT → Final HT */}
-                                <td style={{ ...cs, fontWeight: 700 }}>{cr.prixFinal != null ? `${cr.prixFinal.toFixed(2)} €` : '—'}</td>
-                                {/* Col 8 = Cession TTC → Final TTC */}
-                                <td style={cs}>{cr.prixFinalTTC != null ? `${cr.prixFinalTTC.toFixed(2)} €` : '—'}</td>
-                                {/* Col 9 = PVC HT */}
-                                <td style={cs}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>
-                                {/* Col 10 = PVC TTC */}
-                                <td style={cs}>{pvprVal ? `${pvprVal.toFixed(2)} €` : '—'}</td>
-                                {/* Col 11 = Marge HW */}
-                                <td style={cs}>{cr.mHW != null ? margeBadge(cr.mHW) : '—'}</td>
-                                {/* Col 12 = Val HW */}
-                                <td style={cs}>{cr.mHWv != null ? `${cr.mHWv.toFixed(2)} €` : '—'}</td>
-                                {/* Col 13 = Marge Cl */}
-                                <td style={cs}>{cr.mCl != null ? margeBadge(cr.mCl) : '—'}</td>
-                                {/* Col 14 = Val Cl */}
-                                <td style={cs}>{cr.mClv != null ? `${cr.mClv.toFixed(2)} €` : '—'}</td>
-                                {/* Col 15 = chevron */}
-                                <td style={cs}></td>
-                              </tr>
-                            ))]
+                              ...clientRows.map(cr => {
+                                const crCells = {
+                                  photo: <td key="photo" style={{ ...cs, padding: '3px 2px', textAlign: 'center', color: 'var(--text-muted)' }}>↳</td>,
+                                  ean: <td key="ean" style={cs}></td>,
+                                  produit: <td key="produit" style={{ ...cs, fontWeight: 500 }}>
+                                    <span>{cr.nom}</span>
+                                    {cr.steps.length > 0 && <span style={{ marginLeft: 6 }}>{cr.steps.map((s, i) => (
+                                      <span key={i} title={`${s.label} → ${s.after.toFixed(2)} €`} style={{ fontSize: 8, background: 'var(--primary-light)', color: 'var(--primary)', padding: '1px 4px', borderRadius: 3, fontWeight: 600, marginRight: 2 }}>-{s.pct}%</span>
+                                    ))}</span>}
+                                    {cr.fixedPrice != null && <span style={{ fontSize: 8, background: '#E6C547', color: '#5C4B00', padding: '1px 4px', borderRadius: 3, fontWeight: 700, marginLeft: 4 }}>FIXÉ</span>}
+                                  </td>,
+                                  tva: <td key="tva" style={cs}>{cr.fixedPrice != null ? <span style={{ fontWeight: 600 }}>{cr.fixedPrice.toFixed(2)}</span> : ''}</td>,
+                                  achatHT: <td key="achatHT" style={{ ...cs, color: 'var(--text-muted)' }}>{cr.genVal != null ? `${cr.genVal.toFixed(2)}` : '—'}</td>,
+                                  achatTTC: <td key="achatTTC" style={{ ...cs, color: 'var(--text-muted)' }}>{cr.afterRemises != null ? `${cr.afterRemises.toFixed(2)}` : '—'}</td>,
+                                  cessionHT: <td key="cessionHT" style={{ ...cs, fontWeight: 700 }}>{cr.prixFinal != null ? `${cr.prixFinal.toFixed(2)} €` : '—'}</td>,
+                                  cessionTTC: <td key="cessionTTC" style={cs}>{cr.prixFinalTTC != null ? `${cr.prixFinalTTC.toFixed(2)} €` : '—'}</td>,
+                                  pvcHT: <td key="pvcHT" style={cs}>{pvprHT_row != null ? `${pvprHT_row.toFixed(2)} €` : '—'}</td>,
+                                  pvcTTC: <td key="pvcTTC" style={cs}>{pvprVal ? `${pvprVal.toFixed(2)} €` : '—'}</td>,
+                                  margeHW: <td key="margeHW" style={cs}>{cr.mHW != null ? margeBadge(cr.mHW) : '—'}</td>,
+                                  valHW: <td key="valHW" style={cs}>{cr.mHWv != null ? `${cr.mHWv.toFixed(2)} €` : '—'}</td>,
+                                  margeCl: <td key="margeCl" style={cs}>{cr.mCl != null ? margeBadge(cr.mCl) : '—'}</td>,
+                                  valCl: <td key="valCl" style={cs}>{cr.mClv != null ? `${cr.mClv.toFixed(2)} €` : '—'}</td>,
+                                  actions: <td key="actions" style={cs}></td>,
+                                }
+                                return (
+                                  <tr key={`${p.id}-cl-${cr.id}`} style={{ background: cr.fixedPrice != null ? '#FFF8E7' : 'var(--surface-2)' }}>
+                                    {visCols.map(colId => crCells[colId])}
+                                  </tr>
+                                )
+                              })]
                           })(),
                         ]
                       })}
                     </tbody>
                   </table>
-                )}
+                  )})()}
 
                 {/* ══════════ VUE PAR CLIENT — Liste ══════════ */}
                 {view === 'client' && !selectedClient && (
@@ -1024,20 +1150,16 @@ export default function Tarifs() {
                     </div>
 
                     {/* Produits table */}
+                    {(() => {
+                      const clVisCols = getVisibleCols('client')
+                      return (
                     <table style={{ fontSize: 11 }}>
                       <thead>
                         <tr>
-                          <th style={{ width: 28 }}></th>
-                          <th style={{ width: 28 }}>Réf.</th>
-                          <th>Produit</th>
-                          <th>Marque</th>
-                          <th style={{ width: 58 }}>Cession HT</th>
-                          <th style={{ width: 62 }}>Ap. remises</th>
-                          <th>Remises appliquées</th>
-                          <th style={{ width: 72 }}>Prix fixé</th>
-                          <th style={{ width: 72 }}>Prix effectif</th>
-                          <th style={{ width: 64 }}>Marge HW</th>
-                          <th style={{ width: 64 }}>Marge Cl.</th>
+                          {clVisCols.map(colId => {
+                            const c = colDef('client', colId)
+                            return <th key={colId} style={c.width ? { width: c.width } : undefined}>{c.label}</th>
+                          })}
                         </tr>
                       </thead>
                       <tbody>
@@ -1059,69 +1181,74 @@ export default function Tarifs() {
                           const pvpHT = pvpTTC ? pvpTTC / (1 + tva / 100) : null
                           const margeCl = calcMarge(effectif, pvpHT)
 
+                          const clCells = {
+                            photo: <td key="photo" style={{ padding: '2px 4px' }}><Thumb url={p.photo_url} /></td>,
+                            ref: <td key="ref" style={{ padding: '2px 4px' }}>
+                              <button onClick={() => toggleRef(p.id)} disabled={savingRef === p.id} style={{
+                                width: 22, height: 22, borderRadius: 4, border: `2px solid ${isRef ? 'var(--primary)' : 'var(--border)'}`,
+                                background: isRef ? 'var(--primary)' : 'var(--surface)', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s',
+                              }}>
+                                {isRef && <Check size={11} color="#fff" strokeWidth={3} />}
+                              </button>
+                            </td>,
+                            produit: <td key="produit" style={{ padding: '2px 6px' }}>
+                              <div style={{ fontWeight: 500, fontSize: 12 }}>{p.libelle}</div>
+                              {p.ean13 && <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.ean13}</div>}
+                            </td>,
+                            marque: <td key="marque" style={{ padding: '2px 6px' }}>{p.marques?.nom || '—'}</td>,
+                            cessionHT: <td key="cessionHT" style={{ padding: '2px 6px' }}>{genPrice != null ? `${Number(genPrice).toFixed(2)} €` : '—'}</td>,
+                            apRemises: <td key="apRemises" style={{ padding: '2px 6px', color: hasRemises ? 'var(--primary)' : 'var(--text-muted)' }}>
+                              {afterRemises != null ? `${afterRemises.toFixed(2)} €` : '—'}
+                            </td>,
+                            remises: <td key="remises" style={{ padding: '2px 6px' }}>
+                              {remiseSteps.length > 0 ? (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                                  {remiseSteps.map((s, i) => (
+                                    <span key={i} title={`${s.label} → ${s.after.toFixed(2)} €`} style={{ fontSize: 8, background: 'var(--primary-light)', color: 'var(--primary)', padding: '1px 4px', borderRadius: 3, fontWeight: 600 }}>
+                                      {s.label} -{s.pct}%
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                            </td>,
+                            prixFixe: <td key="prixFixe" style={{ padding: '2px 6px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <input type="number" step="0.01"
+                                  value={ct?.prix_vente_ht ?? ''}
+                                  onChange={e => setClientTarifsMap(prev => ({ ...prev, [p.id]: { ...prev[p.id], prix_vente_ht: e.target.value, produit_id: p.id, client_id: selectedClient.id } }))}
+                                  onBlur={e => saveClientPrix(p.id, e.target.value)}
+                                  placeholder="—"
+                                  style={{ width: 60, padding: '2px 4px', fontSize: 11, borderRadius: 3, border: isFixed ? '1px solid #E6C547' : '1px solid var(--border)', background: isFixed ? '#FFF8E7' : 'var(--surface)' }}
+                                />
+                                {isFixed && (
+                                  <button className="btn-icon" onClick={() => clearFixedPrice(p.id)} title="Supprimer le prix fixé" style={{ color: '#C0392B', padding: 1 }}>
+                                    <X size={11} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>,
+                            prixEffectif: <td key="prixEffectif" style={{ padding: '2px 6px', fontWeight: 600 }}>
+                              {effectif != null ? (
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                  {effectif.toFixed(2)} €
+                                  {isFixed && <span style={{ fontSize: 8, background: '#E6C547', color: '#5C4B00', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>FIXÉ</span>}
+                                </span>
+                              ) : '—'}
+                            </td>,
+                            margeHW: <td key="margeHW" style={{ padding: '3px 4px' }}>{margeBadge(marge)}</td>,
+                            margeCl: <td key="margeCl" style={{ padding: '3px 4px' }}>{margeBadge(margeCl)}</td>,
+                          }
+
                           return (
                             <tr key={p.id} style={{ opacity: isRef ? 1 : 0.5, background: isFixed ? '#FFF8E7' : undefined }}>
-                              <td style={{ padding: '2px 4px' }}><Thumb url={p.photo_url} /></td>
-                              <td style={{ padding: '2px 4px' }}>
-                                <button onClick={() => toggleRef(p.id)} disabled={savingRef === p.id} style={{
-                                  width: 22, height: 22, borderRadius: 4, border: `2px solid ${isRef ? 'var(--primary)' : 'var(--border)'}`,
-                                  background: isRef ? 'var(--primary)' : 'var(--surface)', cursor: 'pointer',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s',
-                                }}>
-                                  {isRef && <Check size={11} color="#fff" strokeWidth={3} />}
-                                </button>
-                              </td>
-                              <td style={{ padding: '2px 6px' }}>
-                                <div style={{ fontWeight: 500, fontSize: 12 }}>{p.libelle}</div>
-                                {p.ean13 && <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.ean13}</div>}
-                              </td>
-                              <td style={{ padding: '2px 6px' }}>{p.marques?.nom || '—'}</td>
-                              <td style={{ padding: '2px 6px' }}>{genPrice != null ? `${Number(genPrice).toFixed(2)} €` : '—'}</td>
-                              <td style={{ padding: '2px 6px', color: hasRemises ? 'var(--primary)' : 'var(--text-muted)' }}>
-                                {afterRemises != null ? `${afterRemises.toFixed(2)} €` : '—'}
-                              </td>
-                              <td style={{ padding: '2px 6px' }}>
-                                {remiseSteps.length > 0 ? (
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-                                    {remiseSteps.map((s, i) => (
-                                      <span key={i} title={`${s.label} → ${s.after.toFixed(2)} €`} style={{ fontSize: 8, background: 'var(--primary-light)', color: 'var(--primary)', padding: '1px 4px', borderRadius: 3, fontWeight: 600 }}>
-                                        {s.label} -{s.pct}%
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                              </td>
-                              <td style={{ padding: '2px 6px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                  <input type="number" step="0.01"
-                                    value={ct?.prix_vente_ht ?? ''}
-                                    onChange={e => setClientTarifsMap(prev => ({ ...prev, [p.id]: { ...prev[p.id], prix_vente_ht: e.target.value, produit_id: p.id, client_id: selectedClient.id } }))}
-                                    onBlur={e => saveClientPrix(p.id, e.target.value)}
-                                    placeholder="—"
-                                    style={{ width: 60, padding: '2px 4px', fontSize: 11, borderRadius: 3, border: isFixed ? '1px solid #E6C547' : '1px solid var(--border)', background: isFixed ? '#FFF8E7' : 'var(--surface)' }}
-                                  />
-                                  {isFixed && (
-                                    <button className="btn-icon" onClick={() => clearFixedPrice(p.id)} title="Supprimer le prix fixé" style={{ color: '#C0392B', padding: 1 }}>
-                                      <X size={11} />
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                              <td style={{ padding: '2px 6px', fontWeight: 600 }}>
-                                {effectif != null ? (
-                                  <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                                    {effectif.toFixed(2)} €
-                                    {isFixed && <span style={{ fontSize: 8, background: '#E6C547', color: '#5C4B00', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>FIXÉ</span>}
-                                  </span>
-                                ) : '—'}
-                              </td>
-                              <td style={{ padding: '3px 4px' }}>{margeBadge(marge)}</td>
-                              <td style={{ padding: '3px 4px' }}>{margeBadge(margeCl)}</td>
+                              {clVisCols.map(colId => clCells[colId])}
                             </tr>
                           )
                         })}
                       </tbody>
                     </table>
+                      )})()}
                   </>
                 )}
               </>
