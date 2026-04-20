@@ -7,19 +7,22 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
 const EXPORT_COLUMNS = [
-  { id: 'ean', label: 'EAN13', align: 'left' },
-  { id: 'libelle', label: 'Produit', align: 'left' },
-  { id: 'marque', label: 'Marque', align: 'left' },
-  { id: 'famille', label: 'Famille', align: 'left' },
-  { id: 'pvcHT', label: 'PVC HT', align: 'right', currency: true },
-  { id: 'pvcTTC', label: 'PVC TTC', align: 'right', currency: true },
-  { id: 'cessionHT', label: 'Tarif HT', align: 'right', currency: true },
-  { id: 'cessionTTC', label: 'Tarif TTC', align: 'right', currency: true },
-  { id: 'remiseEff', label: 'Remise', align: 'right', percent: true },
-  { id: 'netHT', label: 'Net HT', align: 'right', currency: true },
-  { id: 'netTTC', label: 'Net TTC', align: 'right', currency: true },
+  { id: 'photo', label: 'Photo', align: 'center', pdfOnly: true, width: 18 },
+  { id: 'ean', label: 'Code EAN', align: 'left', width: 22 },
+  { id: 'libelle', label: 'Désignation', align: 'left' },
+  { id: 'marque', label: 'Marque', align: 'left', width: 22 },
+  { id: 'famille', label: 'Famille', align: 'left', width: 22 },
+  { id: 'taux_tva', label: 'Taux TVA', align: 'right', percent: true, width: 14 },
+  { id: 'pvcHT', label: 'PVC HT', align: 'right', currency: true, width: 16 },
+  { id: 'pvcTTC', label: 'PVC TTC', align: 'right', currency: true, width: 16 },
+  { id: 'cessionHT', label: 'Tarif HT', align: 'right', currency: true, width: 16 },
+  { id: 'cessionTTC', label: 'Tarif TTC', align: 'right', currency: true, width: 16 },
+  { id: 'remisesListe', label: 'Remises appliquées', align: 'left', multiline: true, width: 36 },
+  { id: 'remiseEff', label: 'Remise totale', align: 'right', percent: true, negative: true, width: 18 },
+  { id: 'netHT', label: 'Prix net HT', align: 'right', currency: true, width: 18, bold: true },
+  { id: 'netTTC', label: 'Prix net TTC', align: 'right', currency: true, width: 18, bold: true },
 ]
-const EXPORT_DEFAULT = ['libelle', 'ean', 'marque', 'cessionHT', 'remiseEff', 'netHT', 'netTTC']
+const EXPORT_DEFAULT = ['photo', 'libelle', 'ean', 'taux_tva', 'cessionHT', 'remisesListe', 'remiseEff', 'netHT', 'netTTC']
 
 // ── Helpers ──
 function applyRemisesCascade(basePrice, remises, produitId, marqueId, categorieId) {
@@ -400,14 +403,17 @@ export default function Tarifs() {
     const pvpHT = pvpTTC != null ? pvpTTC / (1 + tva / 100) : null
     const effPct = remiseSteps.length ? (1 - remiseSteps.reduce((acc, s) => acc * (1 - s.pct / 100), 1)) * 100 : 0
     switch (colId) {
+      case 'photo': return p.photo_url || ''
       case 'ean': return p.ean13 || ''
       case 'libelle': return p.libelle || ''
       case 'marque': return p.marques?.nom || ''
       case 'famille': return categories.find(c => c.id === p.categorie_id)?.nom || ''
+      case 'taux_tva': return p.taux_tva != null ? Math.round(parseFloat(p.taux_tva) * 100) / 100 : null
       case 'pvcHT': return pvpHT != null ? Math.round(pvpHT * 100) / 100 : null
       case 'pvcTTC': return pvpTTC
       case 'cessionHT': return genPrice
       case 'cessionTTC': return genPrice != null ? Math.round(genPrice * (1 + tva / 100) * 100) / 100 : null
+      case 'remisesListe': return remiseSteps.map(s => `${s.label || 'Remise'} -${s.pct}%`).join('\n')
       case 'remiseEff': return effPct > 0 ? Math.round(effPct * 100) / 100 : null
       case 'netHT': return effectif
       case 'netTTC': return effectif != null ? Math.round(effectif * (1 + tva / 100) * 100) / 100 : null
@@ -418,8 +424,26 @@ export default function Tarifs() {
   function formatExportCell(value, col) {
     if (value == null || value === '') return ''
     if (col.currency) return `${Number(value).toFixed(2)} €`
-    if (col.percent) return `-${Number(value).toFixed(2)} %`
+    if (col.percent) return `${col.negative ? '-' : ''}${Number(value).toFixed(2)} %`
     return String(value)
+  }
+
+  function loadImageAsDataURL(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = img.width
+          canvas.height = img.height
+          canvas.getContext('2d').drawImage(img, 0, 0)
+          resolve({ data: canvas.toDataURL('image/jpeg', 0.85), width: img.width, height: img.height })
+        } catch (e) { reject(e) }
+      }
+      img.onerror = reject
+      img.src = url
+    })
   }
 
   function getExportProduits(scope) {
@@ -431,16 +455,14 @@ export default function Tarifs() {
   function exportExcel({ cols, scope, title }) {
     const client = selectedClient
     const rows = getExportProduits(scope)
-    const activeCols = EXPORT_COLUMNS.filter(c => cols.includes(c.id))
+    const activeCols = EXPORT_COLUMNS.filter(c => cols.includes(c.id) && !c.pdfOnly)
     const headerRow = activeCols.map(c => c.label)
     const dataRows = rows.map(p => activeCols.map(c => {
       const v = getExportValue(p, c.id)
-      // Pour Excel, garder les valeurs numériques non formatées (Excel fera le formatage)
-      if (c.currency || c.percent) return v ?? ''
       return v ?? ''
     }))
     const sheetData = [
-      [title || 'Tarifs'],
+      [title || 'Liste tarifaire'],
       [`Client : ${client.nom}`],
       [`Émis le ${new Date().toLocaleDateString('fr-FR')}`],
       [],
@@ -448,8 +470,7 @@ export default function Tarifs() {
       ...dataRows,
     ]
     const ws = XLSX.utils.aoa_to_sheet(sheetData)
-    // Largeurs colonnes approximatives
-    ws['!cols'] = activeCols.map(c => ({ wch: c.id === 'libelle' ? 40 : c.id === 'ean' ? 14 : 14 }))
+    ws['!cols'] = activeCols.map(c => ({ wch: c.id === 'libelle' ? 40 : c.id === 'remisesListe' ? 28 : 14 }))
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Tarifs')
     const filename = `Tarifs_${client.nom.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`
@@ -457,61 +478,147 @@ export default function Tarifs() {
     toast('Export Excel généré', 'success')
   }
 
-  function exportPDF({ cols, scope, title }) {
+  async function exportPDF({ cols, scope, title }) {
     const client = selectedClient
     const rows = getExportProduits(scope)
     const activeCols = EXPORT_COLUMNS.filter(c => cols.includes(c.id))
+    const includePhotos = activeCols.some(c => c.id === 'photo')
+
+    // 1. Charger le logo Highway
+    let logo = null
+    try { logo = await loadImageAsDataURL('/highway-logo-dark.png') } catch {}
+
+    // 2. Précharger les photos produits (si colonne demandée)
+    const photoMap = {}
+    if (includePhotos) {
+      await Promise.all(rows.map(async p => {
+        if (!p.photo_url) return
+        try { photoMap[p.id] = await loadImageAsDataURL(p.photo_url) } catch {}
+      }))
+    }
+
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
     const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
 
-    // Bandeau en-tête violet Highway
-    doc.setFillColor(42, 31, 64) // #2A1F40 sidebar
-    doc.rect(0, 0, pageWidth, 22, 'F')
-    doc.setTextColor(212, 184, 240) // #D4B8F0 logo
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(18)
-    doc.text('HIGHWAY', 14, 14)
-    doc.setFontSize(8)
+    // ── En-tête : bandeau violet foncé (couleur sidebar) ──
+    doc.setFillColor(42, 31, 64) // #2A1F40
+    doc.rect(0, 0, pageWidth, 28, 'F')
+    if (logo) {
+      const h = 18
+      const w = h * (logo.width / logo.height)
+      doc.addImage(logo.data, 'JPEG', 10, 5, w, h)
+    } else {
+      doc.setTextColor(212, 184, 240)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(20)
+      doc.text('Highway', 12, 16)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(7)
+      doc.setTextColor(150, 170, 255)
+      doc.text('ROAD TO THE FINEST', 12, 21)
+    }
+    // Méta à droite dans le bandeau
+    doc.setTextColor(212, 184, 240)
     doc.setFont('helvetica', 'normal')
-    doc.text('ROAD TO THE FINEST', 14, 18.5)
+    doc.setFontSize(9)
+    doc.text(`Émis le ${new Date().toLocaleDateString('fr-FR')}`, pageWidth - 12, 12, { align: 'right' })
+    doc.text(`${rows.length} référence(s)`, pageWidth - 12, 18, { align: 'right' })
 
-    // Titre + méta
-    doc.setTextColor(26, 24, 32) // text-primary
-    doc.setFontSize(14)
+    // ── Bloc titre + client sur fond violet clair ──
+    doc.setFillColor(237, 233, 246) // --primary-light
+    doc.rect(0, 28, pageWidth, 16, 'F')
+    doc.setTextColor(26, 24, 32)
     doc.setFont('helvetica', 'bold')
-    doc.text(title || 'Tarifs', 14, 32)
+    doc.setFontSize(15)
+    doc.text(title || 'Liste tarifaire', 12, 37)
+    doc.setFont('helvetica', 'normal')
     doc.setFontSize(10)
-    doc.setFont('helvetica', 'normal')
-    doc.text(`Client : ${client.nom}`, 14, 38)
-    doc.text(`Émis le ${new Date().toLocaleDateString('fr-FR')}`, pageWidth - 14, 38, { align: 'right' })
-    doc.text(`${rows.length} référence(s)`, pageWidth - 14, 32, { align: 'right' })
+    doc.setTextColor(107, 103, 128) // text-secondary
+    doc.text(`Client : ${client.nom}`, 12, 42)
 
-    // Table
+    // ── Table ──
     const head = [activeCols.map(c => c.label)]
     const body = rows.map(p => activeCols.map(c => {
+      if (c.id === 'photo') return ''
       const v = getExportValue(p, c.id)
       return formatExportCell(v, c)
     }))
+
+    const colStyles = activeCols.reduce((acc, c, i) => {
+      acc[i] = { halign: c.align || 'left' }
+      if (c.width) acc[i].cellWidth = c.width
+      if (c.bold) acc[i].fontStyle = 'bold'
+      return acc
+    }, {})
+
     autoTable(doc, {
       head, body,
-      startY: 44,
+      startY: 48,
       theme: 'striped',
-      styles: { fontSize: 9, cellPadding: 2.5, textColor: [26, 24, 32] },
-      headStyles: { fillColor: [90, 74, 122], textColor: 255, fontStyle: 'bold', fontSize: 9 },
-      alternateRowStyles: { fillColor: [237, 233, 246] },
-      columnStyles: activeCols.reduce((acc, c, i) => {
-        acc[i] = { halign: c.align || 'left' }
-        return acc
-      }, {}),
-      margin: { left: 10, right: 10 },
+      styles: { fontSize: 8, cellPadding: 2, textColor: [26, 24, 32], valign: 'middle', lineColor: [224, 221, 232], lineWidth: 0.1 },
+      headStyles: { fillColor: [90, 74, 122], textColor: 255, fontStyle: 'bold', fontSize: 8, cellPadding: 2.5, halign: 'center' },
+      alternateRowStyles: { fillColor: [247, 245, 251] },
+      columnStyles: colStyles,
+      bodyStyles: includePhotos ? { minCellHeight: 16 } : undefined,
+      margin: { left: 8, right: 8, top: 28 },
+      didDrawCell: (data) => {
+        if (data.section !== 'body') return
+        const col = activeCols[data.column.index]
+        const p = rows[data.row.index]
+        if (!p || !col) return
+        if (col.id === 'photo') {
+          const img = photoMap[p.id]
+          if (img) {
+            const size = Math.min(data.cell.height - 2, 14)
+            const x = data.cell.x + (data.cell.width - size) / 2
+            const y = data.cell.y + (data.cell.height - size) / 2
+            try {
+              doc.addImage(img.data, 'JPEG', x, y, size, size)
+              if (p.photo_url) doc.link(x, y, size, size, { url: p.photo_url })
+            } catch {}
+          } else if (p.photo_url) {
+            doc.setTextColor(90, 74, 122)
+            doc.setFont('helvetica', 'normal')
+            doc.setFontSize(7)
+            const cx = data.cell.x + data.cell.width / 2
+            const cy = data.cell.y + data.cell.height / 2 + 1
+            doc.text('Voir', cx, cy, { align: 'center' })
+            doc.link(data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2, { url: p.photo_url })
+          }
+        } else if (col.id === 'libelle' && p.photo_url) {
+          // Petit lien "Voir photo" sous la désignation si la colonne photo n'est pas présente
+          if (!includePhotos) {
+            doc.setTextColor(90, 74, 122)
+            doc.setFont('helvetica', 'italic')
+            doc.setFontSize(6)
+            const textY = data.cell.y + data.cell.height - 1.5
+            doc.textWithLink('Voir photo ▸', data.cell.x + 1, textY, { url: p.photo_url })
+          }
+        }
+      },
       didDrawPage: (data) => {
-        // Pied de page
         const pageCount = doc.internal.getNumberOfPages()
         const pageNum = data.pageNumber
-        doc.setFontSize(8)
+        // Ré-afficher le bandeau sur chaque nouvelle page
+        if (pageNum > 1) {
+          doc.setFillColor(42, 31, 64)
+          doc.rect(0, 0, pageWidth, 18, 'F')
+          if (logo) {
+            const h = 11
+            const w = h * (logo.width / logo.height)
+            doc.addImage(logo.data, 'JPEG', 10, 3.5, w, h)
+          }
+          doc.setTextColor(212, 184, 240)
+          doc.setFontSize(8)
+          doc.text(`${title || 'Liste tarifaire'} — ${client.nom}`, pageWidth - 12, 11, { align: 'right' })
+        }
+        // Pied de page
+        doc.setFontSize(7)
         doc.setTextColor(158, 154, 176)
-        doc.text(`Page ${pageNum} / ${pageCount}`, pageWidth - 14, doc.internal.pageSize.getHeight() - 6, { align: 'right' })
-        doc.text('Highway — Tarifs confidentiels', 14, doc.internal.pageSize.getHeight() - 6)
+        doc.setFont('helvetica', 'normal')
+        doc.text('Highway — Tarifs confidentiels', 12, pageHeight - 6)
+        doc.text(`Page ${pageNum} / ${pageCount}`, pageWidth - 12, pageHeight - 6, { align: 'right' })
       },
     })
 
@@ -521,16 +628,22 @@ export default function Tarifs() {
   }
 
   function openExportModal() {
-    setExportModal({ format: 'pdf', cols: [...EXPORT_DEFAULT], scope: 'ref', title: 'Tarifs' })
+    setExportModal({ format: 'pdf', cols: [...EXPORT_DEFAULT], scope: 'ref', title: 'Liste tarifaire', generating: false })
   }
 
-  function submitExport() {
+  async function submitExport() {
     if (!exportModal) return
     if (!exportModal.cols.length) return toast('Sélectionnez au moins une colonne', 'error')
     const payload = { cols: exportModal.cols, scope: exportModal.scope, title: exportModal.title }
-    if (exportModal.format === 'pdf') exportPDF(payload)
-    else exportExcel(payload)
-    setExportModal(null)
+    setExportModal(m => ({ ...m, generating: true }))
+    try {
+      if (exportModal.format === 'pdf') await exportPDF(payload)
+      else exportExcel(payload)
+      setExportModal(null)
+    } catch (e) {
+      toast('Erreur : ' + (e?.message || e), 'error')
+      setExportModal(m => ({ ...m, generating: false }))
+    }
   }
 
   const filteredProduits = produits.filter(p => {
@@ -1797,11 +1910,12 @@ export default function Tarifs() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4, border: '1px solid var(--border)', borderRadius: 6, padding: 8 }}>
                 {EXPORT_COLUMNS.map(col => {
                   const active = exportModal.cols.includes(col.id)
+                  const disabled = col.pdfOnly && exportModal.format !== 'pdf'
                   return (
-                    <div key={col.id} onClick={() => setExportModal(m => ({ ...m, cols: active ? m.cols.filter(x => x !== col.id) : [...m.cols, col.id] }))}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 7px', borderRadius: 4, cursor: 'pointer', background: active ? 'var(--primary-light)' : 'transparent' }}>
+                    <div key={col.id} onClick={() => { if (disabled) return; setExportModal(m => ({ ...m, cols: active ? m.cols.filter(x => x !== col.id) : [...m.cols, col.id] })) }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 7px', borderRadius: 4, cursor: disabled ? 'not-allowed' : 'pointer', background: active && !disabled ? 'var(--primary-light)' : 'transparent', opacity: disabled ? 0.45 : 1 }}>
                       {active ? <CheckSquare size={15} color="var(--primary)" /> : <Square size={15} color="var(--text-muted)" />}
-                      <span style={{ fontSize: 12 }}>{col.label}</span>
+                      <span style={{ fontSize: 12 }}>{col.label}{col.pdfOnly && <span style={{ fontSize: 9, color: 'var(--text-muted)', marginLeft: 4 }}>(PDF)</span>}</span>
                     </div>
                   )
                 })}
@@ -1809,9 +1923,9 @@ export default function Tarifs() {
             </div>
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button className="btn btn-secondary" onClick={() => setExportModal(null)} style={{ fontSize: 12 }}>Annuler</button>
-              <button className="btn btn-primary" onClick={submitExport} style={{ fontSize: 12, gap: 6 }}>
-                <Download size={14} /> Générer
+              <button className="btn btn-secondary" onClick={() => setExportModal(null)} style={{ fontSize: 12 }} disabled={exportModal.generating}>Annuler</button>
+              <button className="btn btn-primary" onClick={submitExport} style={{ fontSize: 12, gap: 6 }} disabled={exportModal.generating}>
+                <Download size={14} /> {exportModal.generating ? 'Génération...' : 'Générer'}
               </button>
             </div>
           </div>
