@@ -78,6 +78,9 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
       'poids_produit_brut_kg','poids_produit_net_kg'].forEach(f => {
       if (payload[f] === '') payload[f] = null
     })
+    ;['taux_tva','pvpr'].forEach(f => {
+      if (payload[f] != null && payload[f] !== '') payload[f] = Math.round(parseFloat(payload[f]) * 100) / 100
+    })
     const { error } = await supabase.from('produits').update(payload).eq('id', product.id)
     setSaving(false)
     if (error) return toast('Erreur : ' + error.message, 'error')
@@ -807,6 +810,9 @@ export default function Produits() {
       'poids_colis_kg','longueur_colis_cm','largeur_colis_cm','hauteur_colis_cm',
       'poids_produit_brut_kg','poids_produit_net_kg'].forEach(f => {
       if (payload[f] === '') payload[f] = null
+    })
+    ;['taux_tva','pvpr'].forEach(f => {
+      if (payload[f] != null && payload[f] !== '') payload[f] = Math.round(parseFloat(payload[f]) * 100) / 100
     })
     const { error } = await supabase.from('produits').insert(payload)
     setSaving(false)

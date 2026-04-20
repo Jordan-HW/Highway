@@ -695,10 +695,13 @@ export default function Tarifs() {
   async function saveRemise(remise) {
     setSavingRemise(true)
     const { id, created_at, ...payload } = remise
+    if (payload.pourcentage != null) payload.pourcentage = Math.round(parseFloat(payload.pourcentage) * 100) / 100
     const { error } = await supabase.from('client_remises').update(payload).eq('id', id)
     setSavingRemise(false)
     if (error) return toast('Erreur : ' + error.message, 'error')
-    setAllRemises(prev => prev.map(r => r.id === id ? remise : r))
+    const persisted = { ...remise, pourcentage: payload.pourcentage }
+    setAllRemises(prev => prev.map(r => r.id === id ? persisted : r))
+    setClientRemises(prev => prev.map(r => r.id === id ? persisted : r))
   }
 
   async function deleteRemise(id) {
@@ -797,7 +800,7 @@ export default function Tarifs() {
       if (item.taux_tva) {
         let tvaVal = parseFloat(String(item.taux_tva).replace('%', '').replace(',', '.').trim())
         if (tvaVal > 0 && tvaVal < 1) tvaVal = tvaVal * 100 // 0.055 → 5.5, 0.20 → 20
-        prodUpdate.taux_tva = tvaVal
+        prodUpdate.taux_tva = r2(tvaVal)
       }
       if (Object.keys(prodUpdate).length) {
         if (prodUpdate.pvpr) await logPriceChange(prodId, 'pvpr', item._produit.pvpr, prodUpdate.pvpr, 'import')
