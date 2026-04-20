@@ -148,6 +148,7 @@ logo color: #D4B8F0          /* violet clair */
 
 ## Conventions de code
 - Composants JSX fonctionnel + hooks
+- **Arrondi à 2 décimales** systématique en DB pour `pvpr`, `taux_tva`, `prix_achat_ht`, `prix_vente_ht`, `client_remises.pourcentage` — appliqué à l'import ET à la sauvegarde manuelle (inline, fiche produit). Jamais stocker plus de 2 décimales.
 - `import { supabase } from '../lib/supabase'`
 - `import { toast } from '../components/Toast'`
 - Dates : `toLocaleDateString('fr-FR')`
@@ -164,10 +165,11 @@ logo color: #D4B8F0          /* violet clair */
 - **Onglets** dans les modales/volets pour organiser les données
 
 ### Marques
-- Modale 640px avec onglets : Infos, Contacts, Catégories (si nomenclature spécifique)
+- Modale 640px avec onglets : Infos, Contacts, Familles (si nomenclature spécifique)
 - **Contacts multiples** : ligne compacte en lecture (nom — fonction · email · tél), crayon pour éditer
-- **Nomenclature catégories** : choix par marque entre générale ou spécifique
-- **Catégories générales** : gérées via bouton dédié dans le header de la page
+- **Nomenclature familles** : choix par marque entre générale ou spécifique
+- **Familles générales** : gérées via bouton dédié dans le header de la page
+- **Terminologie UI : "famille"** partout (ex-"catégorie"). La table DB reste `categories` et la colonne `categorie_id` — ne pas renommer.
 
 ### Catalogue (Produits)
 - **Clic sur ligne** → volet droit 620px (pas de modal) avec fiche complète
@@ -180,14 +182,24 @@ logo color: #D4B8F0          /* violet clair */
 - **Statuts** affichés avec majuscule (Actif, En référencement, Arrêté, Inactif)
 
 ### Référencement & Tarifs (Tarifs.jsx)
-- **Vue par produit** : tableau inline avec colonnes EAN, Produit, TVA, Achat HT/TTC, Vente HT/TTC, PVPR HT/TTC, Marge HW %/€, Marge Client %/€
+- **Vue par produit** : tableau inline avec colonnes EAN, Produit, TVA, Achat HT/TTC, Cession HT/TTC, PVC HT/TTC, Marge HW %/€, Marge Client %/€
 - **Champs cliquables** : prix et TVA affichés sans cadre (soulignement pointillé), input au clic, validation au blur/Entrée
-- **Marges éditables** : clic sur badge marge → input, recalcul automatique du prix de vente (marge HW) ou choix répercussion PVPR/vente (marge client)
-- **Calcul marges** : Marge HW = (Vente-Achat)/Vente, Marge Client = (PVPR HT-Vente)/PVPR HT. Badges colorés : vert ≥28%, orange ≥23%, rouge <23%
+- **Marges éditables** : clic sur badge marge → input, recalcul automatique du prix de cession (marge HW) ou choix répercussion PVC/cession (marge client)
+- **Calcul marges** : Marge HW = (Cession-Achat)/Cession, Marge Client = (PVC HT-Cession)/PVC HT. Badges colorés : vert ≥28%, orange ≥23%, rouge <23%
 - **Surlignage intelligent** : jaune vif (#FFF176) sur le champ source du changement, jaune léger (#FFF9C4) sur les champs impactés
-- **Accordéon clients** : lignes `<tr>` dans le même tableau (colonnes alignées). Affiche : nom client, remises, prix fixé, prix gén., après remises, Final HT/TTC, PVPR, marges
-- **Historique des prix** : icône horloge par produit → modale avec filtres par champ (Achat/Vente/PVPR/TVA), tableau ancien→nouveau + variation %, source (manuel/import)
-- **Enregistrement global** : barre fixe en bas, surlignage par cellule des modifications en attente
+- **Accordéon clients** : lignes `<tr>` dans le même tableau (colonnes alignées). Affiche : nom client, remises, prix fixé, prix gén., après remises, Final HT/TTC, PVC, marges
+- **Variation achat récente** : flèche ↑/↓ + % à côté de l'icône horloge si changement de prix d'achat dans les 30 derniers jours (rouge = hausse, vert = baisse)
+- **Historique des prix** : icône horloge par produit → modale avec filtres par champ (Achat/Cession/PVC/TVA), tableau ancien→nouveau + variation %, source (manuel/import). Note : les clés DB restent `vente_ht` et `pvpr`, l'affichage utilise "Cession" et "PVC"
+- **Vue par client** :
+  - Colonnes : Réf., Produit, Marque, Cession HT/TTC, Ap. remises, Remises appliquées, **Remise eff.**, Prix fixé, Prix effectif, **PVC HT/TTC**, Marge HW, Marge Client
+  - **Remise effective** = `1 − Π(1 − pi/100)` calculée depuis les pourcentages de la cascade (pas depuis les prix arrondis) → identique pour tous les produits où les mêmes remises s'appliquent
+  - Bouton **Tout référencer** : insère en masse les références pour tous les produits filtrés non encore référencés (confirmation + toast)
+  - Bouton toggle **Masquer non-référencés / Tous les produits**
+- **Remises en cascade (client)** : scope par Fournisseur, par **Famille** (`categorie_id`), par Sélection de produits. Filtre multiplicatif dans `applyRemisesCascade(basePrice, remises, produitId, marqueId, categorieId)`. Table `client_remises` : `label, pourcentage, marque_id, categorie_id, produit_ids, ordre`
+- **Tri colonnes** : clic sur en-tête → asc/desc avec flèches ▲/▼/↕. Actif dans les deux vues (produit + client), toutes colonnes sauf photo/actions. En-têtes avec `padding: 6px 6px` pour densité cohérente avec les cellules
+- **Colonnes configurables** : panneau drag & drop (ordre) + cases visibilité, persisté en localStorage (`highway_tarifs_cols_produit`, `highway_tarifs_cols_client`)
+- **Enregistrement global** : barre fixe en bas, surlignage par cellule des modifications en attente. `padding-bottom: 80px` ajouté au `page-body` quand la barre est active pour ne pas masquer la dernière ligne
+- **Arrondi 2 décimales** : tous les prix et % arrondis `Math.round(x * 100) / 100` avant INSERT/UPDATE (saveRemise, saveClientPrix, saveAllDirty, Produits insert/update, import tarifs et produits)
 - **Import Excel** : mapping colonnes, normalisation TVA, validation, import en masse avec logging historique
 
 ---
@@ -198,13 +210,13 @@ logo color: #D4B8F0          /* violet clair */
 | `admin_users` | Utilisateurs ERP (protégé par RPC) |
 | `marques` | Marques distribuées — champs : nom, code, pays, devise, delai_livraison_jours, conditions_paiement, adresse, notes, actif, **nomenclature_specifique** |
 | `marque_contacts` | Contacts par marque — champs : marque_id (FK), prenom, nom, fonction, email, telephone |
-| `categories` | Catégories produits — champs : nom, parent_id, **marque_id** (FK nullable, null = générale) |
+| `categories` | Familles produits (terminologie UI = "famille", schéma DB inchangé) — champs : nom, parent_id, **marque_id** (FK nullable, null = générale) |
 | `produits` | Catalogue produits — champs classiques + **description_fr**, **type_conditionnement** (unites/kg), **poids_colis_kg**, **longueur/largeur/hauteur_colis_cm**, **poids_produit_brut_kg**, **poids_produit_net_kg** |
 | `clients` | Clients (centrale/indépendant/grossiste) |
 | `tarifs_achat` | Prix achat HT par produit — champs : produit_id, prix_achat_ht, date_debut |
 | `tarifs_vente` | Prix vente HT général (client_id=null) ou par client — champs : produit_id, client_id, prix_vente_ht, remise_pct, date_debut, notes |
 | `tarif_historique` | **Historique des changements de prix** — champs : produit_id, champ (achat_ht/vente_ht/pvpr/tva), ancien_prix, nouveau_prix, date_changement, source (manuel/import) |
-| `client_remises` | Remises en cascade par client — champs : client_id, label, pourcentage, ordre, marque_id, produit_ids |
+| `client_remises` | Remises en cascade par client — champs : client_id, label, pourcentage, ordre, marque_id, **categorie_id** (FK nullable → famille), produit_ids |
 | `lots` | Lots avec DLC, localisation, statut |
 | `mouvements_stock` | Entrées/sorties stock |
 | `portail_acces` | Accès portail client |
