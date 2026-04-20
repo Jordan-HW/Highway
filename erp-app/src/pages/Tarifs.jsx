@@ -864,7 +864,7 @@ export default function Tarifs() {
                           const isSorted = sortProduit.key === colId
                           return (
                             <th key={colId} onClick={() => sortable && handleSort('produit', colId)}
-                              style={{ ...(c.width ? { width: c.width } : {}), cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap' }}>
+                              style={{ ...(c.width ? { width: c.width } : {}), padding: '6px 6px', cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap' }}>
                               {c.label}
                               {sortable && <span style={{ fontSize: 9, color: isSorted ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 700, marginLeft: 3 }}>
                                 {isSorted ? (sortProduit.dir === 'asc' ? '▲' : '▼') : '↕'}
@@ -1307,7 +1307,7 @@ export default function Tarifs() {
                             const isSorted = sortClient.key === colId
                             return (
                               <th key={colId} onClick={() => sortable && handleSort('client', colId)}
-                                style={{ ...(c.width ? { width: c.width } : {}), cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap' }}>
+                                style={{ ...(c.width ? { width: c.width } : {}), padding: '6px 6px', cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap' }}>
                                 {c.label}
                                 {sortable && <span style={{ fontSize: 9, color: isSorted ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 700, marginLeft: 3 }}>
                                   {isSorted ? (sortClient.dir === 'asc' ? '▲' : '▼') : '↕'}
