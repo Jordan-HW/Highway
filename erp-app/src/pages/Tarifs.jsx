@@ -865,12 +865,10 @@ export default function Tarifs() {
                           return (
                             <th key={colId} onClick={() => sortable && handleSort('produit', colId)}
                               style={{ ...(c.width ? { width: c.width } : {}), cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap' }}>
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                                {c.label}
-                                {sortable && <span style={{ fontSize: 9, color: isSorted ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 700 }}>
-                                  {isSorted ? (sortProduit.dir === 'asc' ? '▲' : '▼') : '↕'}
-                                </span>}
-                              </span>
+                              {c.label}
+                              {sortable && <span style={{ fontSize: 9, color: isSorted ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 700, marginLeft: 3 }}>
+                                {isSorted ? (sortProduit.dir === 'asc' ? '▲' : '▼') : '↕'}
+                              </span>}
                             </th>
                           )
                         })}
@@ -1310,12 +1308,10 @@ export default function Tarifs() {
                             return (
                               <th key={colId} onClick={() => sortable && handleSort('client', colId)}
                                 style={{ ...(c.width ? { width: c.width } : {}), cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap' }}>
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                                  {c.label}
-                                  {sortable && <span style={{ fontSize: 9, color: isSorted ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 700 }}>
-                                    {isSorted ? (sortClient.dir === 'asc' ? '▲' : '▼') : '↕'}
-                                  </span>}
-                                </span>
+                                {c.label}
+                                {sortable && <span style={{ fontSize: 9, color: isSorted ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 700, marginLeft: 3 }}>
+                                  {isSorted ? (sortClient.dir === 'asc' ? '▲' : '▼') : '↕'}
+                                </span>}
                               </th>
                             )
                           })}
