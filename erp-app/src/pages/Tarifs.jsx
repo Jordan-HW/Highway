@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent, Package, Users, Clock, Eye, EyeOff, Settings2, GripVertical, ChevronUp } from 'lucide-react'
+import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent, Package, Users, Clock, Eye, EyeOff, Settings2, GripVertical, CheckSquare, Square } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 // ── Helpers ──
-function applyRemisesCascade(basePrice, remises, produitId, marqueId) {
+function applyRemisesCascade(basePrice, remises, produitId, marqueId, categorieId) {
   let price = basePrice
   const steps = []
   for (const r of [...remises].sort((a, b) => a.ordre - b.ordre)) {
     if (r.marque_id && r.marque_id !== marqueId) continue
+    if (r.categorie_id && r.categorie_id !== categorieId) continue
     if (r.produit_ids && !r.produit_ids.includes(produitId)) continue
     price = price * (1 - r.pourcentage / 100)
     steps.push({ label: r.label || 'Remise', pct: r.pourcentage, after: Math.round(price * 100) / 100 })
@@ -69,11 +70,11 @@ function saveColConfig(key, config) {
   localStorage.setItem(key, JSON.stringify(config))
 }
 
-function ColumnSettingsDropdown({ columns, config, onUpdate, onClose }) {
-  const movableIds = config.order.filter(id => {
-    const col = columns.find(c => c.id === id)
-    return col && !col.fixed && col.label
-  })
+function ColumnSettingsPanel({ columns, config, onUpdate, onClose }) {
+  const [dragIdx, setDragIdx] = useState(null)
+  const [overIdx, setOverIdx] = useState(null)
+
+  const orderedCols = config.order.map(id => columns.find(c => c.id === id)).filter(Boolean)
 
   function toggleCol(id) {
     const hidden = config.hidden.includes(id)
@@ -82,40 +83,73 @@ function ColumnSettingsDropdown({ columns, config, onUpdate, onClose }) {
     onUpdate({ ...config, hidden })
   }
 
-  function moveCol(id, direction) {
-    const order = [...config.order]
-    const idx = order.indexOf(id)
-    const swap = idx + direction
-    if (swap < 0 || swap >= order.length) return
-    const targetCol = columns.find(c => c.id === order[swap])
-    if (targetCol?.fixed) return
-    ;[order[idx], order[swap]] = [order[swap], order[idx]]
-    onUpdate({ ...config, order })
+  const handleDragStart = (e, idx) => {
+    const col = orderedCols[idx]
+    if (col?.fixed) { e.preventDefault(); return }
+    setDragIdx(idx)
+    e.dataTransfer.effectAllowed = 'move'
   }
+  const handleDragOver = (e, idx) => { e.preventDefault(); setOverIdx(idx) }
+  const handleDrop = (e, dropIdx) => {
+    e.preventDefault()
+    if (dragIdx == null || dragIdx === dropIdx) { setDragIdx(null); setOverIdx(null); return }
+    const newOrder = [...config.order]
+    const [moved] = newOrder.splice(dragIdx, 1)
+    newOrder.splice(dropIdx, 0, moved)
+    onUpdate({ ...config, order: newOrder })
+    setDragIdx(null); setOverIdx(null)
+  }
+  const handleDragEnd = () => { setDragIdx(null); setOverIdx(null) }
 
   return (
-    <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 50, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 6px 24px rgba(0,0,0,0.14)', padding: '14px 12px', minWidth: 230, marginTop: 4 }}
-      onClick={e => e.stopPropagation()}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
-        <span style={{ fontSize: 12, fontWeight: 600 }}>Colonnes visibles</span>
-        <button onClick={() => onUpdate({ order: columns.map(c => c.id), hidden: [] })} style={{ fontSize: 10, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Réinitialiser</button>
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.2)' }} />
+      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 201, width: '100%', maxWidth: 300, background: 'var(--surface)', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', animation: 'slideIn .2s ease' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)' }}>
+          <span style={{ fontWeight: 600, fontSize: 15 }}>Colonnes</span>
+          <button className="btn-icon" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div style={{ padding: '10px 20px 0', fontSize: 11, color: 'var(--text-muted)' }}>Glissez pour réordonner · cochez pour afficher</div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {orderedCols.map((col, idx) => {
+            const isVisible = !config.hidden.includes(col.id)
+            const locked = col.fixed
+            const isDragging = dragIdx === idx
+            const isOver = overIdx === idx && dragIdx !== idx
+            if (!col.label) return null // skip empty-label cols (photo, actions)
+            return (
+              <div key={col.id}
+                draggable={!locked}
+                onDragStart={e => handleDragStart(e, idx)}
+                onDragOver={e => handleDragOver(e, idx)}
+                onDrop={e => handleDrop(e, idx)}
+                onDragEnd={handleDragEnd}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 7,
+                  cursor: locked ? 'default' : 'grab',
+                  background: isDragging ? 'var(--primary-light)' : isVisible ? '#e8f0eb' : 'transparent',
+                  opacity: isDragging ? 0.5 : locked && !isVisible ? 0.5 : 1,
+                  borderTop: isOver ? '2px solid var(--primary)' : '2px solid transparent',
+                  transition: 'background .15s',
+                }}>
+                <span style={{ color: 'var(--text-muted)', cursor: locked ? 'default' : 'grab', display: 'flex' }}>
+                  {locked ? <span style={{ width: 16 }} /> : <GripVertical size={14} />}
+                </span>
+                <div onClick={e => { e.stopPropagation(); !locked && toggleCol(col.id) }} style={{ display: 'flex', alignItems: 'center', cursor: locked ? 'default' : 'pointer' }}>
+                  {isVisible ? <CheckSquare size={15} color="var(--primary)" /> : <Square size={15} color="var(--text-muted)" />}
+                </div>
+                <span style={{ fontSize: 13, flex: 1, opacity: isVisible ? 1 : 0.45 }}>{col.label}</span>
+                {locked && <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>fixe</span>}
+              </div>
+            )
+          })}
+        </div>
+        <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => onUpdate({ order: columns.map(c => c.id), hidden: [] })}>Réinitialiser</button>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={onClose}>Appliquer</button>
+        </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-        {movableIds.map(id => {
-          const col = columns.find(c => c.id === id)
-          if (!col) return null
-          const isHidden = config.hidden.includes(id)
-          return (
-            <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 6px', borderRadius: 5, background: isHidden ? 'var(--surface-2)' : 'transparent', transition: 'background .1s' }}>
-              <input type="checkbox" checked={!isHidden} onChange={() => toggleCol(id)} style={{ accentColor: 'var(--primary)', cursor: 'pointer', margin: 0 }} />
-              <span style={{ flex: 1, fontSize: 11, opacity: isHidden ? 0.45 : 1, fontWeight: isHidden ? 400 : 500 }}>{col.label}</span>
-              <button onClick={() => moveCol(id, -1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1, color: 'var(--text-muted)' }}><ChevronUp size={13} /></button>
-              <button onClick={() => moveCol(id, 1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1, color: 'var(--text-muted)' }}><ChevronDown size={13} /></button>
-            </div>
-          )
-        })}
-      </div>
-    </div>
+    </>
   )
 }
 
@@ -123,6 +157,7 @@ export default function Tarifs() {
   const [view, setView] = useState('produit')
   const [produits, setProduits] = useState([])
   const [marques, setMarques] = useState([])
+  const [categories, setCategories] = useState([])
   const [clients, setClients] = useState([])
   const [tarifsAchat, setTarifsAchat] = useState([])
   const [tarifsVente, setTarifsVente] = useState([])
@@ -200,9 +235,10 @@ export default function Tarifs() {
   async function fetchAll() {
     setLoading(true)
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-    const [{ data: prods }, { data: mqs }, { data: cls }, { data: ta }, { data: tv }, { data: ar }, { data: recentHist }] = await Promise.all([
-      supabase.from('produits').select('*, marques(nom)').eq('statut', 'actif').order('libelle'),
+    const [{ data: prods }, { data: mqs }, { data: cats }, { data: cls }, { data: ta }, { data: tv }, { data: ar }, { data: recentHist }] = await Promise.all([
+      supabase.from('produits').select('*, marques(nom), categories(nom)').eq('statut', 'actif').order('libelle'),
       supabase.from('marques').select('id, nom').eq('actif', true).order('nom'),
+      supabase.from('categories').select('id, nom, marque_id').order('nom'),
       supabase.from('clients').select('id, nom, type').order('nom'),
       supabase.from('tarifs_achat').select('*').order('date_debut', { ascending: false }),
       supabase.from('tarifs_vente').select('*').order('date_debut', { ascending: false }),
@@ -211,6 +247,7 @@ export default function Tarifs() {
     ])
     setProduits(prods || [])
     setMarques(mqs || [])
+    setCategories(cats || [])
     setClients(cls || [])
     setTarifsAchat(ta || [])
     setTarifsVente(tv || [])
@@ -545,6 +582,7 @@ export default function Tarifs() {
       label: 'Nouvelle remise',
       pourcentage: 0,
       marque_id: marques[0]?.id || null,
+      categorie_id: null,
       produit_ids: null,
       ordre: clientRemises.length,
     }).select().single()
@@ -707,21 +745,10 @@ export default function Tarifs() {
           <button className={`btn ${view === 'client' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setView('client'); setSelectedClient(null); setExpandedId(null); setShowColSettings(false) }}>
             <Users size={15} /> Vue par client
           </button>
-          <div style={{ marginLeft: 'auto', position: 'relative' }}>
+          <div style={{ marginLeft: 'auto' }}>
             <button className={`btn ${showColSettings ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowColSettings(!showColSettings)} title="Configurer les colonnes">
-              <Settings2 size={15} />
+              <Settings2 size={15} /> Colonnes
             </button>
-            {showColSettings && (
-              <>
-                <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setShowColSettings(false)} />
-                <ColumnSettingsDropdown
-                  columns={view === 'produit' || (view === 'client' && !selectedClient) ? PRODUCT_COLUMNS : CLIENT_COLUMNS}
-                  config={view === 'produit' || (view === 'client' && !selectedClient) ? prodColConfig : clientColConfig}
-                  onUpdate={cfg => updateColConfig(view === 'produit' || (view === 'client' && !selectedClient) ? 'produit' : 'client', cfg)}
-                  onClose={() => setShowColSettings(false)}
-                />
-              </>
-            )}
           </div>
         </div>
 
@@ -870,7 +897,7 @@ export default function Tarifs() {
                             const clientRows = clients.map(c => {
                               const fixed = getClientVente(p.id, c.id)
                               const remisesClient = allRemises.filter(r => r.client_id === c.id)
-                              const result = genVal ? applyRemisesCascade(genVal, remisesClient, p.id, p.marque_id) : null
+                              const result = genVal ? applyRemisesCascade(genVal, remisesClient, p.id, p.marque_id, p.categorie_id) : null
                               const afterRemises = result?.price ?? null
                               const steps = result?.steps || []
                               const hasFixed = !!fixed
@@ -1013,6 +1040,10 @@ export default function Tarifs() {
                               {clientRemises.map((r, idx) => {
                                 const remiseMarque = marques.find(m => m.id === r.marque_id)
                                 const marqueProduits = produits.filter(p => p.marque_id === r.marque_id)
+                                // Familles disponibles pour ce dropdown : si marque sélectionnée, familles spécifiques à cette marque + familles générales ; sinon toutes
+                                const availableCategories = r.marque_id
+                                  ? categories.filter(c => c.marque_id === r.marque_id || c.marque_id === null)
+                                  : categories
                                 const isPicking = pickerRemiseId === r.id
 
                                 return (
@@ -1032,14 +1063,34 @@ export default function Tarifs() {
                                       <select
                                         value={r.marque_id || ''}
                                         onChange={e => {
-                                          updateRemiseLocal(r.id, 'marque_id', e.target.value || null)
+                                          const newMarqueId = e.target.value || null
+                                          // Si la famille actuelle n'est plus compatible avec la marque, on la reset
+                                          const currentCat = categories.find(c => c.id === r.categorie_id)
+                                          const keepCat = !r.categorie_id || !currentCat || currentCat.marque_id === null || currentCat.marque_id === newMarqueId
+                                          const nextCatId = keepCat ? r.categorie_id : null
+                                          updateRemiseLocal(r.id, 'marque_id', newMarqueId)
+                                          updateRemiseLocal(r.id, 'categorie_id', nextCatId)
                                           updateRemiseLocal(r.id, 'produit_ids', null)
-                                          saveRemise({ ...r, marque_id: e.target.value || null, produit_ids: null })
+                                          saveRemise({ ...r, marque_id: newMarqueId, categorie_id: nextCatId, produit_ids: null })
                                         }}
                                         style={{ padding: '5px 6px', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, maxWidth: 140 }}
                                       >
                                         <option value="">Tous fournisseurs</option>
                                         {marques.map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
+                                      </select>
+
+                                      <select
+                                        value={r.categorie_id || ''}
+                                        onChange={e => {
+                                          const val = e.target.value || null
+                                          updateRemiseLocal(r.id, 'categorie_id', val)
+                                          saveRemise({ ...r, categorie_id: val })
+                                        }}
+                                        title="Famille de produits"
+                                        style={{ padding: '5px 6px', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, maxWidth: 140 }}
+                                      >
+                                        <option value="">Toutes familles</option>
+                                        {availableCategories.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
                                       </select>
 
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
@@ -1094,6 +1145,7 @@ export default function Tarifs() {
                                         </div>
                                         <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
                                           {(r.marque_id ? marqueProduits : produits)
+                                            .filter(p => !r.categorie_id || p.categorie_id === r.categorie_id)
                                             .filter(p => !pickerSearch || p.libelle.toLowerCase().includes(pickerSearch.toLowerCase()))
                                             .map(p => {
                                               const selected = (r.produit_ids || []).includes(p.id)
@@ -1134,13 +1186,14 @@ export default function Tarifs() {
                                     <span style={{ background: 'var(--surface)', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>
                                       {r.label || `#${i + 1}`} -{r.pourcentage}%
                                       {r.marque_id && <span style={{ color: 'var(--text-muted)' }}> ({marques.find(m => m.id === r.marque_id)?.nom})</span>}
+                                      {r.categorie_id && <span style={{ color: 'var(--text-muted)' }}> · {categories.find(c => c.id === r.categorie_id)?.nom}</span>}
                                       {r.produit_ids !== null && <span style={{ color: 'var(--text-muted)' }}> [{r.produit_ids.length}]</span>}
                                     </span>
                                     {i < clientRemises.length - 1 && <span style={{ color: 'var(--text-muted)', margin: '0 2px' }}>→</span>}
                                   </span>
                                 ))}
                                 <span style={{ marginLeft: 'auto', fontWeight: 600 }}>
-                                  Base 100 € → {applyRemisesCascade(100, clientRemises, null, null).price.toFixed(2)} €
+                                  Base 100 € → {applyRemisesCascade(100, clientRemises, null, null, null).price.toFixed(2)} €
                                 </span>
                               </div>
                             </div>
@@ -1168,7 +1221,7 @@ export default function Tarifs() {
                           const general = getGeneralVente(p.id)
                           const genPrice = general?.prix_vente_ht || null
                           const ct = clientTarifsMap[p.id]
-                          const remiseResult = genPrice ? applyRemisesCascade(genPrice, clientRemises, p.id, p.marque_id) : null
+                          const remiseResult = genPrice ? applyRemisesCascade(genPrice, clientRemises, p.id, p.marque_id, p.categorie_id) : null
                           const afterRemises = remiseResult?.price ?? null
                           const remiseSteps = remiseResult?.steps || []
                           const hasRemises = remiseSteps.length > 0
@@ -1465,6 +1518,15 @@ export default function Tarifs() {
       )}
 
       {/* Barre globale Enregistrer */}
+      {/* Panneau latéral config colonnes */}
+      {showColSettings && (() => {
+        const isClientDetail = view === 'client' && selectedClient
+        const cols = isClientDetail ? CLIENT_COLUMNS : PRODUCT_COLUMNS
+        const cfg = isClientDetail ? clientColConfig : prodColConfig
+        const type = isClientDetail ? 'client' : 'produit'
+        return <ColumnSettingsPanel columns={cols} config={cfg} onUpdate={newCfg => updateColConfig(type, newCfg)} onClose={() => setShowColSettings(false)} />
+      })()}
+
       {hasDirtyRows && (
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: 'var(--surface)', borderTop: '2px solid var(--primary)', padding: '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 -4px 16px rgba(0,0,0,0.1)' }}>
           <span style={{ fontSize: 13, fontWeight: 500 }}>{dirtyIds.length} produit(s) modifié(s)</span>

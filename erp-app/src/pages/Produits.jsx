@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { Plus, Search, X, Package, Edit2, Trash2, Settings2, Download, Upload, CheckSquare, Square, Info, Languages, Save } from 'lucide-react'
+import { Plus, Search, X, Package, Edit2, Trash2, Settings2, Download, Upload, CheckSquare, Square, Info, Languages, Save, GripVertical } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import ImportProduits from './ImportProduits'
 
@@ -193,7 +193,7 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
                   <ReadRow label="Libellé" value={form.libelle} />
                   <ReadRow label="Libellé court" value={form.libelle_court} />
                   <ReadRow label="Marque" value={marqueName} />
-                  <ReadRow label="Catégorie" value={categorieName} />
+                  <ReadRow label="Famille" value={categorieName} />
                   <ReadRow label="EAN13" value={form.ean13} mono />
                   <ReadRow label="Réf. interne" value={form.ref_marque} mono />
                   <ReadRow label="Statut" value={formatStatut(form.statut)} />
@@ -211,7 +211,7 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
                       {marques.map(f => <option key={f.id} value={f.id}>{f.nom}</option>)}
                     </select>
                   </div>
-                  <div className="form-group"><label>Catégorie</label>
+                  <div className="form-group"><label>Famille</label>
                     <select value={form.categorie_id || ''} onChange={e => set('categorie_id', e.target.value)}>
                       <option value="">Aucune</option>
                       {categories.filter(c => {
@@ -454,7 +454,7 @@ const ALL_COLUMNS = [
   { key: 'libelle',             label: 'Produit',         group: 'Général',  default: true,  exportKey: 'libelle' },
   { key: 'ean13',               label: 'EAN13',           group: 'Général',  default: true,  exportKey: 'ean13' },
   { key: 'marque_nom',          label: 'Marque',          group: 'Général',  default: true,  exportKey: r => r.marques?.nom || '' },
-  { key: 'categorie_nom',       label: 'Catégorie',       group: 'Général',  default: true,  exportKey: r => r.categories?.nom || '' },
+  { key: 'categorie_nom',       label: 'Famille',         group: 'Général',  default: true,  exportKey: r => r.categories?.nom || '' },
   { key: 'ref_marque',          label: 'Réf. interne',    group: 'Général',  default: false, exportKey: 'ref_marque' },
   { key: 'statut',              label: 'Statut',          group: 'Général',  default: true,  exportKey: 'statut' },
   { key: 'pcb',                 label: 'Cdt',             group: 'Colisage', default: true,  exportKey: 'pcb' },
@@ -472,44 +472,83 @@ const ALL_COLUMNS = [
   { key: 'meursing_code',       label: 'Meursing',        group: 'Douane',   default: false, exportKey: 'meursing_code' },
 ]
 
-// ─── Panneau colonnes ──────────────────────────────────────────────────────────
-function ColumnPanel({ visibleCols, onChange, onClose }) {
-  const groups = [...new Set(ALL_COLUMNS.map(c => c.group))]
+// ─── Panneau colonnes (visibilité + ordre par drag & drop) ────────────────────
+function ColumnPanel({ colOrder, visibleCols, onChange, onClose }) {
+  const [dragIdx, setDragIdx] = useState(null)
+  const [overIdx, setOverIdx] = useState(null)
+
   const toggle = key => {
     if (key === 'photo' || key === 'libelle') return
-    onChange(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
+    const next = visibleCols.includes(key) ? visibleCols.filter(k => k !== key) : [...visibleCols, key]
+    onChange({ visible: next })
   }
+
+  const handleDragStart = (e, idx) => {
+    const col = ALL_COLUMNS.find(c => c.key === colOrder[idx])
+    if (col && (col.key === 'photo' || col.key === 'libelle')) { e.preventDefault(); return }
+    setDragIdx(idx)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+  const handleDragOver = (e, idx) => { e.preventDefault(); setOverIdx(idx) }
+  const handleDrop = (e, dropIdx) => {
+    e.preventDefault()
+    if (dragIdx == null || dragIdx === dropIdx) { setDragIdx(null); setOverIdx(null); return }
+    const newOrder = [...colOrder]
+    const [moved] = newOrder.splice(dragIdx, 1)
+    newOrder.splice(dropIdx, 0, moved)
+    onChange({ order: newOrder })
+    setDragIdx(null); setOverIdx(null)
+  }
+  const handleDragEnd = () => { setDragIdx(null); setOverIdx(null) }
+
+  // Show columns in current order, grouped visually
+  const orderedCols = colOrder.map(key => ALL_COLUMNS.find(c => c.key === key)).filter(Boolean)
+
   return (
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.2)' }} />
       <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 201, width: '100%', maxWidth: 300, background: 'var(--surface)', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', animation: 'slideIn .2s ease' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)' }}>
-          <span style={{ fontWeight: 600, fontSize: 15 }}>Colonnes affichées</span>
+          <span style={{ fontWeight: 600, fontSize: 15 }}>Colonnes</span>
           <button className="btn-icon" onClick={onClose}><X size={18} /></button>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {groups.map(group => (
-            <div key={group}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>{group}</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {ALL_COLUMNS.filter(c => c.group === group).map(col => {
-                  const active = visibleCols.includes(col.key)
-                  const locked = col.key === 'photo' || col.key === 'libelle'
-                  return (
-                    <div key={col.key} onClick={() => !locked && toggle(col.key)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', borderRadius: 7, cursor: locked ? 'default' : 'pointer', background: active ? '#e8f0eb' : 'transparent', opacity: locked ? 0.5 : 1, transition: 'background .15s' }}>
-                      {active ? <CheckSquare size={16} color="var(--primary)" /> : <Square size={16} color="var(--text-muted)" />}
-                      <span style={{ fontSize: 13 }}>{col.label}</span>
-                      {locked && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' }}>fixe</span>}
-                    </div>
-                  )
-                })}
+        <div style={{ padding: '10px 20px 0', fontSize: 11, color: 'var(--text-muted)' }}>Glissez pour réordonner · cochez pour afficher</div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {orderedCols.map((col, idx) => {
+            const active = visibleCols.includes(col.key)
+            const locked = col.key === 'photo' || col.key === 'libelle'
+            const isDragging = dragIdx === idx
+            const isOver = overIdx === idx && dragIdx !== idx
+            return (
+              <div key={col.key}
+                draggable={!locked}
+                onDragStart={e => handleDragStart(e, idx)}
+                onDragOver={e => handleDragOver(e, idx)}
+                onDrop={e => handleDrop(e, idx)}
+                onDragEnd={handleDragEnd}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 7,
+                  cursor: locked ? 'default' : 'grab',
+                  background: isDragging ? 'var(--primary-light)' : active ? '#e8f0eb' : 'transparent',
+                  opacity: isDragging ? 0.5 : locked && !active ? 0.5 : 1,
+                  borderTop: isOver ? '2px solid var(--primary)' : '2px solid transparent',
+                  transition: 'background .15s',
+                }}>
+                <span style={{ color: 'var(--text-muted)', cursor: locked ? 'default' : 'grab', display: 'flex' }}>
+                  {locked ? <span style={{ width: 16 }} /> : <GripVertical size={14} />}
+                </span>
+                <div onClick={e => { e.stopPropagation(); !locked && toggle(col.key) }} style={{ display: 'flex', alignItems: 'center', cursor: locked ? 'default' : 'pointer' }}>
+                  {active ? <CheckSquare size={15} color="var(--primary)" /> : <Square size={15} color="var(--text-muted)" />}
+                </div>
+                <span style={{ fontSize: 13, flex: 1, opacity: active ? 1 : 0.45 }}>{col.label}</span>
+                <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{col.group}</span>
+                {locked && <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>fixe</span>}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
         <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => onChange(ALL_COLUMNS.filter(c => c.default).map(c => c.key))}>Réinitialiser</button>
+          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => onChange({ visible: ALL_COLUMNS.filter(c => c.default).map(c => c.key), order: ALL_COLUMNS.map(c => c.key) })}>Réinitialiser</button>
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={onClose}>Appliquer</button>
         </div>
       </div>
@@ -656,11 +695,35 @@ export default function Produits() {
       return stored ? JSON.parse(stored) : ALL_COLUMNS.filter(c => c.default).map(c => c.key)
     } catch { return ALL_COLUMNS.filter(c => c.default).map(c => c.key) }
   })
+  const [colOrder, setColOrder] = useState(() => {
+    try {
+      const stored = localStorage.getItem('highway_cols_order')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        // Ensure all columns are present
+        const allKeys = ALL_COLUMNS.map(c => c.key)
+        const order = parsed.filter(k => allKeys.includes(k))
+        allKeys.forEach(k => { if (!order.includes(k)) order.push(k) })
+        return order
+      }
+    } catch {}
+    return ALL_COLUMNS.map(c => c.key)
+  })
 
   function updateVisibleCols(val) {
     const next = typeof val === 'function' ? val(visibleCols) : val
     localStorage.setItem('highway_cols', JSON.stringify(next))
     setVisibleCols(next)
+  }
+  function updateColConfig({ visible, order }) {
+    if (visible !== undefined) {
+      localStorage.setItem('highway_cols', JSON.stringify(visible))
+      setVisibleCols(visible)
+    }
+    if (order !== undefined) {
+      localStorage.setItem('highway_cols_order', JSON.stringify(order))
+      setColOrder(order)
+    }
   }
   const [showColPanel, setShowColPanel] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
@@ -807,7 +870,7 @@ export default function Produits() {
   })
 
   const selectedRows = displayed.filter(r => selectedIds.has(r.id))
-  const activeCols   = ALL_COLUMNS.filter(c => visibleCols.includes(c.key))
+  const activeCols   = colOrder.map(key => ALL_COLUMNS.find(c => c.key === key)).filter(c => c && visibleCols.includes(c.key))
   const allSelected  = displayed.length > 0 && selectedIds.size === displayed.length
   const tempBadge    = t => t === 'surgelé' || t === 'frais' ? 'badge-blue' : 'badge-gray'
   const statutBadge  = s => s === 'actif' ? 'badge-green' : s === 'inactif' ? 'badge-red' : 'badge-orange'
@@ -871,7 +934,7 @@ export default function Produits() {
             {marques.map(f => <option key={f.id} value={f.id}>{f.nom}</option>)}
           </select>
           <select className="filter-select" value={filterCategorie} onChange={e => setFilterCategorie(e.target.value)}>
-            <option value="">Toutes les catégories</option>
+            <option value="">Toutes les familles</option>
             {categories.filter(c => {
               if (!filterMarque) return true
               const mq = marques.find(m => m.id === filterMarque)
@@ -989,7 +1052,7 @@ export default function Produits() {
                       {marques.map(f => <option key={f.id} value={f.id}>{f.nom}</option>)}
                     </select>
                   </div>
-                  <div className="form-group"><label>Catégorie</label>
+                  <div className="form-group"><label>Famille</label>
                     <select value={form.categorie_id || ''} onChange={e => set('categorie_id', e.target.value)}>
                       <option value="">Aucune</option>
                       {categories.filter(c => {
@@ -1109,7 +1172,7 @@ export default function Produits() {
       )}
 
       {showImport   && <ImportProduits onClose={() => setShowImport(false)} onImported={fetchAll} />}
-      {showColPanel && <ColumnPanel visibleCols={visibleCols} onChange={updateVisibleCols} onClose={() => setShowColPanel(false)} />}
+      {showColPanel && <ColumnPanel colOrder={colOrder} visibleCols={visibleCols} onChange={updateColConfig} onClose={() => setShowColPanel(false)} />}
       {showExport   && <ExportModal products={selectedRows} allProducts={filtered} onClose={() => setShowExport(false)} />}
       {photoZoomUrl && (
         <div onClick={() => setPhotoZoomUrl(null)} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>

@@ -106,7 +106,7 @@ export default function Marques() {
     const name = newCatName.trim()
     if (!name) return
     if (categories.some(c => c.nom.toLowerCase() === name.toLowerCase())) {
-      return toast('Cette catégorie existe déjà', 'error')
+      return toast('Cette famille existe déjà', 'error')
     }
     setCategories(prev => [...prev, { nom: name, _new: true }])
     setNewCatName('')
@@ -178,7 +178,7 @@ export default function Marques() {
     fetchMarques()
   }
 
-  // ── Catégories générales ──
+  // ── Familles générales ──
   async function openGlobalCats() {
     const { data } = await supabase.from('categories').select('id, nom').is('marque_id', null).order('nom')
     setGlobalCats(data || [])
@@ -190,7 +190,7 @@ export default function Marques() {
     const name = newGlobalCatName.trim()
     if (!name) return
     if (globalCats.some(c => c.nom.toLowerCase() === name.toLowerCase())) {
-      return toast('Cette catégorie existe déjà', 'error')
+      return toast('Cette famille existe déjà', 'error')
     }
     setSavingCats(true)
     const { data, error } = await supabase.from('categories').insert({ nom: name }).select('id, nom').single()
@@ -201,7 +201,7 @@ export default function Marques() {
   }
 
   async function removeGlobalCat(cat) {
-    if (!confirm(`Supprimer la catégorie "${cat.nom}" ?`)) return
+    if (!confirm(`Supprimer la famille "${cat.nom}" ?`)) return
     const { error } = await supabase.from('categories').delete().eq('id', cat.id)
     if (error) return toast('Erreur : ' + error.message, 'error')
     setGlobalCats(prev => prev.filter(c => c.id !== cat.id))
@@ -221,7 +221,7 @@ export default function Marques() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-secondary" onClick={openGlobalCats}>
-            <Tag size={15} /> Catégories générales
+            <Tag size={15} /> Familles générales
           </button>
           <button className="btn btn-primary" onClick={openCreate}>
             <Plus size={15} /> Nouvelle marque
@@ -303,7 +303,7 @@ export default function Marques() {
               {[
                 { key: 'infos', label: 'Infos' },
                 { key: 'contacts', label: `Contacts (${contacts.filter(c => c.prenom || c.nom || c.email).length})` },
-                ...(form.nomenclature_specifique ? [{ key: 'categories', label: `Catégories (${categories.length})` }] : []),
+                ...(form.nomenclature_specifique ? [{ key: 'categories', label: `Familles (${categories.length})` }] : []),
               ].map(t => (
                 <button
                   key={t.key}
@@ -413,7 +413,7 @@ export default function Marques() {
                         set('nomenclature_specifique', e.target.checked)
                         if (!e.target.checked && tab === 'categories') setTab('infos')
                       }} />
-                      Nomenclature catégories spécifique
+                      Nomenclature familles spécifique
                     </label>
                   </div>
                 </>
@@ -497,7 +497,7 @@ export default function Marques() {
                       value={newCatName}
                       onChange={e => setNewCatName(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && addCategory()}
-                      placeholder="Nouvelle catégorie..."
+                      placeholder="Nouvelle famille..."
                       style={{ flex: 1, padding: '6px 10px', fontSize: 13 }}
                     />
                     <button className="btn btn-primary" onClick={addCategory} style={{ fontSize: 11, padding: '5px 12px', whiteSpace: 'nowrap' }}>
@@ -507,7 +507,7 @@ export default function Marques() {
 
                   {categories.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: 13 }}>
-                      Aucune catégorie.
+                      Aucune famille.
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -547,12 +547,12 @@ export default function Marques() {
         <div className="modal-overlay" onClick={() => setCatModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
             <div className="modal-header">
-              <h3>Catégories générales</h3>
+              <h3>Familles générales</h3>
               <button className="btn-icon" onClick={() => setCatModal(false)}><X size={18} /></button>
             </div>
             <div className="modal-body">
               <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
-                Ces catégories sont utilisées par les marques qui n'ont pas de nomenclature spécifique.
+                Ces familles sont utilisées par les marques qui n'ont pas de nomenclature spécifique.
               </p>
 
               <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -560,7 +560,7 @@ export default function Marques() {
                   value={newGlobalCatName}
                   onChange={e => setNewGlobalCatName(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addGlobalCat()}
-                  placeholder="Nom de la catégorie..."
+                  placeholder="Nom de la famille..."
                   style={{ flex: 1 }}
                 />
                 <button className="btn btn-primary" onClick={addGlobalCat} disabled={savingCats} style={{ fontSize: 12, padding: '6px 14px', whiteSpace: 'nowrap' }}>
@@ -571,7 +571,7 @@ export default function Marques() {
               {globalCats.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)' }}>
                   <Tag size={32} style={{ marginBottom: 8, opacity: 0.4 }} />
-                  <p>Aucune catégorie générale.</p>
+                  <p>Aucune famille générale.</p>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
