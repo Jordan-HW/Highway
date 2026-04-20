@@ -219,7 +219,8 @@ export default function Tarifs() {
   const [sortClient, setSortClient] = useState({ key: null, dir: 'asc' })
 
   // Export modale (vue client)
-  const [exportModal, setExportModal] = useState(null) // null | { format, cols, scope, title }
+  const [exportModal, setExportModal] = useState(null) // null | { format, cols, scope, title, generating }
+  const [exportDragIdx, setExportDragIdx] = useState(null)
 
   function handleSort(type, key) {
     if (key === 'photo' || key === 'actions') return
@@ -428,7 +429,7 @@ export default function Tarifs() {
     return String(value)
   }
 
-  function loadImageAsDataURL(url) {
+  function loadImageAsDataURL(url, format = 'image/jpeg') {
     return new Promise((resolve, reject) => {
       const img = new Image()
       img.crossOrigin = 'anonymous'
@@ -438,12 +439,37 @@ export default function Tarifs() {
           canvas.width = img.width
           canvas.height = img.height
           canvas.getContext('2d').drawImage(img, 0, 0)
-          resolve({ data: canvas.toDataURL('image/jpeg', 0.85), width: img.width, height: img.height })
+          resolve({ data: canvas.toDataURL(format, 0.92), width: img.width, height: img.height })
         } catch (e) { reject(e) }
       }
       img.onerror = reject
       img.src = url
     })
+  }
+
+  function arrayBufferToBase64(buf) {
+    let binary = ''
+    const bytes = new Uint8Array(buf)
+    const chunkSize = 0x8000
+    for (let i = 0; i < bytes.byteLength; i += chunkSize) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunkSize, bytes.byteLength)))
+    }
+    return btoa(binary)
+  }
+
+  async function registerPoppinsFont(doc) {
+    try {
+      const [regBuf, boldBuf] = await Promise.all([
+        fetch('/fonts/Poppins-Regular.ttf').then(r => r.arrayBuffer()),
+        fetch('/fonts/Poppins-Bold.ttf').then(r => r.arrayBuffer()),
+      ])
+      doc.addFileToVFS('Poppins-Regular.ttf', arrayBufferToBase64(regBuf))
+      doc.addFont('Poppins-Regular.ttf', 'Poppins', 'normal')
+      doc.addFileToVFS('Poppins-Bold.ttf', arrayBufferToBase64(boldBuf))
+      doc.addFont('Poppins-Bold.ttf', 'Poppins', 'bold')
+      doc.setFont('Poppins', 'normal')
+      return true
+    } catch { return false }
   }
 
   function getExportProduits(scope) {
@@ -455,7 +481,7 @@ export default function Tarifs() {
   function exportExcel({ cols, scope, title }) {
     const client = selectedClient
     const rows = getExportProduits(scope)
-    const activeCols = EXPORT_COLUMNS.filter(c => cols.includes(c.id) && !c.pdfOnly)
+    const activeCols = cols.map(id => EXPORT_COLUMNS.find(c => c.id === id)).filter(c => c && !c.pdfOnly)
     const headerRow = activeCols.map(c => c.label)
     const dataRows = rows.map(p => activeCols.map(c => {
       const v = getExportValue(p, c.id)
@@ -481,14 +507,23 @@ export default function Tarifs() {
   async function exportPDF({ cols, scope, title }) {
     const client = selectedClient
     const rows = getExportProduits(scope)
-    const activeCols = EXPORT_COLUMNS.filter(c => cols.includes(c.id))
+    // Respecte l'ordre choisi par l'utilisateur (cols est ordonné) + filtre sur les cols connues
+    const activeCols = cols.map(id => EXPORT_COLUMNS.find(c => c.id === id)).filter(Boolean)
     const includePhotos = activeCols.some(c => c.id === 'photo')
 
-    // 1. Charger le logo Highway
-    let logo = null
-    try { logo = await loadImageAsDataURL('/highway-logo-dark.png') } catch {}
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
 
-    // 2. Précharger les photos produits (si colonne demandée)
+    // Police Poppins
+    const hasPoppins = await registerPoppinsFont(doc)
+    const FONT = hasPoppins ? 'Poppins' : 'helvetica'
+
+    // Logo (fond blanc du kit = naturellement fondu sur page blanche)
+    let logo = null
+    try { logo = await loadImageAsDataURL('/highway-logo-light.png', 'image/png') } catch {}
+
+    // Photos produits
     const photoMap = {}
     if (includePhotos) {
       await Promise.all(rows.map(async p => {
@@ -497,45 +532,54 @@ export default function Tarifs() {
       }))
     }
 
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-    const pageWidth = doc.internal.pageSize.getWidth()
-    const pageHeight = doc.internal.pageSize.getHeight()
+    const PRIMARY = [90, 74, 122]        // #5A4A7A
+    const PRIMARY_LIGHT = [237, 233, 246] // #EDE9F6
+    const ALT_ROW = [247, 245, 251]
+    const TEXT_DARK = [26, 24, 32]
+    const TEXT_MUTED = [158, 154, 176]
+    const TEXT_SECONDARY = [107, 103, 128]
+    const BORDER = [224, 221, 232]
 
-    // ── En-tête : bandeau violet foncé (couleur sidebar) ──
-    doc.setFillColor(42, 31, 64) // #2A1F40
-    doc.rect(0, 0, pageWidth, 28, 'F')
+    // ── Bande violette du haut (fine) ──
+    doc.setFillColor(...PRIMARY)
+    doc.rect(0, 0, pageWidth, 3, 'F')
+
+    // ── En-tête blanc : logo à gauche, méta à droite ──
     if (logo) {
-      const h = 18
+      const h = 16
       const w = h * (logo.width / logo.height)
-      doc.addImage(logo.data, 'JPEG', 10, 5, w, h)
+      doc.addImage(logo.data, 'PNG', 10, 7, w, h)
     } else {
-      doc.setTextColor(212, 184, 240)
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(20)
-      doc.text('Highway', 12, 16)
-      doc.setFont('helvetica', 'normal')
+      doc.setFont(FONT, 'bold')
+      doc.setTextColor(...TEXT_DARK)
+      doc.setFontSize(22)
+      doc.text('Highway', 10, 20)
+      doc.setFont(FONT, 'normal')
       doc.setFontSize(7)
-      doc.setTextColor(150, 170, 255)
-      doc.text('ROAD TO THE FINEST', 12, 21)
+      doc.setTextColor(...PRIMARY)
+      doc.text('ROAD TO THE FINEST', 10, 25)
     }
-    // Méta à droite dans le bandeau
-    doc.setTextColor(212, 184, 240)
-    doc.setFont('helvetica', 'normal')
+    // Méta (haut droite)
+    doc.setFont(FONT, 'normal')
+    doc.setTextColor(...TEXT_SECONDARY)
     doc.setFontSize(9)
-    doc.text(`Émis le ${new Date().toLocaleDateString('fr-FR')}`, pageWidth - 12, 12, { align: 'right' })
-    doc.text(`${rows.length} référence(s)`, pageWidth - 12, 18, { align: 'right' })
+    doc.text(`Émis le ${new Date().toLocaleDateString('fr-FR')}`, pageWidth - 10, 13, { align: 'right' })
+    doc.text(`${rows.length} référence(s)`, pageWidth - 10, 19, { align: 'right' })
 
-    // ── Bloc titre + client sur fond violet clair ──
-    doc.setFillColor(237, 233, 246) // --primary-light
-    doc.rect(0, 28, pageWidth, 16, 'F')
-    doc.setTextColor(26, 24, 32)
-    doc.setFont('helvetica', 'bold')
+    // ── Séparateur violet clair ──
+    doc.setDrawColor(...PRIMARY_LIGHT)
+    doc.setLineWidth(0.5)
+    doc.line(10, 28, pageWidth - 10, 28)
+
+    // ── Titre + client ──
+    doc.setFont(FONT, 'bold')
+    doc.setTextColor(...TEXT_DARK)
     doc.setFontSize(15)
-    doc.text(title || 'Liste tarifaire', 12, 37)
-    doc.setFont('helvetica', 'normal')
+    doc.text(title || 'Liste tarifaire', 10, 37)
+    doc.setFont(FONT, 'normal')
     doc.setFontSize(10)
-    doc.setTextColor(107, 103, 128) // text-secondary
-    doc.text(`Client : ${client.nom}`, 12, 42)
+    doc.setTextColor(...TEXT_SECONDARY)
+    doc.text(`Client : ${client.nom}`, 10, 42.5)
 
     // ── Table ──
     const head = [activeCols.map(c => c.label)]
@@ -556,12 +600,28 @@ export default function Tarifs() {
       head, body,
       startY: 48,
       theme: 'striped',
-      styles: { fontSize: 8, cellPadding: 2, textColor: [26, 24, 32], valign: 'middle', lineColor: [224, 221, 232], lineWidth: 0.1 },
-      headStyles: { fillColor: [90, 74, 122], textColor: 255, fontStyle: 'bold', fontSize: 8, cellPadding: 2.5, halign: 'center' },
-      alternateRowStyles: { fillColor: [247, 245, 251] },
+      styles: {
+        font: FONT,
+        fontSize: 8,
+        cellPadding: 2,
+        textColor: TEXT_DARK,
+        valign: 'middle',
+        lineColor: BORDER,
+        lineWidth: 0.1,
+      },
+      headStyles: {
+        font: FONT,
+        fillColor: PRIMARY,
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 8,
+        cellPadding: 2.5,
+        halign: 'center',
+      },
+      alternateRowStyles: { fillColor: ALT_ROW },
       columnStyles: colStyles,
       bodyStyles: includePhotos ? { minCellHeight: 16 } : undefined,
-      margin: { left: 8, right: 8, top: 28 },
+      margin: { left: 8, right: 8, top: 30, bottom: 14 },
       didDrawCell: (data) => {
         if (data.section !== 'body') return
         const col = activeCols[data.column.index]
@@ -578,47 +638,50 @@ export default function Tarifs() {
               if (p.photo_url) doc.link(x, y, size, size, { url: p.photo_url })
             } catch {}
           } else if (p.photo_url) {
-            doc.setTextColor(90, 74, 122)
-            doc.setFont('helvetica', 'normal')
+            doc.setTextColor(...PRIMARY)
+            doc.setFont(FONT, 'normal')
             doc.setFontSize(7)
             const cx = data.cell.x + data.cell.width / 2
             const cy = data.cell.y + data.cell.height / 2 + 1
             doc.text('Voir', cx, cy, { align: 'center' })
             doc.link(data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2, { url: p.photo_url })
           }
-        } else if (col.id === 'libelle' && p.photo_url) {
-          // Petit lien "Voir photo" sous la désignation si la colonne photo n'est pas présente
-          if (!includePhotos) {
-            doc.setTextColor(90, 74, 122)
-            doc.setFont('helvetica', 'italic')
-            doc.setFontSize(6)
-            const textY = data.cell.y + data.cell.height - 1.5
-            doc.textWithLink('Voir photo ▸', data.cell.x + 1, textY, { url: p.photo_url })
-          }
+        } else if (col.id === 'libelle' && p.photo_url && !includePhotos) {
+          doc.setTextColor(...PRIMARY)
+          doc.setFont(FONT, 'italic')
+          doc.setFontSize(6)
+          const textY = data.cell.y + data.cell.height - 1.5
+          doc.textWithLink('Voir photo ▸', data.cell.x + 1, textY, { url: p.photo_url })
         }
       },
       didDrawPage: (data) => {
         const pageCount = doc.internal.getNumberOfPages()
         const pageNum = data.pageNumber
-        // Ré-afficher le bandeau sur chaque nouvelle page
+        // Bande du haut (violet plein) sur chaque page
+        doc.setFillColor(...PRIMARY)
+        doc.rect(0, 0, pageWidth, 3, 'F')
+
+        // Pages suivantes : logo compact + titre + client
         if (pageNum > 1) {
-          doc.setFillColor(42, 31, 64)
-          doc.rect(0, 0, pageWidth, 18, 'F')
           if (logo) {
-            const h = 11
+            const h = 10
             const w = h * (logo.width / logo.height)
-            doc.addImage(logo.data, 'JPEG', 10, 3.5, w, h)
+            doc.addImage(logo.data, 'PNG', 10, 6, w, h)
           }
-          doc.setTextColor(212, 184, 240)
+          doc.setFont(FONT, 'normal')
+          doc.setTextColor(...TEXT_SECONDARY)
           doc.setFontSize(8)
-          doc.text(`${title || 'Liste tarifaire'} — ${client.nom}`, pageWidth - 12, 11, { align: 'right' })
+          doc.text(`${title || 'Liste tarifaire'} — ${client.nom}`, pageWidth - 10, 12, { align: 'right' })
         }
-        // Pied de page
+
+        // Bande du bas + pied de page
+        doc.setFillColor(...PRIMARY)
+        doc.rect(0, pageHeight - 3, pageWidth, 3, 'F')
+        doc.setFont(FONT, 'normal')
         doc.setFontSize(7)
-        doc.setTextColor(158, 154, 176)
-        doc.setFont('helvetica', 'normal')
-        doc.text('Highway — Tarifs confidentiels', 12, pageHeight - 6)
-        doc.text(`Page ${pageNum} / ${pageCount}`, pageWidth - 12, pageHeight - 6, { align: 'right' })
+        doc.setTextColor(...TEXT_MUTED)
+        doc.text('Highway — Tarifs confidentiels', 10, pageHeight - 6)
+        doc.text(`Page ${pageNum} / ${pageCount}`, pageWidth - 10, pageHeight - 6, { align: 'right' })
       },
     })
 
@@ -1868,7 +1931,7 @@ export default function Tarifs() {
                 <button className={`btn ${exportModal.format === 'pdf' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setExportModal(m => ({ ...m, format: 'pdf' }))} style={{ fontSize: 12, flex: 1 }}>
                   <FileText size={14} /> PDF
                 </button>
-                <button className={`btn ${exportModal.format === 'excel' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setExportModal(m => ({ ...m, format: 'excel' }))} style={{ fontSize: 12, flex: 1 }}>
+                <button className={`btn ${exportModal.format === 'excel' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setExportModal(m => ({ ...m, format: 'excel', cols: m.cols.filter(id => { const c = EXPORT_COLUMNS.find(x => x.id === id); return c && !c.pdfOnly }) }))} style={{ fontSize: 12, flex: 1 }}>
                   <FileSpreadsheet size={14} /> Excel
                 </button>
               </div>
@@ -1898,28 +1961,76 @@ export default function Tarifs() {
               />
             </div>
 
-            {/* Colonnes */}
+            {/* Colonnes — sélectionnées (ordonnées) + disponibles */}
             <div style={{ marginBottom: 18 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Colonnes ({exportModal.cols.length})</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                  Colonnes sélectionnées ({exportModal.cols.length})
+                </div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn btn-secondary" style={{ fontSize: 10, padding: '3px 8px' }} onClick={() => setExportModal(m => ({ ...m, cols: EXPORT_COLUMNS.map(c => c.id) }))}>Toutes</button>
-                  <button className="btn btn-secondary" style={{ fontSize: 10, padding: '3px 8px' }} onClick={() => setExportModal(m => ({ ...m, cols: [...EXPORT_DEFAULT] }))}>Défaut</button>
+                  <button className="btn btn-secondary" style={{ fontSize: 10, padding: '3px 8px' }} onClick={() => setExportModal(m => ({ ...m, cols: EXPORT_COLUMNS.filter(c => !c.pdfOnly || m.format === 'pdf').map(c => c.id) }))}>Toutes</button>
+                  <button className="btn btn-secondary" style={{ fontSize: 10, padding: '3px 8px' }} onClick={() => setExportModal(m => ({ ...m, cols: EXPORT_DEFAULT.filter(id => { const c = EXPORT_COLUMNS.find(x => x.id === id); return c && (!c.pdfOnly || m.format === 'pdf') }) }))}>Défaut</button>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4, border: '1px solid var(--border)', borderRadius: 6, padding: 8 }}>
-                {EXPORT_COLUMNS.map(col => {
-                  const active = exportModal.cols.includes(col.id)
-                  const disabled = col.pdfOnly && exportModal.format !== 'pdf'
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>Glissez ↕ pour réordonner · × pour retirer</div>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 6, padding: 6, display: 'flex', flexDirection: 'column', gap: 3, minHeight: 60, background: 'var(--surface-2)' }}>
+                {exportModal.cols.length === 0 ? (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', padding: 14 }}>Aucune colonne — ajoutez-en ci-dessous</div>
+                ) : exportModal.cols.map((colId, idx) => {
+                  const col = EXPORT_COLUMNS.find(c => c.id === colId)
+                  if (!col) return null
+                  const isDragging = exportDragIdx === idx
                   return (
-                    <div key={col.id} onClick={() => { if (disabled) return; setExportModal(m => ({ ...m, cols: active ? m.cols.filter(x => x !== col.id) : [...m.cols, col.id] })) }}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 7px', borderRadius: 4, cursor: disabled ? 'not-allowed' : 'pointer', background: active && !disabled ? 'var(--primary-light)' : 'transparent', opacity: disabled ? 0.45 : 1 }}>
-                      {active ? <CheckSquare size={15} color="var(--primary)" /> : <Square size={15} color="var(--text-muted)" />}
-                      <span style={{ fontSize: 12 }}>{col.label}{col.pdfOnly && <span style={{ fontSize: 9, color: 'var(--text-muted)', marginLeft: 4 }}>(PDF)</span>}</span>
+                    <div key={colId}
+                      draggable
+                      onDragStart={e => { setExportDragIdx(idx); e.dataTransfer.effectAllowed = 'move' }}
+                      onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
+                      onDrop={e => {
+                        e.preventDefault()
+                        if (exportDragIdx == null || exportDragIdx === idx) { setExportDragIdx(null); return }
+                        setExportModal(m => {
+                          const next = [...m.cols]
+                          const [moved] = next.splice(exportDragIdx, 1)
+                          next.splice(idx, 0, moved)
+                          return { ...m, cols: next }
+                        })
+                        setExportDragIdx(null)
+                      }}
+                      onDragEnd={() => setExportDragIdx(null)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 4, background: 'var(--surface)', border: '1px solid var(--border)', cursor: 'grab', opacity: isDragging ? 0.4 : 1 }}>
+                      <GripVertical size={14} color="var(--text-muted)" />
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, minWidth: 16 }}>{idx + 1}</span>
+                      <span style={{ fontSize: 12, flex: 1 }}>{col.label}</span>
+                      {col.pdfOnly && <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>PDF</span>}
+                      <button className="btn-icon" onClick={() => setExportModal(m => ({ ...m, cols: m.cols.filter(x => x !== colId) }))} style={{ padding: 2 }}><X size={13} /></button>
                     </div>
                   )
                 })}
               </div>
+
+              {/* Disponibles */}
+              {(() => {
+                const avail = EXPORT_COLUMNS.filter(c => !exportModal.cols.includes(c.id))
+                if (!avail.length) return null
+                return (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 12, marginBottom: 4 }}>Ajouter</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {avail.map(col => {
+                        const disabled = col.pdfOnly && exportModal.format !== 'pdf'
+                        return (
+                          <button key={col.id}
+                            onClick={() => { if (!disabled) setExportModal(m => ({ ...m, cols: [...m.cols, col.id] })) }}
+                            disabled={disabled}
+                            style={{ fontSize: 11, padding: '4px 8px', borderRadius: 14, border: '1px dashed var(--border)', background: 'transparent', cursor: disabled ? 'not-allowed' : 'pointer', color: disabled ? 'var(--text-muted)' : 'var(--text-primary)', opacity: disabled ? 0.5 : 1, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <Plus size={11} /> {col.label}{col.pdfOnly && <span style={{ fontSize: 9, color: 'var(--text-muted)', marginLeft: 2 }}>(PDF)</span>}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </>
+                )
+              })()}
             </div>
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
