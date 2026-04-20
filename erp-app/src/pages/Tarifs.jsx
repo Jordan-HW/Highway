@@ -737,7 +737,7 @@ export default function Tarifs() {
         </div>
       </div>
 
-      <div className="page-body">
+      <div className="page-body" style={hasDirtyRows ? { paddingBottom: 80 } : undefined}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           <button className={`btn ${view === 'produit' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setView('produit'); setSelectedClient(null); setExpandedId(null); setShowColSettings(false) }}>
             <Package size={15} /> Vue par produit
