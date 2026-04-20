@@ -354,7 +354,7 @@ export default function Tarifs() {
       case 'cessionTTC': return genPrice != null ? genPrice * (1 + tva / 100) : -Infinity
       case 'apRemises': return afterRemises ?? -Infinity
       case 'remises': return remiseResult?.steps?.length || 0
-      case 'remiseEff': return (genPrice && afterRemises != null && genPrice !== 0) ? (1 - afterRemises / genPrice) * 100 : -Infinity
+      case 'remiseEff': return remiseResult?.steps?.length ? (1 - remiseResult.steps.reduce((acc, s) => acc * (1 - s.pct / 100), 1)) * 100 : -Infinity
       case 'prixFixe': return isFixed ? parseFloat(ct.prix_vente_ht) : -Infinity
       case 'prixEffectif': return effectif ?? -Infinity
       case 'pvcHT': return pvpHT ?? -Infinity
@@ -1383,11 +1383,16 @@ export default function Tarifs() {
                             apRemises: <td key="apRemises" style={{ padding: '2px 6px', color: hasRemises ? 'var(--primary)' : 'var(--text-muted)' }}>
                               {afterRemises != null ? `${afterRemises.toFixed(2)} €` : '—'}
                             </td>,
-                            remiseEff: <td key="remiseEff" style={{ padding: '2px 6px', textAlign: 'right' }}>
-                              {genPrice && afterRemises != null && genPrice !== 0 && afterRemises !== genPrice
-                                ? <span style={{ color: 'var(--primary)', fontWeight: 600 }}>-{((1 - afterRemises / genPrice) * 100).toFixed(2)} %</span>
-                                : <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                            </td>,
+                            remiseEff: (() => {
+                              const effPct = remiseSteps.length
+                                ? (1 - remiseSteps.reduce((acc, s) => acc * (1 - s.pct / 100), 1)) * 100
+                                : 0
+                              return <td key="remiseEff" style={{ padding: '2px 6px', textAlign: 'right' }}>
+                                {effPct > 0
+                                  ? <span style={{ color: 'var(--primary)', fontWeight: 600 }}>-{effPct.toFixed(2)} %</span>
+                                  : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                              </td>
+                            })(),
                             remises: <td key="remises" style={{ padding: '2px 6px' }}>
                               {remiseSteps.length > 0 ? (
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
