@@ -1,8 +1,25 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent, Package, Users, Clock, Eye, EyeOff, Settings2, GripVertical, CheckSquare, Square } from 'lucide-react'
+import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent, Package, Users, Clock, Eye, EyeOff, Settings2, GripVertical, CheckSquare, Square, Download, FileText } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+
+const EXPORT_COLUMNS = [
+  { id: 'ean', label: 'EAN13', align: 'left' },
+  { id: 'libelle', label: 'Produit', align: 'left' },
+  { id: 'marque', label: 'Marque', align: 'left' },
+  { id: 'famille', label: 'Famille', align: 'left' },
+  { id: 'pvcHT', label: 'PVC HT', align: 'right', currency: true },
+  { id: 'pvcTTC', label: 'PVC TTC', align: 'right', currency: true },
+  { id: 'cessionHT', label: 'Tarif HT', align: 'right', currency: true },
+  { id: 'cessionTTC', label: 'Tarif TTC', align: 'right', currency: true },
+  { id: 'remiseEff', label: 'Remise', align: 'right', percent: true },
+  { id: 'netHT', label: 'Net HT', align: 'right', currency: true },
+  { id: 'netTTC', label: 'Net TTC', align: 'right', currency: true },
+]
+const EXPORT_DEFAULT = ['libelle', 'ean', 'marque', 'cessionHT', 'remiseEff', 'netHT', 'netTTC']
 
 // ── Helpers ──
 function applyRemisesCascade(basePrice, remises, produitId, marqueId, categorieId) {
@@ -198,6 +215,9 @@ export default function Tarifs() {
   const [sortProduit, setSortProduit] = useState({ key: null, dir: 'asc' })
   const [sortClient, setSortClient] = useState({ key: null, dir: 'asc' })
 
+  // Export modale (vue client)
+  const [exportModal, setExportModal] = useState(null) // null | { format, cols, scope, title }
+
   function handleSort(type, key) {
     if (key === 'photo' || key === 'actions') return
     const setter = type === 'produit' ? setSortProduit : setSortClient
@@ -363,6 +383,154 @@ export default function Tarifs() {
       case 'margeCl': return margeCl ?? -Infinity
       default: return ''
     }
+  }
+
+  // ══════════ Export vue client ══════════
+  function getExportValue(p, colId) {
+    const general = getGeneralVente(p.id)
+    const genPrice = general?.prix_vente_ht ?? null
+    const ct = clientTarifsMap[p.id]
+    const remiseResult = genPrice ? applyRemisesCascade(genPrice, clientRemises, p.id, p.marque_id, p.categorie_id) : null
+    const afterRemises = remiseResult?.price ?? null
+    const remiseSteps = remiseResult?.steps || []
+    const isFixed = ct?.prix_vente_ht != null && ct?.prix_vente_ht !== ''
+    const effectif = isFixed ? parseFloat(ct.prix_vente_ht) : afterRemises
+    const tva = parseFloat(p.taux_tva) || 5.5
+    const pvpTTC = p.pvpr != null && p.pvpr !== '' ? parseFloat(p.pvpr) : null
+    const pvpHT = pvpTTC != null ? pvpTTC / (1 + tva / 100) : null
+    const effPct = remiseSteps.length ? (1 - remiseSteps.reduce((acc, s) => acc * (1 - s.pct / 100), 1)) * 100 : 0
+    switch (colId) {
+      case 'ean': return p.ean13 || ''
+      case 'libelle': return p.libelle || ''
+      case 'marque': return p.marques?.nom || ''
+      case 'famille': return categories.find(c => c.id === p.categorie_id)?.nom || ''
+      case 'pvcHT': return pvpHT != null ? Math.round(pvpHT * 100) / 100 : null
+      case 'pvcTTC': return pvpTTC
+      case 'cessionHT': return genPrice
+      case 'cessionTTC': return genPrice != null ? Math.round(genPrice * (1 + tva / 100) * 100) / 100 : null
+      case 'remiseEff': return effPct > 0 ? Math.round(effPct * 100) / 100 : null
+      case 'netHT': return effectif
+      case 'netTTC': return effectif != null ? Math.round(effectif * (1 + tva / 100) * 100) / 100 : null
+      default: return ''
+    }
+  }
+
+  function formatExportCell(value, col) {
+    if (value == null || value === '') return ''
+    if (col.currency) return `${Number(value).toFixed(2)} €`
+    if (col.percent) return `-${Number(value).toFixed(2)} %`
+    return String(value)
+  }
+
+  function getExportProduits(scope) {
+    let rows = filteredProduits
+    if (scope === 'ref') rows = rows.filter(p => clientRefs.has(p.id))
+    return sortRows(rows, sortClient, getSortValueClient)
+  }
+
+  function exportExcel({ cols, scope, title }) {
+    const client = selectedClient
+    const rows = getExportProduits(scope)
+    const activeCols = EXPORT_COLUMNS.filter(c => cols.includes(c.id))
+    const headerRow = activeCols.map(c => c.label)
+    const dataRows = rows.map(p => activeCols.map(c => {
+      const v = getExportValue(p, c.id)
+      // Pour Excel, garder les valeurs numériques non formatées (Excel fera le formatage)
+      if (c.currency || c.percent) return v ?? ''
+      return v ?? ''
+    }))
+    const sheetData = [
+      [title || 'Tarifs'],
+      [`Client : ${client.nom}`],
+      [`Émis le ${new Date().toLocaleDateString('fr-FR')}`],
+      [],
+      headerRow,
+      ...dataRows,
+    ]
+    const ws = XLSX.utils.aoa_to_sheet(sheetData)
+    // Largeurs colonnes approximatives
+    ws['!cols'] = activeCols.map(c => ({ wch: c.id === 'libelle' ? 40 : c.id === 'ean' ? 14 : 14 }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Tarifs')
+    const filename = `Tarifs_${client.nom.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`
+    XLSX.writeFile(wb, filename)
+    toast('Export Excel généré', 'success')
+  }
+
+  function exportPDF({ cols, scope, title }) {
+    const client = selectedClient
+    const rows = getExportProduits(scope)
+    const activeCols = EXPORT_COLUMNS.filter(c => cols.includes(c.id))
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+    const pageWidth = doc.internal.pageSize.getWidth()
+
+    // Bandeau en-tête violet Highway
+    doc.setFillColor(42, 31, 64) // #2A1F40 sidebar
+    doc.rect(0, 0, pageWidth, 22, 'F')
+    doc.setTextColor(212, 184, 240) // #D4B8F0 logo
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(18)
+    doc.text('HIGHWAY', 14, 14)
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'normal')
+    doc.text('ROAD TO THE FINEST', 14, 18.5)
+
+    // Titre + méta
+    doc.setTextColor(26, 24, 32) // text-primary
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.text(title || 'Tarifs', 14, 32)
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Client : ${client.nom}`, 14, 38)
+    doc.text(`Émis le ${new Date().toLocaleDateString('fr-FR')}`, pageWidth - 14, 38, { align: 'right' })
+    doc.text(`${rows.length} référence(s)`, pageWidth - 14, 32, { align: 'right' })
+
+    // Table
+    const head = [activeCols.map(c => c.label)]
+    const body = rows.map(p => activeCols.map(c => {
+      const v = getExportValue(p, c.id)
+      return formatExportCell(v, c)
+    }))
+    autoTable(doc, {
+      head, body,
+      startY: 44,
+      theme: 'striped',
+      styles: { fontSize: 9, cellPadding: 2.5, textColor: [26, 24, 32] },
+      headStyles: { fillColor: [90, 74, 122], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+      alternateRowStyles: { fillColor: [237, 233, 246] },
+      columnStyles: activeCols.reduce((acc, c, i) => {
+        acc[i] = { halign: c.align || 'left' }
+        return acc
+      }, {}),
+      margin: { left: 10, right: 10 },
+      didDrawPage: (data) => {
+        // Pied de page
+        const pageCount = doc.internal.getNumberOfPages()
+        const pageNum = data.pageNumber
+        doc.setFontSize(8)
+        doc.setTextColor(158, 154, 176)
+        doc.text(`Page ${pageNum} / ${pageCount}`, pageWidth - 14, doc.internal.pageSize.getHeight() - 6, { align: 'right' })
+        doc.text('Highway — Tarifs confidentiels', 14, doc.internal.pageSize.getHeight() - 6)
+      },
+    })
+
+    const filename = `Tarifs_${client.nom.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`
+    doc.save(filename)
+    toast('Export PDF généré', 'success')
+  }
+
+  function openExportModal() {
+    setExportModal({ format: 'pdf', cols: [...EXPORT_DEFAULT], scope: 'ref', title: 'Tarifs' })
+  }
+
+  function submitExport() {
+    if (!exportModal) return
+    if (!exportModal.cols.length) return toast('Sélectionnez au moins une colonne', 'error')
+    const payload = { cols: exportModal.cols, scope: exportModal.scope, title: exportModal.title }
+    if (exportModal.format === 'pdf') exportPDF(payload)
+    else exportExcel(payload)
+    setExportModal(null)
   }
 
   const filteredProduits = produits.filter(p => {
@@ -1125,6 +1293,9 @@ export default function Tarifs() {
                           <button className="btn btn-secondary" onClick={referenceAll} style={{ fontSize: 11 }} title="Référencer tous les produits filtrés">
                             <CheckSquare size={13} /> Tout référencer
                           </button>
+                          <button className="btn btn-secondary" onClick={openExportModal} style={{ fontSize: 11 }} title="Exporter la liste tarifaire">
+                            <Download size={13} /> Exporter
+                          </button>
                           <button className={`btn ${hideNonRef ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setHideNonRef(!hideNonRef)} style={{ fontSize: 11 }}>
                             {hideNonRef ? <EyeOff size={13} /> : <Eye size={13} />} {hideNonRef ? 'Référencés seuls' : 'Tous les produits'}
                           </button>
@@ -1568,6 +1739,85 @@ export default function Tarifs() {
           </div>
         </div>
       )}
+      {/* Export vue client */}
+      {exportModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setExportModal(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, padding: '20px 24px', maxWidth: 520, width: '90vw', maxHeight: '85vh', overflow: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <h3 style={{ margin: 0, fontSize: 16 }}>Exporter le tarif</h3>
+              <button className="btn-icon" onClick={() => setExportModal(null)}><X size={18} /></button>
+            </div>
+
+            {/* Format */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>Format</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className={`btn ${exportModal.format === 'pdf' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setExportModal(m => ({ ...m, format: 'pdf' }))} style={{ fontSize: 12, flex: 1 }}>
+                  <FileText size={14} /> PDF
+                </button>
+                <button className={`btn ${exportModal.format === 'excel' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setExportModal(m => ({ ...m, format: 'excel' }))} style={{ fontSize: 12, flex: 1 }}>
+                  <FileSpreadsheet size={14} /> Excel
+                </button>
+              </div>
+            </div>
+
+            {/* Scope */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>Étendue</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className={`btn ${exportModal.scope === 'ref' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setExportModal(m => ({ ...m, scope: 'ref' }))} style={{ fontSize: 11, flex: 1 }}>
+                  Référencés seuls ({clientRefs.size})
+                </button>
+                <button className={`btn ${exportModal.scope === 'all' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setExportModal(m => ({ ...m, scope: 'all' }))} style={{ fontSize: 11, flex: 1 }}>
+                  Tous les filtrés ({filteredProduits.length})
+                </button>
+              </div>
+            </div>
+
+            {/* Titre */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>Titre du document</div>
+              <input
+                value={exportModal.title}
+                onChange={e => setExportModal(m => ({ ...m, title: e.target.value }))}
+                placeholder="Tarifs"
+                style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '1px solid var(--border)', borderRadius: 6 }}
+              />
+            </div>
+
+            {/* Colonnes */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Colonnes ({exportModal.cols.length})</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button className="btn btn-secondary" style={{ fontSize: 10, padding: '3px 8px' }} onClick={() => setExportModal(m => ({ ...m, cols: EXPORT_COLUMNS.map(c => c.id) }))}>Toutes</button>
+                  <button className="btn btn-secondary" style={{ fontSize: 10, padding: '3px 8px' }} onClick={() => setExportModal(m => ({ ...m, cols: [...EXPORT_DEFAULT] }))}>Défaut</button>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4, border: '1px solid var(--border)', borderRadius: 6, padding: 8 }}>
+                {EXPORT_COLUMNS.map(col => {
+                  const active = exportModal.cols.includes(col.id)
+                  return (
+                    <div key={col.id} onClick={() => setExportModal(m => ({ ...m, cols: active ? m.cols.filter(x => x !== col.id) : [...m.cols, col.id] }))}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 7px', borderRadius: 4, cursor: 'pointer', background: active ? 'var(--primary-light)' : 'transparent' }}>
+                      {active ? <CheckSquare size={15} color="var(--primary)" /> : <Square size={15} color="var(--text-muted)" />}
+                      <span style={{ fontSize: 12 }}>{col.label}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setExportModal(null)} style={{ fontSize: 12 }}>Annuler</button>
+              <button className="btn btn-primary" onClick={submitExport} style={{ fontSize: 12, gap: 6 }}>
+                <Download size={14} /> Générer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Photo zoom */}
       {photoZoomUrl && (
         <div onClick={() => setPhotoZoomUrl(null)} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
