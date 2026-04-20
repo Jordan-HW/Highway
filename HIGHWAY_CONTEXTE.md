@@ -201,6 +201,22 @@ logo color: #D4B8F0          /* violet clair */
 - **Enregistrement global** : barre fixe en bas, surlignage par cellule des modifications en attente. `padding-bottom: 80px` ajouté au `page-body` quand la barre est active pour ne pas masquer la dernière ligne
 - **Arrondi 2 décimales** : tous les prix et % arrondis `Math.round(x * 100) / 100` avant INSERT/UPDATE (saveRemise, saveClientPrix, saveAllDirty, Produits insert/update, import tarifs et produits)
 - **Import Excel** : mapping colonnes, normalisation TVA, validation, import en masse avec logging historique
+- **Export tarif client (PDF + Excel)** : bouton "Exporter" dans l'en-tête vue client, ouvre une modale avec :
+  - **Format** : PDF (A4 paysage) ou Excel
+  - **Étendue** : Référencés seuls / Tous les filtrés
+  - **Titre** : éditable (défaut "Liste tarifaire")
+  - **Colonnes sélectionnées** (ordonnées, draggables via GripVertical, numérotées, × pour retirer) + zone "Ajouter" avec les colonnes disponibles en pastilles pointillées
+  - Colonnes disponibles : Photo (PDF seulement), Code EAN, Désignation, Marque, Famille, Taux TVA, PVC HT/TTC, Tarif HT/TTC, **Remises appliquées** (liste multi-ligne `Nom -X%`), **Remise totale** (négatif), Prix net HT/TTC (gras)
+- **PDF design** :
+  - Police **Poppins** embarquée via `addFileToVFS` + `addFont` (public/fonts/Poppins-Regular.ttf + Poppins-Bold.ttf), fallback helvetica
+  - 2 fines bandes violet primary (`#5A4A7A`, 3 mm) en haut et en bas, corps blanc (comme le site)
+  - Logo `highway-logo-light.png` (texte sombre sur fond blanc qui se fond sur la page) dans l'en-tête
+  - En-tête table : fond primary, texte blanc, centré. Lignes alternées `#F7F5FB`. Lignes 16 mm si photo incluse.
+  - Photos produits préchargées en parallèle via canvas → dataURL, cliquables (lien vers `photo_url`). Fallback "Voir" si CORS bloqué.
+  - Si colonne Photo absente mais `photo_url` dispo : petit lien "Voir photo ▸" sous la désignation
+  - Pages suivantes : bande + logo compact + titre/client + pagination
+- **Fichiers** : `erp-app/public/highway-logo-light.png` (PNG texte sombre sur fond blanc), `erp-app/public/highway-logo-dark.png` (blanc sur fond sombre, non utilisé actuellement), `erp-app/public/fonts/Poppins-*.ttf`
+- **Dépendances** : `jspdf` + `jspdf-autotable` + `xlsx` (existant)
 
 ---
 
