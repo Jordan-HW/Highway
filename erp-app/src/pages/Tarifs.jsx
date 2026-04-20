@@ -190,6 +190,27 @@ export default function Tarifs() {
   const [clientColConfig, setClientColConfig] = useState(() => loadColConfig('highway_tarifs_cols_client', CLIENT_COLUMNS))
   const [showColSettings, setShowColSettings] = useState(false)
 
+  // Tri
+  const [sortProduit, setSortProduit] = useState({ key: null, dir: 'asc' })
+  const [sortClient, setSortClient] = useState({ key: null, dir: 'asc' })
+
+  function handleSort(type, key) {
+    if (key === 'photo' || key === 'actions') return
+    const setter = type === 'produit' ? setSortProduit : setSortClient
+    setter(prev => ({ key, dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc' }))
+  }
+
+  function sortRows(rows, sort, getValue) {
+    if (!sort.key) return rows
+    return [...rows].sort((a, b) => {
+      const va = getValue(a, sort.key)
+      const vb = getValue(b, sort.key)
+      if (va < vb) return sort.dir === 'asc' ? -1 : 1
+      if (va > vb) return sort.dir === 'asc' ? 1 : -1
+      return 0
+    })
+  }
+
   function updateColConfig(type, newConfig) {
     if (type === 'produit') { setProdColConfig(newConfig); saveColConfig('highway_tarifs_cols_produit', newConfig) }
     else { setClientColConfig(newConfig); saveColConfig('highway_tarifs_cols_client', newConfig) }
@@ -279,6 +300,61 @@ export default function Tarifs() {
     if (val == null) return '—'
     const color = val >= 28 ? 'badge-green' : val >= 23 ? 'badge-orange' : 'badge-red'
     return <span className={`badge ${color}`}>{val.toFixed(2)}%</span>
+  }
+
+  function getSortValueProduit(p, key) {
+    const edit = rowEdits[p.id] || { tva: p.taux_tva ?? 5.5, achat: getLastAchat(p.id)?.prix_achat_ht ?? '', vente: getGeneralVente(p.id)?.prix_vente_ht ?? '', pvpr: p.pvpr ?? '' }
+    const tva = parseFloat(edit.tva) || 0
+    const achatHT = edit.achat !== '' ? parseFloat(edit.achat) : null
+    const venteHT = edit.vente !== '' ? parseFloat(edit.vente) : null
+    const pvprVal = edit.pvpr !== '' ? parseFloat(edit.pvpr) : null
+    const pvprHT = pvprVal != null ? pvprVal / (1 + tva / 100) : null
+    switch (key) {
+      case 'ean': return p.ean13 || ''
+      case 'produit': return (p.libelle || '').toLowerCase()
+      case 'tva': return tva
+      case 'achatHT': return achatHT ?? -Infinity
+      case 'achatTTC': return achatHT != null ? achatHT * (1 + tva / 100) : -Infinity
+      case 'cessionHT': return venteHT ?? -Infinity
+      case 'cessionTTC': return venteHT != null ? venteHT * (1 + tva / 100) : -Infinity
+      case 'pvcHT': return pvprHT ?? -Infinity
+      case 'pvcTTC': return pvprVal ?? -Infinity
+      case 'margeHW': return calcMarge(achatHT, venteHT) ?? -Infinity
+      case 'valHW': return (achatHT != null && venteHT != null) ? venteHT - achatHT : -Infinity
+      case 'margeCl': return calcMarge(venteHT, pvprHT) ?? -Infinity
+      case 'valCl': return (venteHT != null && pvprHT != null) ? pvprHT - venteHT : -Infinity
+      default: return ''
+    }
+  }
+
+  function getSortValueClient(p, key) {
+    const isRef = clientRefs.has(p.id)
+    const general = getGeneralVente(p.id)
+    const genPrice = general?.prix_vente_ht || null
+    const ct = clientTarifsMap[p.id]
+    const remiseResult = genPrice ? applyRemisesCascade(genPrice, clientRemises, p.id, p.marque_id, p.categorie_id) : null
+    const afterRemises = remiseResult?.price ?? null
+    const isFixed = ct?.prix_vente_ht != null && ct?.prix_vente_ht !== ''
+    const effectif = isFixed ? parseFloat(ct.prix_vente_ht) : afterRemises
+    const achat = getLastAchat(p.id)
+    const marge = calcMarge(achat?.prix_achat_ht, effectif)
+    const tva = parseFloat(p.taux_tva) || 5.5
+    const pvpTTC = p.pvpr != null && p.pvpr !== '' ? parseFloat(p.pvpr) : null
+    const pvpHT = pvpTTC ? pvpTTC / (1 + tva / 100) : null
+    const margeCl = calcMarge(effectif, pvpHT)
+    switch (key) {
+      case 'ref': return isRef ? 1 : 0
+      case 'produit': return (p.libelle || '').toLowerCase()
+      case 'marque': return (p.marques?.nom || '').toLowerCase()
+      case 'cessionHT': return genPrice ?? -Infinity
+      case 'apRemises': return afterRemises ?? -Infinity
+      case 'remises': return remiseResult?.steps?.length || 0
+      case 'prixFixe': return isFixed ? parseFloat(ct.prix_vente_ht) : -Infinity
+      case 'prixEffectif': return effectif ?? -Infinity
+      case 'margeHW': return marge ?? -Infinity
+      case 'margeCl': return margeCl ?? -Infinity
+      default: return ''
+    }
   }
 
   const filteredProduits = produits.filter(p => {
@@ -777,20 +853,33 @@ export default function Tarifs() {
                 {/* ══════════ VUE PAR PRODUIT ══════════ */}
                 {view === 'produit' && (() => {
                   const visCols = getVisibleCols('produit')
+                  const sortedProduits = sortRows(filteredProduits, sortProduit, getSortValueProduit)
                   return (
                   <table style={{ fontSize: 11 }}>
                     <thead>
                       <tr>
                         {visCols.map(colId => {
                           const c = colDef('produit', colId)
-                          return <th key={colId} style={c.width ? { width: c.width } : undefined}>{c.label}</th>
+                          const sortable = colId !== 'photo' && colId !== 'actions'
+                          const isSorted = sortProduit.key === colId
+                          return (
+                            <th key={colId} onClick={() => sortable && handleSort('produit', colId)}
+                              style={{ ...(c.width ? { width: c.width } : {}), cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap' }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                {c.label}
+                                {sortable && <span style={{ fontSize: 9, color: isSorted ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 700 }}>
+                                  {isSorted ? (sortProduit.dir === 'asc' ? '▲' : '▼') : '↕'}
+                                </span>}
+                              </span>
+                            </th>
+                          )
                         })}
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredProduits.length === 0 ? (
+                      {sortedProduits.length === 0 ? (
                         <tr><td colSpan={visCols.length}><div className="empty-state"><Package /><p>Aucun produit</p></div></td></tr>
-                      ) : filteredProduits.map(p => {
+                      ) : sortedProduits.map(p => {
                         const edit = getEditRow(p)
                         const dirty = isRowDirty(p)
                         const df = getDirtyFields(p)
@@ -1205,18 +1294,35 @@ export default function Tarifs() {
                     {/* Produits table */}
                     {(() => {
                       const clVisCols = getVisibleCols('client')
+                      const clientProduits = sortRows(
+                        filteredProduits.filter(p => !hideNonRef || clientRefs.has(p.id)),
+                        sortClient,
+                        getSortValueClient
+                      )
                       return (
                     <table style={{ fontSize: 11 }}>
                       <thead>
                         <tr>
                           {clVisCols.map(colId => {
                             const c = colDef('client', colId)
-                            return <th key={colId} style={c.width ? { width: c.width } : undefined}>{c.label}</th>
+                            const sortable = colId !== 'photo'
+                            const isSorted = sortClient.key === colId
+                            return (
+                              <th key={colId} onClick={() => sortable && handleSort('client', colId)}
+                                style={{ ...(c.width ? { width: c.width } : {}), cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap' }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                  {c.label}
+                                  {sortable && <span style={{ fontSize: 9, color: isSorted ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 700 }}>
+                                    {isSorted ? (sortClient.dir === 'asc' ? '▲' : '▼') : '↕'}
+                                  </span>}
+                                </span>
+                              </th>
+                            )
                           })}
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredProduits.filter(p => !hideNonRef || clientRefs.has(p.id)).map(p => {
+                        {clientProduits.map(p => {
                           const isRef = clientRefs.has(p.id)
                           const general = getGeneralVente(p.id)
                           const genPrice = general?.prix_vente_ht || null
