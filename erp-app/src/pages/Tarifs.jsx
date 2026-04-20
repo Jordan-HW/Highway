@@ -43,10 +43,14 @@ const CLIENT_COLUMNS = [
   { id: 'produit', label: 'Produit', fixed: true },
   { id: 'marque', label: 'Marque' },
   { id: 'cessionHT', label: 'Cession HT', width: 58 },
+  { id: 'cessionTTC', label: 'Cession TTC', width: 62 },
   { id: 'apRemises', label: 'Ap. remises', width: 62 },
   { id: 'remises', label: 'Remises appliquées' },
+  { id: 'remiseEff', label: 'Remise eff.', width: 62 },
   { id: 'prixFixe', label: 'Prix fixé', width: 72 },
   { id: 'prixEffectif', label: 'Prix effectif', width: 72 },
+  { id: 'pvcHT', label: 'PVC HT', width: 58 },
+  { id: 'pvcTTC', label: 'PVC TTC', width: 58 },
   { id: 'margeHW', label: 'Marge HW', width: 64 },
   { id: 'margeCl', label: 'Marge Cl.', width: 64 },
 ]
@@ -347,10 +351,14 @@ export default function Tarifs() {
       case 'produit': return (p.libelle || '').toLowerCase()
       case 'marque': return (p.marques?.nom || '').toLowerCase()
       case 'cessionHT': return genPrice ?? -Infinity
+      case 'cessionTTC': return genPrice != null ? genPrice * (1 + tva / 100) : -Infinity
       case 'apRemises': return afterRemises ?? -Infinity
       case 'remises': return remiseResult?.steps?.length || 0
+      case 'remiseEff': return (genPrice && afterRemises != null && genPrice !== 0) ? (1 - afterRemises / genPrice) * 100 : -Infinity
       case 'prixFixe': return isFixed ? parseFloat(ct.prix_vente_ht) : -Infinity
       case 'prixEffectif': return effectif ?? -Infinity
+      case 'pvcHT': return pvpHT ?? -Infinity
+      case 'pvcTTC': return pvpTTC ?? -Infinity
       case 'margeHW': return marge ?? -Infinity
       case 'margeCl': return margeCl ?? -Infinity
       default: return ''
@@ -600,6 +608,18 @@ export default function Tarifs() {
       setClientRefs(prev => new Set([...prev, produitId]))
     }
     setSavingRef(null)
+  }
+
+  async function referenceAll() {
+    if (!selectedClient) return
+    const toAdd = filteredProduits.filter(p => !clientRefs.has(p.id))
+    if (!toAdd.length) return toast('Tous les produits filtrés sont déjà référencés', 'success')
+    if (!confirm(`Référencer ${toAdd.length} produit(s) pour ${selectedClient.nom} ?`)) return
+    const payload = toAdd.map(p => ({ client_id: selectedClient.id, produit_id: p.id }))
+    const { error } = await supabase.from('client_produit_references').insert(payload)
+    if (error) return toast('Erreur : ' + error.message, 'error')
+    setClientRefs(prev => new Set([...prev, ...toAdd.map(p => p.id)]))
+    toast(`${toAdd.length} produit(s) référencé(s)`, 'success')
   }
 
   async function saveClientPrix(produitId, value) {
@@ -1099,6 +1119,9 @@ export default function Tarifs() {
                               <Trash2 size={13} /> Supprimer tous les prix fixés ({Object.values(clientTarifsMap).filter(t => t?.id).length})
                             </button>
                           )}
+                          <button className="btn btn-secondary" onClick={referenceAll} style={{ fontSize: 11 }} title="Référencer tous les produits filtrés">
+                            <CheckSquare size={13} /> Tout référencer
+                          </button>
                           <button className={`btn ${hideNonRef ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setHideNonRef(!hideNonRef)} style={{ fontSize: 11 }}>
                             {hideNonRef ? <EyeOff size={13} /> : <Eye size={13} />} {hideNonRef ? 'Référencés seuls' : 'Tous les produits'}
                           </button>
@@ -1353,8 +1376,14 @@ export default function Tarifs() {
                             </td>,
                             marque: <td key="marque" style={{ padding: '2px 6px' }}>{p.marques?.nom || '—'}</td>,
                             cessionHT: <td key="cessionHT" style={{ padding: '2px 6px' }}>{genPrice != null ? `${Number(genPrice).toFixed(2)} €` : '—'}</td>,
+                            cessionTTC: <td key="cessionTTC" style={{ padding: '2px 6px' }}>{genPrice != null ? `${(Number(genPrice) * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>,
                             apRemises: <td key="apRemises" style={{ padding: '2px 6px', color: hasRemises ? 'var(--primary)' : 'var(--text-muted)' }}>
                               {afterRemises != null ? `${afterRemises.toFixed(2)} €` : '—'}
+                            </td>,
+                            remiseEff: <td key="remiseEff" style={{ padding: '2px 6px', textAlign: 'right' }}>
+                              {genPrice && afterRemises != null && genPrice !== 0 && afterRemises !== genPrice
+                                ? <span style={{ color: 'var(--primary)', fontWeight: 600 }}>-{((1 - afterRemises / genPrice) * 100).toFixed(2)} %</span>
+                                : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                             </td>,
                             remises: <td key="remises" style={{ padding: '2px 6px' }}>
                               {remiseSteps.length > 0 ? (
@@ -1391,6 +1420,8 @@ export default function Tarifs() {
                                 </span>
                               ) : '—'}
                             </td>,
+                            pvcHT: <td key="pvcHT" style={{ padding: '2px 6px' }}>{pvpHT != null ? `${pvpHT.toFixed(2)} €` : '—'}</td>,
+                            pvcTTC: <td key="pvcTTC" style={{ padding: '2px 6px' }}>{pvpTTC != null ? `${pvpTTC.toFixed(2)} €` : '—'}</td>,
                             margeHW: <td key="margeHW" style={{ padding: '3px 4px' }}>{margeBadge(marge)}</td>,
                             margeCl: <td key="margeCl" style={{ padding: '3px 4px' }}>{margeBadge(margeCl)}</td>,
                           }
