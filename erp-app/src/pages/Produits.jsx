@@ -4,6 +4,8 @@ import { toast } from '../components/Toast'
 import { Plus, Search, X, Package, Edit2, Trash2, Settings2, Download, Upload, CheckSquare, Square, Info, Languages, Save, GripVertical } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import ImportProduits from './ImportProduits'
+import LangToggle from '../components/LangToggle'
+import { displayLibelle, displayLibelleCourt, loadLang, saveLang, translateToFr, translateBatch } from '../lib/i18n'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatStatut(s) {
@@ -28,7 +30,7 @@ function ReadRow({ label, value, mono }) {
 }
 
 // ─── DetailPanel (right panel on row click) ──────────────────────────────────
-function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete }) {
+function DetailPanel({ product, marques, categories, lang, onClose, onSaved, onDelete }) {
   const [panelTab, setPanelTab] = useState('general')
   const [editSection, setEditSection] = useState(null)
   const [form, setForm] = useState({})
@@ -96,20 +98,10 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
     const text = form[sourceField]
     if (!text?.trim()) return toast('Rien à traduire', 'error')
     setTranslating(true)
-    try {
-      const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=fr&dt=t&q=${encodeURIComponent(text)}`)
-      const data = await res.json()
-      const translated = data[0].map(s => s[0]).join('')
-      if (translated) {
-        set(targetField, translated)
-        toast('Traduction effectuée', 'success')
-      } else {
-        toast('Erreur de traduction', 'error')
-      }
-    } catch (err) {
-      toast('Erreur : ' + err.message, 'error')
-    }
+    const translated = await translateToFr(text)
     setTranslating(false)
+    if (translated) { set(targetField, translated); toast('Traduction effectuée', 'success') }
+    else toast('Erreur de traduction', 'error')
   }
 
   if (!product) return null
@@ -148,7 +140,7 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.libelle}</div>
+            <div style={{ fontWeight: 600, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayLibelle(product, lang)}</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{marqueName}{product.ean13 ? ` · ${product.ean13}` : ''}</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -193,8 +185,10 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
               <SectionHeader section="general" title="Informations générales" />
               {editSection !== 'general' ? (
                 <div>
-                  <ReadRow label="Libellé" value={form.libelle} />
-                  <ReadRow label="Libellé court" value={form.libelle_court} />
+                  <ReadRow label="Libellé (VO)" value={form.libelle} />
+                  <ReadRow label="Libellé (FR)" value={form.libelle_fr} />
+                  <ReadRow label="Libellé court (VO)" value={form.libelle_court} />
+                  <ReadRow label="Libellé court (FR)" value={form.libelle_court_fr} />
                   <ReadRow label="Marque" value={marqueName} />
                   <ReadRow label="Famille" value={categorieName} />
                   <ReadRow label="EAN13" value={form.ean13} mono />
@@ -206,8 +200,26 @@ function DetailPanel({ product, marques, categories, onClose, onSaved, onDelete 
                 </div>
               ) : (
                 <div className="form-grid">
-                  <div className="form-group form-full"><label>Libellé *</label><input value={form.libelle || ''} onChange={e => set('libelle', e.target.value)} /></div>
-                  <div className="form-group"><label>Libellé court</label><input value={form.libelle_court || ''} onChange={e => set('libelle_court', e.target.value)} /></div>
+                  <div className="form-group form-full"><label>Libellé * (VO)</label><input value={form.libelle || ''} onChange={e => set('libelle', e.target.value)} /></div>
+                  <div className="form-group form-full">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <label style={{ margin: 0 }}>Libellé (FR)</label>
+                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 10px', gap: 4 }} disabled={translating} onClick={() => translateText('libelle', 'libelle_fr')}>
+                        <Languages size={13} /> {translating ? 'Traduction...' : 'Traduire'}
+                      </button>
+                    </div>
+                    <input value={form.libelle_fr || ''} onChange={e => set('libelle_fr', e.target.value)} placeholder="Libellé traduit en français..." style={{ marginTop: 6 }} />
+                  </div>
+                  <div className="form-group"><label>Libellé court (VO)</label><input value={form.libelle_court || ''} onChange={e => set('libelle_court', e.target.value)} /></div>
+                  <div className="form-group">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <label style={{ margin: 0 }}>Libellé court (FR)</label>
+                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 10px', gap: 4 }} disabled={translating} onClick={() => translateText('libelle_court', 'libelle_court_fr')}>
+                        <Languages size={13} /> {translating ? 'Traduction...' : 'Traduire'}
+                      </button>
+                    </div>
+                    <input value={form.libelle_court_fr || ''} onChange={e => set('libelle_court_fr', e.target.value)} style={{ marginTop: 6 }} />
+                  </div>
                   <div className="form-group"><label>Marque *</label>
                     <select value={form.marque_id || ''} onChange={e => set('marque_id', e.target.value)}>
                       <option value="">Sélectionner...</option>
@@ -560,7 +572,7 @@ function ColumnPanel({ colOrder, visibleCols, onChange, onClose }) {
 }
 
 // ─── Modale Export Excel ───────────────────────────────────────────────────────
-function ExportModal({ products, allProducts, onClose }) {
+function ExportModal({ products, allProducts, lang, onClose }) {
   const [scope, setScope] = useState(products.length > 0 ? 'selected' : 'filtered')
   const [exportCols, setExportCols] = useState(ALL_COLUMNS.filter(c => c.exportKey !== null && c.default).map(c => c.key))
   const groups = [...new Set(ALL_COLUMNS.filter(c => c.exportKey !== null).map(c => c.group))]
@@ -578,7 +590,9 @@ function ExportModal({ products, allProducts, onClose }) {
     const data = source.map(row => {
       const obj = {}
       cols.forEach(col => {
-        obj[col.label] = typeof col.exportKey === 'function' ? col.exportKey(row) : (row[col.exportKey] ?? '')
+        if (col.key === 'libelle') obj[col.label] = displayLibelle(row, lang)
+        else if (typeof col.exportKey === 'function') obj[col.label] = col.exportKey(row)
+        else obj[col.label] = row[col.exportKey] ?? ''
       })
       return obj
     })
@@ -662,7 +676,7 @@ const STATUTS   = ['actif', 'inactif', 'en_référencement', 'arrêté']
 const DLC_TYPES = ['DLC', 'DLUO', 'DDM']
 
 const emptyForm = {
-  ean13: '', libelle: '', libelle_court: '', description: '', description_fr: '',
+  ean13: '', libelle: '', libelle_fr: '', libelle_court: '', libelle_court_fr: '', description: '', description_fr: '',
   marque_id: '', categorie_id: '',
   unite_vente: 'unité', pcb: 1,
   poids_brut_kg: '', poids_net_kg: '', volume_m3: '',
@@ -736,19 +750,51 @@ export default function Produits() {
   const [colFilters, setColFilters]   = useState({})
   const [tooltipDlc, setTooltipDlc]   = useState(false)
   const [translatingMain, setTranslatingMain] = useState(false)
+  const [lang, setLang] = useState(() => loadLang('produits'))
+  const [bulkTranslate, setBulkTranslate] = useState(null) // { running, done, total, cancel }
+
+  function changeLang(v) { setLang(v); saveLang('produits', v) }
+
+  async function runBulkTranslate() {
+    const candidates = rows.filter(p =>
+      (p.libelle && !p.libelle_fr) ||
+      (p.libelle_court && !p.libelle_court_fr) ||
+      (p.description && !p.description_fr) ||
+      (p.ingredients_vo && !p.ingredients_fr)
+    )
+    if (candidates.length === 0) return toast('Aucun produit à traduire', 'default')
+    if (!confirm(`Traduire ${candidates.length} produit(s) ? Seuls les champs vides en FR seront remplis.`)) return
+    const cancelRef = { cancelled: false }
+    setBulkTranslate({ running: true, done: 0, total: candidates.length, cancel: () => { cancelRef.cancelled = true } })
+    let done = 0
+    for (const p of candidates) {
+      if (cancelRef.cancelled) break
+      const patch = {}
+      if (p.libelle && !p.libelle_fr) patch.libelle_fr = await translateToFr(p.libelle)
+      if (p.libelle_court && !p.libelle_court_fr) patch.libelle_court_fr = await translateToFr(p.libelle_court)
+      if (p.description && !p.description_fr) patch.description_fr = await translateToFr(p.description)
+      if (p.ingredients_vo && !p.ingredients_fr) patch.ingredients_fr = await translateToFr(p.ingredients_vo)
+      Object.keys(patch).forEach(k => { if (!patch[k]) delete patch[k] })
+      if (Object.keys(patch).length) {
+        await supabase.from('produits').update(patch).eq('id', p.id)
+      }
+      done++
+      setBulkTranslate(b => b && ({ ...b, done }))
+      await new Promise(r => setTimeout(r, 120))
+    }
+    setBulkTranslate(null)
+    toast(cancelRef.cancelled ? `Annulé — ${done}/${candidates.length} traduits` : `${done} produit(s) traduit(s)`, 'success')
+    fetchAll()
+  }
 
   async function translateTextMain(sourceField, targetField) {
     const text = form[sourceField]
     if (!text?.trim()) return toast('Rien à traduire', 'error')
     setTranslatingMain(true)
-    try {
-      const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=fr&dt=t&q=${encodeURIComponent(text)}`)
-      const data = await res.json()
-      const translated = data[0].map(s => s[0]).join('')
-      if (translated) { set(targetField, translated); toast('Traduction effectuée', 'success') }
-      else toast('Erreur de traduction', 'error')
-    } catch (err) { toast('Erreur : ' + err.message, 'error') }
+    const translated = await translateToFr(text)
     setTranslatingMain(false)
+    if (translated) { set(targetField, translated); toast('Traduction effectuée', 'success') }
+    else toast('Erreur de traduction', 'error')
   }
 
   function handleSort(key) {
@@ -758,7 +804,7 @@ export default function Produits() {
 
   function getSortValue(row, key) {
     switch (key) {
-      case 'libelle':          return (row.libelle || '').toLowerCase()
+      case 'libelle':          return displayLibelle(row, lang).toLowerCase()
       case 'ean13':            return row.ean13 || ''
       case 'marque_nom':       return (row.marques?.nom || '').toLowerCase()
       case 'categorie_nom':    return (row.categories?.nom || '').toLowerCase()
@@ -838,7 +884,7 @@ export default function Produits() {
 
   const filtered = rows.filter(r => {
     const s = search.toLowerCase()
-    const matchSearch    = r.libelle.toLowerCase().includes(s) || (r.ean13||'').includes(s) || (r.marques?.nom||'').toLowerCase().includes(s)
+    const matchSearch    = (r.libelle||'').toLowerCase().includes(s) || (r.libelle_fr||'').toLowerCase().includes(s) || (r.libelle_court||'').toLowerCase().includes(s) || (r.libelle_court_fr||'').toLowerCase().includes(s) || (r.ean13||'').includes(s) || (r.marques?.nom||'').toLowerCase().includes(s)
     const matchMarque    = !filterMarque    || r.marque_id    === filterMarque
     const matchCategorie = !filterCategorie || r.categorie_id === filterCategorie
     const matchStatut    = !filterStatut    || r.statut       === filterStatut
@@ -861,7 +907,7 @@ export default function Produits() {
       if (!val) return true
       const v = val.toLowerCase()
       switch (key) {
-        case 'libelle':          return (row.libelle || '').toLowerCase().includes(v)
+        case 'libelle':          return (row.libelle || '').toLowerCase().includes(v) || (row.libelle_fr || '').toLowerCase().includes(v)
         case 'ean13':            return (row.ean13 || '').includes(v)
         case 'marque_nom':       return (row.marques?.nom || '').toLowerCase().includes(v)
         case 'categorie_nom':    return (row.categories?.nom || '').toLowerCase().includes(v)
@@ -887,8 +933,11 @@ export default function Produits() {
         return row.photo_url
           ? <img src={row.photo_url} alt="" onClick={e => { e.stopPropagation(); setPhotoZoomUrl(row.photo_url) }} style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)', cursor: 'zoom-in' }} />
           : <div style={{ width: 28, height: 28, borderRadius: 4, background: 'var(--surface-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Package size={12} color="var(--text-muted)" /></div>
-      case 'libelle':
-        return <div><div style={{ fontWeight: 500, fontSize: 12 }}>{row.libelle}</div>{row.libelle_court && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{row.libelle_court}</div>}</div>
+      case 'libelle': {
+        const lib = displayLibelle(row, lang)
+        const libCourt = displayLibelleCourt(row, lang)
+        return <div><div style={{ fontWeight: 500, fontSize: 12 }}>{lib}</div>{libCourt && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{libCourt}</div>}</div>
+      }
       case 'ean13':          return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>{row.ean13 || '—'}</span>
       case 'marque_nom':     return row.marques?.nom || '—'
       case 'categorie_nom':  return row.categories?.nom ? <span className="badge badge-gray">{row.categories.nom}</span> : '—'
@@ -921,7 +970,9 @@ export default function Produits() {
             {selectedIds.size > 0 && <span style={{ marginLeft: 8, color: 'var(--primary)', fontWeight: 600 }}>· {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}</span>}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <LangToggle value={lang} onChange={changeLang} />
+          <button className="btn btn-secondary" onClick={runBulkTranslate} title="Traduire tous les libellés/descriptions manquants en FR"><Languages size={15} /> Traduire tous</button>
           <button className="btn btn-secondary" onClick={() => setShowImport(true)}><Upload size={15} /> Importer</button>
           <button className="btn btn-secondary" onClick={() => setShowExport(true)}><Download size={15} /> Exporter</button>
           <button className="btn btn-secondary" onClick={() => setShowColPanel(true)}><Settings2 size={15} /> Colonnes</button>
@@ -1050,8 +1101,26 @@ export default function Produits() {
             <div className="modal-body" style={{ paddingTop: 0 }}>
               {activeTab === 'general' && (
                 <div className="form-grid">
-                  <div className="form-group form-full"><label>Libellé *</label><input value={form.libelle} onChange={e => set('libelle', e.target.value)} placeholder="Nom complet du produit" /></div>
-                  <div className="form-group"><label>Libellé court</label><input value={form.libelle_court || ''} onChange={e => set('libelle_court', e.target.value)} /></div>
+                  <div className="form-group form-full"><label>Libellé * (VO)</label><input value={form.libelle} onChange={e => set('libelle', e.target.value)} placeholder="Nom complet du produit" /></div>
+                  <div className="form-group form-full">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <label style={{ margin: 0 }}>Libellé (FR)</label>
+                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 10px', gap: 4 }} disabled={translatingMain} onClick={() => translateTextMain('libelle', 'libelle_fr')}>
+                        <Languages size={13} /> {translatingMain ? 'Traduction...' : 'Traduire'}
+                      </button>
+                    </div>
+                    <input value={form.libelle_fr || ''} onChange={e => set('libelle_fr', e.target.value)} placeholder="Libellé traduit en français..." style={{ marginTop: 6 }} />
+                  </div>
+                  <div className="form-group"><label>Libellé court (VO)</label><input value={form.libelle_court || ''} onChange={e => set('libelle_court', e.target.value)} /></div>
+                  <div className="form-group">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <label style={{ margin: 0 }}>Libellé court (FR)</label>
+                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 10px', gap: 4 }} disabled={translatingMain} onClick={() => translateTextMain('libelle_court', 'libelle_court_fr')}>
+                        <Languages size={13} /> {translatingMain ? 'Traduction...' : 'Traduire'}
+                      </button>
+                    </div>
+                    <input value={form.libelle_court_fr || ''} onChange={e => set('libelle_court_fr', e.target.value)} style={{ marginTop: 6 }} />
+                  </div>
                   <div className="form-group"><label>Marque *</label>
                     <select value={form.marque_id} onChange={e => set('marque_id', e.target.value)}>
                       <option value="">Sélectionner...</option>
@@ -1151,7 +1220,15 @@ export default function Produits() {
                   <div className="form-grid">
                     <div className="form-group form-full"><label>Ingrédients (VO)</label><textarea value={form.ingredients_vo || ''} onChange={e => set('ingredients_vo', e.target.value)} rows={4} placeholder="Water, Sugar, Salt..." /></div>
                     <div className="form-group"><label>Langue originale</label><select value={form.langue_vo || 'en'} onChange={e => set('langue_vo', e.target.value)}>{[['en','Anglais'],['es','Espagnol'],['de','Allemand'],['it','Italien'],['zh','Chinois'],['ar','Arabe'],['other','Autre']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
-                    <div className="form-group form-full"><label>Ingrédients (FR)</label><textarea value={form.ingredients_fr || ''} onChange={e => set('ingredients_fr', e.target.value)} rows={4} placeholder="Eau, Sucre, Sel..." /></div>
+                    <div className="form-group form-full">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <label style={{ margin: 0 }}>Ingrédients (FR)</label>
+                        <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 10px', gap: 4 }} disabled={translatingMain} onClick={() => translateTextMain('ingredients_vo', 'ingredients_fr')}>
+                          <Languages size={13} /> {translatingMain ? 'Traduction...' : 'Traduire'}
+                        </button>
+                      </div>
+                      <textarea value={form.ingredients_fr || ''} onChange={e => set('ingredients_fr', e.target.value)} rows={4} placeholder="Eau, Sucre, Sel..." style={{ marginTop: 6 }} />
+                    </div>
                     <div className="form-group form-full"><label>Allergènes</label><input value={form.allergenes || ''} onChange={e => set('allergenes', e.target.value)} placeholder="Gluten, Lait, Fruits à coque..." /></div>
                     <div className="form-group form-full"><label>URL Fiche technique</label><input value={form.fiche_technique_url || ''} onChange={e => set('fiche_technique_url', e.target.value)} placeholder="https://..." /></div>
                     {form.fiche_technique_url && <div className="form-full"><a href={form.fiche_technique_url} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{ display: 'inline-flex' }}>Voir le document</a></div>}
@@ -1179,13 +1256,29 @@ export default function Produits() {
 
       {showImport   && <ImportProduits onClose={() => setShowImport(false)} onImported={fetchAll} />}
       {showColPanel && <ColumnPanel colOrder={colOrder} visibleCols={visibleCols} onChange={updateColConfig} onClose={() => setShowColPanel(false)} />}
-      {showExport   && <ExportModal products={selectedRows} allProducts={filtered} onClose={() => setShowExport(false)} />}
+      {showExport   && <ExportModal products={selectedRows} allProducts={filtered} lang={lang} onClose={() => setShowExport(false)} />}
       {photoZoomUrl && (
         <div onClick={() => setPhotoZoomUrl(null)} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
           <img src={photoZoomUrl} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
         </div>
       )}
-      {detailPanel  && <DetailPanel product={detailPanel} marques={marques} categories={categories} onClose={() => setDetailPanel(null)} onSaved={async (currentTab) => { await fetchAll(); const { data } = await supabase.from('produits').select('*, marques(nom), categories(nom)').eq('id', detailPanel.id).single(); if (data) setDetailPanel(data) }} onDelete={(id) => { remove(id); setDetailPanel(null) }} />}
+      {detailPanel  && <DetailPanel product={detailPanel} marques={marques} categories={categories} lang={lang} onClose={() => setDetailPanel(null)} onSaved={async (currentTab) => { await fetchAll(); const { data } = await supabase.from('produits').select('*, marques(nom), categories(nom)').eq('id', detailPanel.id).single(); if (data) setDetailPanel(data) }} onDelete={(id) => { remove(id); setDetailPanel(null) }} />}
+      {bulkTranslate && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: 420 }}>
+            <div className="modal-header"><h3>Traduction en cours</h3></div>
+            <div className="modal-body">
+              <div style={{ fontSize: 13, marginBottom: 12 }}>{bulkTranslate.done} / {bulkTranslate.total} produit(s)</div>
+              <div style={{ height: 8, background: 'var(--surface-2)', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${Math.round(100 * bulkTranslate.done / Math.max(1, bulkTranslate.total))}%`, background: 'var(--primary)', transition: 'width 0.2s' }} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => bulkTranslate.cancel()}>Annuler</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

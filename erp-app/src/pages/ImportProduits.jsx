@@ -1,18 +1,22 @@
 import { useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { Upload, X, ChevronRight, AlertTriangle, CheckCircle, RefreshCw, FileSpreadsheet } from 'lucide-react'
+import { Upload, X, ChevronRight, AlertTriangle, CheckCircle, RefreshCw, FileSpreadsheet, Languages } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { translateToFr } from '../lib/i18n'
 
 // ─── Champs disponibles dans Highway ─────────────────────────────────────────
 const HW_FIELDS = [
   { key: '__ignore__',          label: '— Ignorer cette colonne —', group: '' },
   { key: 'ean13',               label: 'EAN13',                     group: 'Général' },
-  { key: 'libelle',             label: 'Libellé *',                 group: 'Général' },
-  { key: 'libelle_court',       label: 'Libellé court',             group: 'Général' },
+  { key: 'libelle',             label: 'Libellé * (VO)',            group: 'Général' },
+  { key: 'libelle_fr',          label: 'Libellé (FR)',              group: 'Général' },
+  { key: 'libelle_court',       label: 'Libellé court (VO)',        group: 'Général' },
+  { key: 'libelle_court_fr',    label: 'Libellé court (FR)',        group: 'Général' },
   { key: 'marque',              label: 'Marque (texte)',             group: 'Général' },
   { key: 'ref_marque',          label: 'Référence marque',          group: 'Général' },
-  { key: 'description',         label: 'Description',               group: 'Général' },
+  { key: 'description',         label: 'Description (VO)',          group: 'Général' },
+  { key: 'description_fr',      label: 'Description (FR)',          group: 'Général' },
   { key: 'statut',              label: 'Statut',                    group: 'Général' },
   { key: 'photo_url',           label: 'URL Photo',                 group: 'Général' },
   { key: 'conditionnement',     label: 'Conditionnement',           group: 'Colisage' },
@@ -48,7 +52,9 @@ function autoMap(cols) {
     'libelle court': 'libelle_court', 'short name': 'libelle_court',
     marque: 'marque', brand: 'marque',
     'ref marque': 'ref_marque', reference: 'ref_marque', ref: 'ref_marque',
-    description: 'description',
+    description: 'description', 'description fr': 'description_fr',
+    'libelle fr': 'libelle_fr', 'french title': 'libelle_fr', 'nom fr': 'libelle_fr', 'french name': 'libelle_fr',
+    'libelle court fr': 'libelle_court_fr',
     statut: 'statut', status: 'statut',
     conditionnement: 'conditionnement', packaging: 'conditionnement',
     pcb: 'pcb', 'units per case': 'pcb',
@@ -86,6 +92,8 @@ export default function ImportProduits({ onClose, onImported }) {
   const [validation, setValidation] = useState(null) // { toCreate, toUpdate, errors }
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState(null)
+  const [autoTranslate, setAutoTranslate] = useState(true)
+  const [translateProgress, setTranslateProgress] = useState(null) // { done, total }
   const dropRef = useRef()
 
   // ── ÉTAPE 1 : Upload ────────────────────────────────────────────────────────
@@ -200,6 +208,39 @@ export default function ImportProduits({ onClose, onImported }) {
 
     setImportResult({ created, updated, failed })
     setImporting(false)
+
+    if (autoTranslate) {
+      const eansToCheck = [...toCreate, ...(includeUpdates ? toUpdate : [])].map(p => p.ean13).filter(Boolean)
+      if (eansToCheck.length) {
+        const { data: imported } = await supabase.from('produits').select('id, libelle, libelle_fr, libelle_court, libelle_court_fr, description, description_fr, ingredients_vo, ingredients_fr').in('ean13', eansToCheck)
+        const candidates = (imported || []).filter(p =>
+          (p.libelle && !p.libelle_fr) ||
+          (p.libelle_court && !p.libelle_court_fr) ||
+          (p.description && !p.description_fr) ||
+          (p.ingredients_vo && !p.ingredients_fr)
+        )
+        if (candidates.length) {
+          setTranslateProgress({ done: 0, total: candidates.length })
+          let done = 0
+          for (const p of candidates) {
+            const patch = {}
+            if (p.libelle && !p.libelle_fr) patch.libelle_fr = await translateToFr(p.libelle)
+            if (p.libelle_court && !p.libelle_court_fr) patch.libelle_court_fr = await translateToFr(p.libelle_court)
+            if (p.description && !p.description_fr) patch.description_fr = await translateToFr(p.description)
+            if (p.ingredients_vo && !p.ingredients_fr) patch.ingredients_fr = await translateToFr(p.ingredients_vo)
+            Object.keys(patch).forEach(k => { if (!patch[k]) delete patch[k] })
+            if (Object.keys(patch).length) {
+              await supabase.from('produits').update(patch).eq('id', p.id)
+            }
+            done++
+            setTranslateProgress({ done, total: candidates.length })
+            await new Promise(r => setTimeout(r, 120))
+          }
+          setTranslateProgress(null)
+        }
+      }
+    }
+
     setStep('done')
     if (onImported) onImported()
   }
@@ -337,6 +378,23 @@ export default function ImportProduits({ onClose, onImported }) {
                     ))}
                   </div>
                 </>
+              )}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 8, marginBottom: 16 }}>
+                <input type="checkbox" id="auto-translate" checked={autoTranslate} onChange={e => setAutoTranslate(e.target.checked)} style={{ cursor: 'pointer' }} />
+                <label htmlFor="auto-translate" style={{ fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+                  <Languages size={14} color="var(--primary)" />
+                  Traduire automatiquement les libellés, descriptions et ingrédients en français après l'import
+                </label>
+              </div>
+
+              {translateProgress && (
+                <div style={{ padding: '10px 14px', background: 'var(--primary-light)', borderRadius: 8, marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, marginBottom: 6, color: 'var(--primary)' }}>Traduction en cours... {translateProgress.done}/{translateProgress.total}</div>
+                  <div style={{ height: 6, background: 'var(--surface)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.round(100 * translateProgress.done / Math.max(1, translateProgress.total))}%`, background: 'var(--primary)', transition: 'width 0.2s' }} />
+                  </div>
+                </div>
               )}
 
               {/* Aperçu créations */}

@@ -5,6 +5,8 @@ import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCir
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import LangToggle from '../components/LangToggle'
+import { displayLibelle, loadLang, saveLang } from '../lib/i18n'
 
 const EXPORT_COLUMNS = [
   { id: 'photo', label: 'Photo', align: 'center', pdfOnly: true, width: 18 },
@@ -179,6 +181,8 @@ function ColumnSettingsPanel({ columns, config, onUpdate, onClose }) {
 
 export default function Tarifs() {
   const [view, setView] = useState('produit')
+  const [lang, setLang] = useState(() => loadLang('tarifs'))
+  function changeLang(v) { setLang(v); saveLang('tarifs', v) }
   const [produits, setProduits] = useState([])
   const [marques, setMarques] = useState([])
   const [categories, setCategories] = useState([])
@@ -339,7 +343,7 @@ export default function Tarifs() {
     const pvprHT = pvprVal != null ? pvprVal / (1 + tva / 100) : null
     switch (key) {
       case 'ean': return p.ean13 || ''
-      case 'produit': return (p.libelle || '').toLowerCase()
+      case 'produit': return displayLibelle(p, lang).toLowerCase()
       case 'tva': return tva
       case 'achatHT': return achatHT ?? -Infinity
       case 'achatTTC': return achatHT != null ? achatHT * (1 + tva / 100) : -Infinity
@@ -372,7 +376,7 @@ export default function Tarifs() {
     const margeCl = calcMarge(effectif, pvpHT)
     switch (key) {
       case 'ref': return isRef ? 1 : 0
-      case 'produit': return (p.libelle || '').toLowerCase()
+      case 'produit': return displayLibelle(p, lang).toLowerCase()
       case 'marque': return (p.marques?.nom || '').toLowerCase()
       case 'cessionHT': return genPrice ?? -Infinity
       case 'cessionTTC': return genPrice != null ? genPrice * (1 + tva / 100) : -Infinity
@@ -406,7 +410,7 @@ export default function Tarifs() {
     switch (colId) {
       case 'photo': return p.photo_url || ''
       case 'ean': return p.ean13 || ''
-      case 'libelle': return p.libelle || ''
+      case 'libelle': return displayLibelle(p, lang)
       case 'marque': return p.marques?.nom || ''
       case 'famille': return categories.find(c => c.id === p.categorie_id)?.nom || ''
       case 'taux_tva': return p.taux_tva != null ? Math.round(parseFloat(p.taux_tva) * 100) / 100 : null
@@ -711,7 +715,7 @@ export default function Tarifs() {
 
   const filteredProduits = produits.filter(p => {
     const s = search.toLowerCase()
-    const matchSearch = p.libelle.toLowerCase().includes(s) || (p.ean13 || '').includes(s) || (p.marques?.nom || '').toLowerCase().includes(s)
+    const matchSearch = (p.libelle||'').toLowerCase().includes(s) || (p.libelle_fr||'').toLowerCase().includes(s) || (p.ean13 || '').includes(s) || (p.marques?.nom || '').toLowerCase().includes(s)
     const matchMarque = !filterMarque || p.marque_id === filterMarque
     return matchSearch && matchMarque
   })
@@ -1175,7 +1179,8 @@ export default function Tarifs() {
           <h2>Référencement et Tarifs</h2>
           <p>{view === 'produit' ? `${filteredProduits.length} produit(s)` : selectedClient ? selectedClient.nom : `${clients.length} client(s)`}</p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <LangToggle value={lang} onChange={changeLang} />
           <button className="btn btn-secondary" onClick={openImportModal}><Upload size={15} /> Importer</button>
         </div>
       </div>
@@ -1292,7 +1297,7 @@ export default function Tarifs() {
                         const cells = {
                           photo: <td key="photo" style={{ padding: '2px 4px' }}><Thumb url={p.photo_url} /></td>,
                           ean: <td key="ean" style={{ padding: '2px 6px', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{p.ean13 || '—'}</td>,
-                          produit: <td key="produit" style={{ cursor: 'pointer', padding: '2px 6px' }} onClick={() => toggleAccordion(p.id)}><div style={{ fontWeight: 500, fontSize: 12 }}>{p.libelle}</div></td>,
+                          produit: <td key="produit" style={{ cursor: 'pointer', padding: '2px 6px' }} onClick={() => toggleAccordion(p.id)}><div style={{ fontWeight: 500, fontSize: 12 }}>{displayLibelle(p, lang)}</div></td>,
                           tva: <td key="tva" style={{ padding: '2px 6px', background: df.tva ? (src === 'tva' ? hl : hlS) : undefined }} onClick={() => { if (editingField !== `${p.id}-tva`) setEditingField(`${p.id}-tva`) }}>
                             {editingField === `${p.id}-tva` ? (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1330,11 +1335,11 @@ export default function Tarifs() {
                           </td>,
                           valCl: <td key="valCl" style={{ padding: '3px 6px', fontSize: 11, verticalAlign: 'middle', background: src === 'margeClient' ? hl : (df.vente || df.pvpr) ? hlS : undefined }}>{margeClientVal != null ? `${margeClientVal.toFixed(2)} €` : '—'}</td>,
                           actions: <td key="actions" style={{ padding: '3px 2px', whiteSpace: 'nowrap' }}>
-                            <Clock size={12} style={{ cursor: 'pointer', color: 'var(--text-muted)', marginRight: 1 }} onClick={() => openHistorique(p.id, p.libelle)} />
+                            <Clock size={12} style={{ cursor: 'pointer', color: 'var(--text-muted)', marginRight: 1 }} onClick={() => openHistorique(p.id, displayLibelle(p, lang))} />
                             {recentVariations[p.id] && (() => {
                               const v = recentVariations[p.id].variation
                               const isUp = v > 0
-                              return <span style={{ fontSize: 9, fontWeight: 600, color: isUp ? '#C0392B' : '#27AE60', marginRight: 2, cursor: 'pointer' }} onClick={() => openHistorique(p.id, p.libelle)} title={`Variation achat récente`}>{isUp ? '↑' : '↓'}{Math.abs(v).toFixed(1)}%</span>
+                              return <span style={{ fontSize: 9, fontWeight: 600, color: isUp ? '#C0392B' : '#27AE60', marginRight: 2, cursor: 'pointer' }} onClick={() => openHistorique(p.id, displayLibelle(p, lang))} title={`Variation achat récente`}>{isUp ? '↑' : '↓'}{Math.abs(v).toFixed(1)}%</span>
                             })()}
                             <span style={{ cursor: 'pointer' }} onClick={() => toggleAccordion(p.id)}>{isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</span>
                           </td>,
@@ -1606,7 +1611,7 @@ export default function Tarifs() {
                                         <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
                                           {(r.marque_id ? marqueProduits : produits)
                                             .filter(p => !r.categorie_id || p.categorie_id === r.categorie_id)
-                                            .filter(p => !pickerSearch || p.libelle.toLowerCase().includes(pickerSearch.toLowerCase()))
+                                            .filter(p => !pickerSearch || displayLibelle(p, lang).toLowerCase().includes(pickerSearch.toLowerCase()) || (p.libelle||'').toLowerCase().includes(pickerSearch.toLowerCase()))
                                             .map(p => {
                                               const selected = (r.produit_ids || []).includes(p.id)
                                               return (
@@ -1621,7 +1626,7 @@ export default function Tarifs() {
                                                     {selected && <Check size={11} color="#fff" strokeWidth={3} />}
                                                   </div>
                                                   <Thumb url={p.photo_url} />
-                                                  <span style={{ fontSize: 12 }}>{p.libelle}</span>
+                                                  <span style={{ fontSize: 12 }}>{displayLibelle(p, lang)}</span>
                                                   {!r.marque_id && p.marques?.nom && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' }}>{p.marques.nom}</span>}
                                                 </div>
                                               )
@@ -1721,7 +1726,7 @@ export default function Tarifs() {
                               </button>
                             </td>,
                             produit: <td key="produit" style={{ padding: '2px 6px' }}>
-                              <div style={{ fontWeight: 500, fontSize: 12 }}>{p.libelle}</div>
+                              <div style={{ fontWeight: 500, fontSize: 12 }}>{displayLibelle(p, lang)}</div>
                               {p.ean13 && <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.ean13}</div>}
                             </td>,
                             marque: <td key="marque" style={{ padding: '2px 6px' }}>{p.marques?.nom || '—'}</td>,
@@ -1884,7 +1889,7 @@ export default function Tarifs() {
                           {importValidation.toProcess.slice(0, 30).map((item, i) => (
                             <tr key={i}>
                               <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{item.ean13}</td>
-                              <td style={{ fontWeight: 500, fontSize: 12 }}>{item._produit.libelle}</td>
+                              <td style={{ fontWeight: 500, fontSize: 12 }}>{displayLibelle(item._produit, lang)}</td>
                               <td>{item.prix_achat_ht || '—'}</td><td>{item.prix_vente_ht || '—'}</td><td>{item.pvpr || '—'}</td>
                               <td style={{ fontSize: 12 }}>{item._client?.nom || '—'}</td><td>{item.prix_client_ht || '—'}</td>
                             </tr>

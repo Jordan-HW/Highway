@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { Plus, Search, X, Warehouse, AlertTriangle, Edit2 } from 'lucide-react'
+import LangToggle from '../components/LangToggle'
+import { displayLibelle, loadLang, saveLang } from '../lib/i18n'
 
 export default function Stock() {
   const [lots, setLots] = useState([])
@@ -14,14 +16,16 @@ export default function Stock() {
   const [form, setForm] = useState({ produit_id: '', fournisseur_id: '', numero_lot: '', dlc: '', date_reception: new Date().toISOString().split('T')[0], quantite_initiale: '', emplacement: '', statut: 'disponible', notes: '' })
   const [editing, setEditing] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [lang, setLang] = useState(() => loadLang('stock'))
+  function changeLang(v) { setLang(v); saveLang('stock', v) }
 
   useEffect(() => { fetchAll() }, [])
 
   async function fetchAll() {
     setLoading(true)
     const [{ data: l }, { data: p }, { data: f }] = await Promise.all([
-      supabase.from('lots').select('*, produits(libelle, ean13, marque), fournisseurs(nom)').order('dlc', { ascending: true }),
-      supabase.from('produits').select('id, libelle, marque').eq('statut', 'actif').order('libelle'),
+      supabase.from('lots').select('*, produits(libelle, libelle_fr, ean13, marque), fournisseurs(nom)').order('dlc', { ascending: true }),
+      supabase.from('produits').select('id, libelle, libelle_fr, marque').eq('statut', 'actif').order('libelle'),
       supabase.from('fournisseurs').select('id, nom').eq('actif', true).order('nom')
     ])
     // Calculate stock per lot from mouvements
@@ -77,8 +81,10 @@ export default function Stock() {
   }
 
   const filtered = lots.filter(r => {
-    const matchSearch = (r.produits?.libelle || '').toLowerCase().includes(search.toLowerCase()) ||
-      (r.numero_lot || '').toLowerCase().includes(search.toLowerCase())
+    const s = search.toLowerCase()
+    const matchSearch = (r.produits?.libelle || '').toLowerCase().includes(s) ||
+      (r.produits?.libelle_fr || '').toLowerCase().includes(s) ||
+      (r.numero_lot || '').toLowerCase().includes(s)
     const alerte = dlcAlerte(r.dlc)
     const matchAlerte = !filterAlerte || alerte === filterAlerte
     return matchSearch && matchAlerte
@@ -91,9 +97,12 @@ export default function Stock() {
           <h2>Stock & Lots</h2>
           <p>{lots.length} lot{lots.length > 1 ? 's' : ''} en stock</p>
         </div>
-        <button className="btn btn-primary" onClick={openCreate}>
-          <Plus size={15} /> Nouveau lot
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <LangToggle value={lang} onChange={changeLang} />
+          <button className="btn btn-primary" onClick={openCreate}>
+            <Plus size={15} /> Nouveau lot
+          </button>
+        </div>
       </div>
 
       <div className="page-body">
@@ -151,7 +160,7 @@ export default function Stock() {
                     return (
                       <tr key={row.id} onClick={() => openEdit(row)}>
                         <td>
-                          <div style={{ fontWeight: 500 }}>{row.produits?.libelle || '—'}</div>
+                          <div style={{ fontWeight: 500 }}>{displayLibelle(row.produits, lang) || '—'}</div>
                           {row.produits?.marque && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{row.produits.marque}</div>}
                         </td>
                         <td>{row.fournisseurs?.nom || '—'}</td>
@@ -187,7 +196,7 @@ export default function Stock() {
                   <label>Produit *</label>
                   <select value={form.produit_id} onChange={e => set('produit_id', e.target.value)}>
                     <option value="">Sélectionner un produit...</option>
-                    {produits.map(p => <option key={p.id} value={p.id}>{p.libelle} {p.marque ? `— ${p.marque}` : ''}</option>)}
+                    {produits.map(p => <option key={p.id} value={p.id}>{displayLibelle(p, lang)} {p.marque ? `— ${p.marque}` : ''}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
