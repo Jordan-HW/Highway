@@ -1179,8 +1179,7 @@ export default function Tarifs() {
           <h2>Référencement et Tarifs</h2>
           <p>{view === 'produit' ? `${filteredProduits.length} produit(s)` : selectedClient ? selectedClient.nom : `${clients.length} client(s)`}</p>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <LangToggle value={lang} onChange={changeLang} />
+        <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-secondary" onClick={openImportModal}><Upload size={15} /> Importer</button>
         </div>
       </div>
@@ -1238,6 +1237,7 @@ export default function Tarifs() {
                             <th key={colId} onClick={() => sortable && handleSort('produit', colId)}
                               style={{ ...(c.width ? { width: c.width } : {}), padding: '6px 6px', cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap' }}>
                               {c.label}
+                              {colId === 'produit' && <LangToggle value={lang} onChange={changeLang} compact />}
                               {sortable && <span style={{ fontSize: 9, color: isSorted ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 700, marginLeft: 3 }}>
                                 {isSorted ? (sortProduit.dir === 'asc' ? '▲' : '▼') : '↕'}
                               </span>}
@@ -1687,6 +1687,7 @@ export default function Tarifs() {
                               <th key={colId} onClick={() => sortable && handleSort('client', colId)}
                                 style={{ ...(c.width ? { width: c.width } : {}), padding: '6px 6px', cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap' }}>
                                 {c.label}
+                                {colId === 'produit' && <LangToggle value={lang} onChange={changeLang} compact />}
                                 {sortable && <span style={{ fontSize: 9, color: isSorted ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 700, marginLeft: 3 }}>
                                   {isSorted ? (sortClient.dir === 'asc' ? '▲' : '▼') : '↕'}
                                 </span>}

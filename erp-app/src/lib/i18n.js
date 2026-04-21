@@ -22,6 +22,12 @@ export function displayIngredients(p, lang) {
   return p.ingredients_vo || ''
 }
 
+export function displayCategorieNom(c, lang) {
+  if (!c) return ''
+  if (lang === 'fr') return c.nom_fr || c.nom || ''
+  return c.nom || ''
+}
+
 export function loadLang(key) {
   try {
     const v = localStorage.getItem(`highway_lang_${key}`)

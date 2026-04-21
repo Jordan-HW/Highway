@@ -97,12 +97,9 @@ export default function Stock() {
           <h2>Stock & Lots</h2>
           <p>{lots.length} lot{lots.length > 1 ? 's' : ''} en stock</p>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <LangToggle value={lang} onChange={changeLang} />
-          <button className="btn btn-primary" onClick={openCreate}>
-            <Plus size={15} /> Nouveau lot
-          </button>
-        </div>
+        <button className="btn btn-primary" onClick={openCreate}>
+          <Plus size={15} /> Nouveau lot
+        </button>
       </div>
 
       <div className="page-body">
@@ -136,7 +133,7 @@ export default function Stock() {
               <table>
                 <thead>
                   <tr>
-                    <th>Produit</th>
+                    <th>Produit<LangToggle value={lang} onChange={changeLang} compact /></th>
                     <th>Fournisseur</th>
                     <th>N° Lot</th>
                     <th>DLC</th>

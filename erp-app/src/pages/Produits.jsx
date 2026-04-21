@@ -5,7 +5,7 @@ import { Plus, Search, X, Package, Edit2, Trash2, Settings2, Download, Upload, C
 import * as XLSX from 'xlsx'
 import ImportProduits from './ImportProduits'
 import LangToggle from '../components/LangToggle'
-import { displayLibelle, displayLibelleCourt, loadLang, saveLang, translateToFr, translateBatch } from '../lib/i18n'
+import { displayLibelle, displayLibelleCourt, displayCategorieNom, loadLang, saveLang, translateToFr } from '../lib/i18n'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatStatut(s) {
@@ -30,7 +30,7 @@ function ReadRow({ label, value, mono }) {
 }
 
 // ─── DetailPanel (right panel on row click) ──────────────────────────────────
-function DetailPanel({ product, marques, categories, lang, onClose, onSaved, onDelete }) {
+function DetailPanel({ product, marques, categories, lang, langFamille, onClose, onSaved, onDelete }) {
   const [panelTab, setPanelTab] = useState('general')
   const [editSection, setEditSection] = useState(null)
   const [form, setForm] = useState({})
@@ -107,7 +107,7 @@ function DetailPanel({ product, marques, categories, lang, onClose, onSaved, onD
   if (!product) return null
 
   const marqueName = product.marques?.nom || marques.find(m => m.id === form.marque_id)?.nom || ''
-  const categorieName = product.categories?.nom || categories.find(c => c.id === form.categorie_id)?.nom || ''
+  const categorieName = displayCategorieNom(product.categories, langFamille) || displayCategorieNom(categories.find(c => c.id === form.categorie_id), langFamille) || ''
 
   const PANEL_TABS = [
     ['general', 'Général'],
@@ -233,7 +233,7 @@ function DetailPanel({ product, marques, categories, lang, onClose, onSaved, onD
                         if (!form.marque_id) return true
                         const mq = marques.find(m => m.id === form.marque_id)
                         return mq?.nomenclature_specifique ? c.marque_id === form.marque_id : !c.marque_id
-                      }).map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+                      }).map(c => <option key={c.id} value={c.id}>{displayCategorieNom(c, langFamille)}</option>)}
                     </select>
                   </div>
                   <div className="form-group"><label>EAN13</label><input value={form.ean13 || ''} onChange={e => set('ean13', e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} /></div>
@@ -469,7 +469,7 @@ const ALL_COLUMNS = [
   { key: 'libelle',             label: 'Produit',         group: 'Général',  default: true,  exportKey: 'libelle' },
   { key: 'ean13',               label: 'EAN13',           group: 'Général',  default: true,  exportKey: 'ean13' },
   { key: 'marque_nom',          label: 'Marque',          group: 'Général',  default: true,  exportKey: r => r.marques?.nom || '' },
-  { key: 'categorie_nom',       label: 'Famille',         group: 'Général',  default: true,  exportKey: r => r.categories?.nom || '' },
+  { key: 'categorie_nom',       label: 'Famille',         group: 'Général',  default: true,  exportKey: 'categorie_nom' },
   { key: 'ref_marque',          label: 'Réf. interne',    group: 'Général',  default: false, exportKey: 'ref_marque' },
   { key: 'statut',              label: 'Statut',          group: 'Général',  default: true,  exportKey: 'statut' },
   { key: 'pcb',                 label: 'Cdt',             group: 'Colisage', default: true,  exportKey: 'pcb' },
@@ -572,7 +572,7 @@ function ColumnPanel({ colOrder, visibleCols, onChange, onClose }) {
 }
 
 // ─── Modale Export Excel ───────────────────────────────────────────────────────
-function ExportModal({ products, allProducts, lang, onClose }) {
+function ExportModal({ products, allProducts, lang, langFamille, onClose }) {
   const [scope, setScope] = useState(products.length > 0 ? 'selected' : 'filtered')
   const [exportCols, setExportCols] = useState(ALL_COLUMNS.filter(c => c.exportKey !== null && c.default).map(c => c.key))
   const groups = [...new Set(ALL_COLUMNS.filter(c => c.exportKey !== null).map(c => c.group))]
@@ -591,6 +591,7 @@ function ExportModal({ products, allProducts, lang, onClose }) {
       const obj = {}
       cols.forEach(col => {
         if (col.key === 'libelle') obj[col.label] = displayLibelle(row, lang)
+        else if (col.key === 'categorie_nom') obj[col.label] = displayCategorieNom(row.categories, langFamille)
         else if (typeof col.exportKey === 'function') obj[col.label] = col.exportKey(row)
         else obj[col.label] = row[col.exportKey] ?? ''
       })
@@ -751,41 +752,10 @@ export default function Produits() {
   const [tooltipDlc, setTooltipDlc]   = useState(false)
   const [translatingMain, setTranslatingMain] = useState(false)
   const [lang, setLang] = useState(() => loadLang('produits'))
-  const [bulkTranslate, setBulkTranslate] = useState(null) // { running, done, total, cancel }
+  const [langFamille, setLangFamille] = useState(() => loadLang('produits_famille'))
 
   function changeLang(v) { setLang(v); saveLang('produits', v) }
-
-  async function runBulkTranslate() {
-    const candidates = rows.filter(p =>
-      (p.libelle && !p.libelle_fr) ||
-      (p.libelle_court && !p.libelle_court_fr) ||
-      (p.description && !p.description_fr) ||
-      (p.ingredients_vo && !p.ingredients_fr)
-    )
-    if (candidates.length === 0) return toast('Aucun produit à traduire', 'default')
-    if (!confirm(`Traduire ${candidates.length} produit(s) ? Seuls les champs vides en FR seront remplis.`)) return
-    const cancelRef = { cancelled: false }
-    setBulkTranslate({ running: true, done: 0, total: candidates.length, cancel: () => { cancelRef.cancelled = true } })
-    let done = 0
-    for (const p of candidates) {
-      if (cancelRef.cancelled) break
-      const patch = {}
-      if (p.libelle && !p.libelle_fr) patch.libelle_fr = await translateToFr(p.libelle)
-      if (p.libelle_court && !p.libelle_court_fr) patch.libelle_court_fr = await translateToFr(p.libelle_court)
-      if (p.description && !p.description_fr) patch.description_fr = await translateToFr(p.description)
-      if (p.ingredients_vo && !p.ingredients_fr) patch.ingredients_fr = await translateToFr(p.ingredients_vo)
-      Object.keys(patch).forEach(k => { if (!patch[k]) delete patch[k] })
-      if (Object.keys(patch).length) {
-        await supabase.from('produits').update(patch).eq('id', p.id)
-      }
-      done++
-      setBulkTranslate(b => b && ({ ...b, done }))
-      await new Promise(r => setTimeout(r, 120))
-    }
-    setBulkTranslate(null)
-    toast(cancelRef.cancelled ? `Annulé — ${done}/${candidates.length} traduits` : `${done} produit(s) traduit(s)`, 'success')
-    fetchAll()
-  }
+  function changeLangFamille(v) { setLangFamille(v); saveLang('produits_famille', v) }
 
   async function translateTextMain(sourceField, targetField) {
     const text = form[sourceField]
@@ -807,7 +777,7 @@ export default function Produits() {
       case 'libelle':          return displayLibelle(row, lang).toLowerCase()
       case 'ean13':            return row.ean13 || ''
       case 'marque_nom':       return (row.marques?.nom || '').toLowerCase()
-      case 'categorie_nom':    return (row.categories?.nom || '').toLowerCase()
+      case 'categorie_nom':    return displayCategorieNom(row.categories, langFamille).toLowerCase()
       case 'ref_marque':       return (row.ref_marque || '').toLowerCase()
       case 'statut':           return row.statut || ''
       case 'pcb':              return row.pcb || 0
@@ -831,9 +801,9 @@ export default function Produits() {
   async function fetchAll() {
     setLoading(true)
     const [{ data: produits }, { data: mqs }, { data: cats }] = await Promise.all([
-      supabase.from('produits').select('*, marques(nom), categories(nom)').order('libelle'),
+      supabase.from('produits').select('*, marques(nom), categories(nom, nom_fr)').order('libelle'),
       supabase.from('marques').select('id, nom, nomenclature_specifique').eq('actif', true).order('nom'),
-      supabase.from('categories').select('id, nom, marque_id').order('nom'),
+      supabase.from('categories').select('id, nom, nom_fr, marque_id').order('nom'),
     ])
     setRows(produits || [])
     setMarques(mqs || [])
@@ -910,7 +880,7 @@ export default function Produits() {
         case 'libelle':          return (row.libelle || '').toLowerCase().includes(v) || (row.libelle_fr || '').toLowerCase().includes(v)
         case 'ean13':            return (row.ean13 || '').includes(v)
         case 'marque_nom':       return (row.marques?.nom || '').toLowerCase().includes(v)
-        case 'categorie_nom':    return (row.categories?.nom || '').toLowerCase().includes(v)
+        case 'categorie_nom':    return displayCategorieNom(row.categories, langFamille).toLowerCase().includes(v)
         case 'ref_marque':       return (row.ref_marque || '').toLowerCase().includes(v)
         case 'statut':           return (row.statut || '').toLowerCase().includes(v) || formatStatut(row.statut).toLowerCase().includes(v)
         case 'code_douanier':    return (row.code_douanier || '').toLowerCase().includes(v)
@@ -940,7 +910,10 @@ export default function Produits() {
       }
       case 'ean13':          return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>{row.ean13 || '—'}</span>
       case 'marque_nom':     return row.marques?.nom || '—'
-      case 'categorie_nom':  return row.categories?.nom ? <span className="badge badge-gray">{row.categories.nom}</span> : '—'
+      case 'categorie_nom': {
+        const nom = displayCategorieNom(row.categories, langFamille)
+        return nom ? <span className="badge badge-gray">{nom}</span> : '—'
+      }
       case 'ref_marque':     return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>{row.ref_marque || '—'}</span>
       case 'statut':         return <span className={`badge ${statutBadge(row.statut)}`}>{formatStatut(row.statut)}</span>
       case 'pcb':            return row.pcb || '—'
@@ -970,9 +943,7 @@ export default function Produits() {
             {selectedIds.size > 0 && <span style={{ marginLeft: 8, color: 'var(--primary)', fontWeight: 600 }}>· {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}</span>}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <LangToggle value={lang} onChange={changeLang} />
-          <button className="btn btn-secondary" onClick={runBulkTranslate} title="Traduire tous les libellés/descriptions manquants en FR"><Languages size={15} /> Traduire tous</button>
+        <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-secondary" onClick={() => setShowImport(true)}><Upload size={15} /> Importer</button>
           <button className="btn btn-secondary" onClick={() => setShowExport(true)}><Download size={15} /> Exporter</button>
           <button className="btn btn-secondary" onClick={() => setShowColPanel(true)}><Settings2 size={15} /> Colonnes</button>
@@ -996,7 +967,7 @@ export default function Produits() {
               if (!filterMarque) return true
               const mq = marques.find(m => m.id === filterMarque)
               return mq?.nomenclature_specifique ? c.marque_id === filterMarque : !c.marque_id
-            }).map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+            }).map(c => <option key={c.id} value={c.id}>{displayCategorieNom(c, langFamille)}</option>)}
           </select>
           <select className="filter-select" value={filterStatut} onChange={e => setFilterStatut(e.target.value)}>
             <option value="">Tous les statuts</option>
@@ -1020,6 +991,8 @@ export default function Produits() {
                         style={{ cursor: col.key === 'photo' ? 'default' : 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           {col.label}
+                          {col.key === 'libelle' && <LangToggle value={lang} onChange={changeLang} compact />}
+                          {col.key === 'categorie_nom' && <LangToggle value={langFamille} onChange={changeLangFamille} compact />}
                           {col.key !== 'photo' && (
                             <span style={{ fontSize: 10, color: sortConfig.key === col.key ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 700 }}>
                               {sortConfig.key === col.key ? (sortConfig.dir === 'asc' ? ' ▲' : ' ▼') : ' ↕'}
@@ -1134,7 +1107,7 @@ export default function Produits() {
                         if (!form.marque_id) return true
                         const mq = marques.find(m => m.id === form.marque_id)
                         return mq?.nomenclature_specifique ? c.marque_id === form.marque_id : !c.marque_id
-                      }).map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+                      }).map(c => <option key={c.id} value={c.id}>{displayCategorieNom(c, langFamille)}</option>)}
                     </select>
                   </div>
                   <div className="form-group"><label>EAN13</label><input value={form.ean13 || ''} onChange={e => set('ean13', e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} /></div>
@@ -1256,29 +1229,13 @@ export default function Produits() {
 
       {showImport   && <ImportProduits onClose={() => setShowImport(false)} onImported={fetchAll} />}
       {showColPanel && <ColumnPanel colOrder={colOrder} visibleCols={visibleCols} onChange={updateColConfig} onClose={() => setShowColPanel(false)} />}
-      {showExport   && <ExportModal products={selectedRows} allProducts={filtered} lang={lang} onClose={() => setShowExport(false)} />}
+      {showExport   && <ExportModal products={selectedRows} allProducts={filtered} lang={lang} langFamille={langFamille} onClose={() => setShowExport(false)} />}
       {photoZoomUrl && (
         <div onClick={() => setPhotoZoomUrl(null)} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
           <img src={photoZoomUrl} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
         </div>
       )}
-      {detailPanel  && <DetailPanel product={detailPanel} marques={marques} categories={categories} lang={lang} onClose={() => setDetailPanel(null)} onSaved={async (currentTab) => { await fetchAll(); const { data } = await supabase.from('produits').select('*, marques(nom), categories(nom)').eq('id', detailPanel.id).single(); if (data) setDetailPanel(data) }} onDelete={(id) => { remove(id); setDetailPanel(null) }} />}
-      {bulkTranslate && (
-        <div className="modal-overlay">
-          <div className="modal" style={{ maxWidth: 420 }}>
-            <div className="modal-header"><h3>Traduction en cours</h3></div>
-            <div className="modal-body">
-              <div style={{ fontSize: 13, marginBottom: 12 }}>{bulkTranslate.done} / {bulkTranslate.total} produit(s)</div>
-              <div style={{ height: 8, background: 'var(--surface-2)', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${Math.round(100 * bulkTranslate.done / Math.max(1, bulkTranslate.total))}%`, background: 'var(--primary)', transition: 'width 0.2s' }} />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => bulkTranslate.cancel()}>Annuler</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {detailPanel  && <DetailPanel product={detailPanel} marques={marques} categories={categories} lang={lang} langFamille={langFamille} onClose={() => setDetailPanel(null)} onSaved={async (currentTab) => { await fetchAll(); const { data } = await supabase.from('produits').select('*, marques(nom), categories(nom, nom_fr)').eq('id', detailPanel.id).single(); if (data) setDetailPanel(data) }} onDelete={(id) => { remove(id); setDetailPanel(null) }} />}
     </div>
   )
 }
