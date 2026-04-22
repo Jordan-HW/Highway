@@ -5,7 +5,8 @@ import { Plus, Search, X, Package, Edit2, Trash2, Settings2, Download, Upload, C
 import * as XLSX from 'xlsx'
 import ImportProduits from './ImportProduits'
 import LangToggle from '../components/LangToggle'
-import { displayLibelle, displayLibelleCourt, displayCategorieNom, loadLang, saveLang, translateToFr } from '../lib/i18n'
+import { displayLibelle, displayLibelleCourt, displayCategorieNom, displayCategoriePath, categorieSortKey, formatEan, loadLang, saveLang, translateToFr, buildCategoryTree } from '../lib/i18n'
+import FamillePath from '../components/FamillePath'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatStatut(s) {
@@ -107,7 +108,8 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
   if (!product) return null
 
   const marqueName = product.marques?.nom || marques.find(m => m.id === form.marque_id)?.nom || ''
-  const categorieName = displayCategorieNom(product.categories, langFamille) || displayCategorieNom(categories.find(c => c.id === form.categorie_id), langFamille) || ''
+  const catFromList = categories.find(c => c.id === form.categorie_id)
+  const categorieName = displayCategoriePath(catFromList, categories, langFamille)
 
   const PANEL_TABS = [
     ['general', 'Général'],
@@ -141,7 +143,7 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayLibelle(product, lang)}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{marqueName}{product.ean13 ? ` · ${product.ean13}` : ''}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{marqueName}{product.ean13 ? ` · ${formatEan(product.ean13)}` : ''}</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <button className="btn-icon" onClick={() => { if (confirm('Supprimer ce produit ?')) { onDelete(product.id); onClose() } }} title="Supprimer"><Trash2 size={15} /></button>
@@ -190,8 +192,8 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
                   <ReadRow label="Libellé court (VO)" value={form.libelle_court} />
                   <ReadRow label="Libellé court (FR)" value={form.libelle_court_fr} />
                   <ReadRow label="Marque" value={marqueName} />
-                  <ReadRow label="Famille" value={categorieName} />
-                  <ReadRow label="EAN13" value={form.ean13} mono />
+                  <ReadRow label="Famille" value={form.categorie_id ? <FamillePath categorieId={form.categorie_id} categories={categories} lang={langFamille} /> : null} />
+                  <ReadRow label="EAN13" value={formatEan(form.ean13)} mono />
                   <ReadRow label="Réf. interne" value={form.ref_marque} mono />
                   <ReadRow label="Statut" value={formatStatut(form.statut)} />
                   <ReadRow label="Description (VO)" value={form.description} />
@@ -229,11 +231,15 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
                   <div className="form-group"><label>Famille</label>
                     <select value={form.categorie_id || ''} onChange={e => set('categorie_id', e.target.value)}>
                       <option value="">Aucune</option>
-                      {categories.filter(c => {
+                      {buildCategoryTree(categories.filter(c => {
                         if (!form.marque_id) return true
                         const mq = marques.find(m => m.id === form.marque_id)
                         return mq?.nomenclature_specifique ? c.marque_id === form.marque_id : !c.marque_id
-                      }).map(c => <option key={c.id} value={c.id}>{displayCategorieNom(c, langFamille)}</option>)}
+                      }), langFamille).map(({ cat, depth }) => (
+                        <option key={cat.id} value={cat.id}>
+                          {depth > 0 ? '\u00a0\u00a0\u00a0\u00a0↳ ' : ''}{displayCategorieNom(cat, langFamille)}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="form-group"><label>EAN13</label><input value={form.ean13 || ''} onChange={e => set('ean13', e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} /></div>
@@ -572,7 +578,7 @@ function ColumnPanel({ colOrder, visibleCols, onChange, onClose }) {
 }
 
 // ─── Modale Export Excel ───────────────────────────────────────────────────────
-function ExportModal({ products, allProducts, lang, langFamille, onClose }) {
+function ExportModal({ products, allProducts, categories, lang, langFamille, onClose }) {
   const [scope, setScope] = useState(products.length > 0 ? 'selected' : 'filtered')
   const [exportCols, setExportCols] = useState(ALL_COLUMNS.filter(c => c.exportKey !== null && c.default).map(c => c.key))
   const groups = [...new Set(ALL_COLUMNS.filter(c => c.exportKey !== null).map(c => c.group))]
@@ -591,7 +597,8 @@ function ExportModal({ products, allProducts, lang, langFamille, onClose }) {
       const obj = {}
       cols.forEach(col => {
         if (col.key === 'libelle') obj[col.label] = displayLibelle(row, lang)
-        else if (col.key === 'categorie_nom') obj[col.label] = displayCategorieNom(row.categories, langFamille)
+        else if (col.key === 'categorie_nom') obj[col.label] = displayCategoriePath(categories.find(c => c.id === row.categorie_id), categories, langFamille)
+        else if (col.key === 'ean13') obj[col.label] = formatEan(row.ean13)
         else if (typeof col.exportKey === 'function') obj[col.label] = col.exportKey(row)
         else obj[col.label] = row[col.exportKey] ?? ''
       })
@@ -747,7 +754,7 @@ export default function Produits() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [showExport, setShowExport]   = useState(false)
   const [showImport, setShowImport]   = useState(false)
-  const [sortConfig, setSortConfig]   = useState({ key: null, dir: 'asc' })
+  const [sortConfig, setSortConfig]   = useState({ key: 'categorie_nom', dir: 'asc' })
   const [colFilters, setColFilters]   = useState({})
   const [tooltipDlc, setTooltipDlc]   = useState(false)
   const [translatingMain, setTranslatingMain] = useState(false)
@@ -777,7 +784,7 @@ export default function Produits() {
       case 'libelle':          return displayLibelle(row, lang).toLowerCase()
       case 'ean13':            return row.ean13 || ''
       case 'marque_nom':       return (row.marques?.nom || '').toLowerCase()
-      case 'categorie_nom':    return displayCategorieNom(row.categories, langFamille).toLowerCase()
+      case 'categorie_nom':    return categorieSortKey(row.categorie_id, categories, displayLibelle(row, 'fr'))
       case 'ref_marque':       return (row.ref_marque || '').toLowerCase()
       case 'statut':           return row.statut || ''
       case 'pcb':              return row.pcb || 0
@@ -803,7 +810,7 @@ export default function Produits() {
     const [{ data: produits }, { data: mqs }, { data: cats }] = await Promise.all([
       supabase.from('produits').select('*, marques(nom), categories(nom, nom_fr)').order('libelle'),
       supabase.from('marques').select('id, nom, nomenclature_specifique').eq('actif', true).order('nom'),
-      supabase.from('categories').select('id, nom, nom_fr, marque_id').order('nom'),
+      supabase.from('categories').select('id, nom, nom_fr, marque_id, parent_id, ordre').order('ordre', { ascending: true }),
     ])
     setRows(produits || [])
     setMarques(mqs || [])
@@ -856,7 +863,9 @@ export default function Produits() {
     const s = search.toLowerCase()
     const matchSearch    = (r.libelle||'').toLowerCase().includes(s) || (r.libelle_fr||'').toLowerCase().includes(s) || (r.libelle_court||'').toLowerCase().includes(s) || (r.libelle_court_fr||'').toLowerCase().includes(s) || (r.ean13||'').includes(s) || (r.marques?.nom||'').toLowerCase().includes(s)
     const matchMarque    = !filterMarque    || r.marque_id    === filterMarque
-    const matchCategorie = !filterCategorie || r.categorie_id === filterCategorie
+    const matchCategorie = !filterCategorie
+      || r.categorie_id === filterCategorie
+      || categories.some(c => c.id === r.categorie_id && c.parent_id === filterCategorie)
     const matchStatut    = !filterStatut    || r.statut       === filterStatut
     return matchSearch && matchMarque && matchCategorie && matchStatut
   })
@@ -880,7 +889,7 @@ export default function Produits() {
         case 'libelle':          return (row.libelle || '').toLowerCase().includes(v) || (row.libelle_fr || '').toLowerCase().includes(v)
         case 'ean13':            return (row.ean13 || '').includes(v)
         case 'marque_nom':       return (row.marques?.nom || '').toLowerCase().includes(v)
-        case 'categorie_nom':    return displayCategorieNom(row.categories, langFamille).toLowerCase().includes(v)
+        case 'categorie_nom':    return categorieSortKey(row.categorie_id, categories, displayLibelle(row, 'fr')).includes(v)
         case 'ref_marque':       return (row.ref_marque || '').toLowerCase().includes(v)
         case 'statut':           return (row.statut || '').toLowerCase().includes(v) || formatStatut(row.statut).toLowerCase().includes(v)
         case 'code_douanier':    return (row.code_douanier || '').toLowerCase().includes(v)
@@ -908,12 +917,10 @@ export default function Produits() {
         const libCourt = displayLibelleCourt(row, lang)
         return <div><div style={{ fontWeight: 500, fontSize: 12 }}>{lib}</div>{libCourt && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{libCourt}</div>}</div>
       }
-      case 'ean13':          return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>{row.ean13 || '—'}</span>
+      case 'ean13':          return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>{formatEan(row.ean13) || '—'}</span>
       case 'marque_nom':     return row.marques?.nom || '—'
-      case 'categorie_nom': {
-        const nom = displayCategorieNom(row.categories, langFamille)
-        return nom ? <span className="badge badge-gray">{nom}</span> : '—'
-      }
+      case 'categorie_nom':
+        return <FamillePath categorieId={row.categorie_id} categories={categories} lang={langFamille} />
       case 'ref_marque':     return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>{row.ref_marque || '—'}</span>
       case 'statut':         return <span className={`badge ${statutBadge(row.statut)}`}>{formatStatut(row.statut)}</span>
       case 'pcb':            return row.pcb || '—'
@@ -963,11 +970,15 @@ export default function Produits() {
           </select>
           <select className="filter-select" value={filterCategorie} onChange={e => setFilterCategorie(e.target.value)}>
             <option value="">Toutes les familles</option>
-            {categories.filter(c => {
+            {buildCategoryTree(categories.filter(c => {
               if (!filterMarque) return true
               const mq = marques.find(m => m.id === filterMarque)
               return mq?.nomenclature_specifique ? c.marque_id === filterMarque : !c.marque_id
-            }).map(c => <option key={c.id} value={c.id}>{displayCategorieNom(c, langFamille)}</option>)}
+            }), langFamille).map(({ cat, depth }) => (
+              <option key={cat.id} value={cat.id}>
+                {depth > 0 ? '\u00a0\u00a0\u00a0\u00a0↳ ' : ''}{displayCategorieNom(cat, langFamille)}
+              </option>
+            ))}
           </select>
           <select className="filter-select" value={filterStatut} onChange={e => setFilterStatut(e.target.value)}>
             <option value="">Tous les statuts</option>
@@ -1103,11 +1114,15 @@ export default function Produits() {
                   <div className="form-group"><label>Famille</label>
                     <select value={form.categorie_id || ''} onChange={e => set('categorie_id', e.target.value)}>
                       <option value="">Aucune</option>
-                      {categories.filter(c => {
+                      {buildCategoryTree(categories.filter(c => {
                         if (!form.marque_id) return true
                         const mq = marques.find(m => m.id === form.marque_id)
                         return mq?.nomenclature_specifique ? c.marque_id === form.marque_id : !c.marque_id
-                      }).map(c => <option key={c.id} value={c.id}>{displayCategorieNom(c, langFamille)}</option>)}
+                      }), langFamille).map(({ cat, depth }) => (
+                        <option key={cat.id} value={cat.id}>
+                          {depth > 0 ? '\u00a0\u00a0\u00a0\u00a0↳ ' : ''}{displayCategorieNom(cat, langFamille)}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="form-group"><label>EAN13</label><input value={form.ean13 || ''} onChange={e => set('ean13', e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} /></div>
@@ -1229,7 +1244,7 @@ export default function Produits() {
 
       {showImport   && <ImportProduits onClose={() => setShowImport(false)} onImported={fetchAll} />}
       {showColPanel && <ColumnPanel colOrder={colOrder} visibleCols={visibleCols} onChange={updateColConfig} onClose={() => setShowColPanel(false)} />}
-      {showExport   && <ExportModal products={selectedRows} allProducts={filtered} lang={lang} langFamille={langFamille} onClose={() => setShowExport(false)} />}
+      {showExport   && <ExportModal products={selectedRows} allProducts={filtered} categories={categories} lang={lang} langFamille={langFamille} onClose={() => setShowExport(false)} />}
       {photoZoomUrl && (
         <div onClick={() => setPhotoZoomUrl(null)} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
           <img src={photoZoomUrl} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />

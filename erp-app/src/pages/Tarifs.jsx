@@ -3,26 +3,27 @@ import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { Search, X, Upload, FileSpreadsheet, ChevronRight, ChevronDown, CheckCircle, AlertTriangle, Save, Plus, Trash2, Check, Percent, Package, Users, Clock, Eye, EyeOff, Settings2, GripVertical, CheckSquare, Square, Download, FileText } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import LangToggle from '../components/LangToggle'
-import { displayLibelle, loadLang, saveLang } from '../lib/i18n'
+import { displayLibelle, displayCategorieNom, displayCategoriePath, categorieSortKey, formatEan, loadLang, saveLang } from '../lib/i18n'
+import FamillePath from '../components/FamillePath'
 
 const EXPORT_COLUMNS = [
   { id: 'photo', label: 'Photo', align: 'center', pdfOnly: true, width: 18 },
-  { id: 'ean', label: 'Code EAN', align: 'left', width: 22 },
+  { id: 'ean', label: 'Code EAN', align: 'center', width: 28 },
   { id: 'libelle', label: 'Désignation', align: 'left' },
-  { id: 'marque', label: 'Marque', align: 'left', width: 22 },
-  { id: 'famille', label: 'Famille', align: 'left', width: 22 },
-  { id: 'taux_tva', label: 'Taux TVA', align: 'right', percent: true, width: 14 },
-  { id: 'pvcHT', label: 'PVC HT', align: 'right', currency: true, width: 16 },
-  { id: 'pvcTTC', label: 'PVC TTC', align: 'right', currency: true, width: 16 },
-  { id: 'cessionHT', label: 'Tarif HT', align: 'right', currency: true, width: 16 },
-  { id: 'cessionTTC', label: 'Tarif TTC', align: 'right', currency: true, width: 16 },
-  { id: 'remisesListe', label: 'Remises appliquées', align: 'left', multiline: true, width: 36 },
-  { id: 'remiseEff', label: 'Remise totale', align: 'right', percent: true, negative: true, width: 18 },
-  { id: 'netHT', label: 'Prix net HT', align: 'right', currency: true, width: 18, bold: true },
-  { id: 'netTTC', label: 'Prix net TTC', align: 'right', currency: true, width: 18, bold: true },
+  { id: 'famille', label: 'Famille', align: 'center', width: 22 },
+  { id: 'taux_tva', label: 'Taux TVA', align: 'center', percent: true, width: 14 },
+  { id: 'pvcHT', label: 'PVC HT', align: 'center', currency: true, width: 16 },
+  { id: 'pvcTTC', label: 'PVC TTC', align: 'center', currency: true, width: 16 },
+  { id: 'cessionHT', label: 'Tarif HT', align: 'center', currency: true, width: 16 },
+  { id: 'cessionTTC', label: 'Tarif TTC', align: 'center', currency: true, width: 16 },
+  { id: 'remisesListe', label: 'Remises', align: 'center', multiline: true, width: 26 },
+  { id: 'remiseEff', label: 'Remise totale', align: 'center', percent: true, negative: true, width: 18 },
+  { id: 'netHT', label: 'Tarif net HT', align: 'center', currency: true, width: 18, bold: true },
+  { id: 'netTTC', label: 'Tarif net TTC', align: 'center', currency: true, width: 18, bold: true },
 ]
 const EXPORT_DEFAULT = ['photo', 'libelle', 'ean', 'taux_tva', 'cessionHT', 'remisesListe', 'remiseEff', 'netHT', 'netTTC']
 
@@ -45,6 +46,7 @@ const PRODUCT_COLUMNS = [
   { id: 'photo', label: '', width: 28, fixed: true },
   { id: 'ean', label: 'EAN13', width: 78 },
   { id: 'produit', label: 'Produit', fixed: true },
+  { id: 'famille', label: 'Famille', width: 130 },
   { id: 'tva', label: 'TVA', width: 56 },
   { id: 'achatHT', label: 'Achat HT', width: 58 },
   { id: 'achatTTC', label: 'Achat TTC', width: 58 },
@@ -62,19 +64,21 @@ const PRODUCT_COLUMNS = [
 const CLIENT_COLUMNS = [
   { id: 'photo', label: '', width: 28, fixed: true },
   { id: 'ref', label: 'Réf.', width: 28, fixed: true },
+  { id: 'ean', label: 'EAN', width: 88 },
   { id: 'produit', label: 'Produit', fixed: true },
-  { id: 'marque', label: 'Marque' },
-  { id: 'cessionHT', label: 'Cession HT', width: 58 },
-  { id: 'cessionTTC', label: 'Cession TTC', width: 62 },
-  { id: 'apRemises', label: 'Ap. remises', width: 62 },
-  { id: 'remises', label: 'Remises appliquées' },
-  { id: 'remiseEff', label: 'Remise eff.', width: 62 },
-  { id: 'prixFixe', label: 'Prix fixé', width: 72 },
-  { id: 'prixEffectif', label: 'Prix effectif', width: 72 },
-  { id: 'pvcHT', label: 'PVC HT', width: 58 },
-  { id: 'pvcTTC', label: 'PVC TTC', width: 58 },
-  { id: 'margeHW', label: 'Marge HW', width: 64 },
-  { id: 'margeCl', label: 'Marge Cl.', width: 64 },
+  { id: 'marque', label: 'Marque', width: 110 },
+  { id: 'famille', label: 'Famille', width: 130 },
+  { id: 'cessionHT', label: 'Cess. HT', width: 54 },
+  { id: 'cessionTTC', label: 'Cess. TTC', width: 58 },
+  { id: 'apRemises', label: 'Ap. rem.', width: 56 },
+  { id: 'remises', label: 'Remises', width: 150 },
+  { id: 'remiseEff', label: 'Rem. eff.', width: 56 },
+  { id: 'prixFixe', label: 'Prix fixé', width: 64 },
+  { id: 'prixEffectif', label: 'Prix eff.', width: 64 },
+  { id: 'pvcHT', label: 'PVC HT', width: 54 },
+  { id: 'pvcTTC', label: 'PVC TTC', width: 54 },
+  { id: 'margeHW', label: 'M. HW', width: 56 },
+  { id: 'margeCl', label: 'M. Cl.', width: 56 },
 ]
 
 function loadColConfig(key, columns) {
@@ -219,8 +223,8 @@ export default function Tarifs() {
   const [showColSettings, setShowColSettings] = useState(false)
 
   // Tri
-  const [sortProduit, setSortProduit] = useState({ key: null, dir: 'asc' })
-  const [sortClient, setSortClient] = useState({ key: null, dir: 'asc' })
+  const [sortProduit, setSortProduit] = useState({ key: 'famille', dir: 'asc' })
+  const [sortClient, setSortClient] = useState({ key: 'famille', dir: 'asc' })
 
   // Export modale (vue client)
   const [exportModal, setExportModal] = useState(null) // null | { format, cols, scope, title, generating }
@@ -289,10 +293,10 @@ export default function Tarifs() {
     setLoading(true)
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
     const [{ data: prods }, { data: mqs }, { data: cats }, { data: cls }, { data: ta }, { data: tv }, { data: ar }, { data: recentHist }] = await Promise.all([
-      supabase.from('produits').select('*, marques(nom), categories(nom)').eq('statut', 'actif').order('libelle'),
-      supabase.from('marques').select('id, nom').eq('actif', true).order('nom'),
-      supabase.from('categories').select('id, nom, marque_id').order('nom'),
-      supabase.from('clients').select('id, nom, type').order('nom'),
+      supabase.from('produits').select('*, marques(nom, logo_url), categories(nom, nom_fr, parent_id)').eq('statut', 'actif').order('libelle'),
+      supabase.from('marques').select('id, nom, logo_url').eq('actif', true).order('nom'),
+      supabase.from('categories').select('id, nom, nom_fr, marque_id, parent_id, ordre').order('ordre', { ascending: true }),
+      supabase.from('clients').select('id, nom, type, logo_url').order('nom'),
       supabase.from('tarifs_achat').select('*').order('date_debut', { ascending: false }),
       supabase.from('tarifs_vente').select('*').order('date_debut', { ascending: false }),
       supabase.from('client_remises').select('*').order('ordre'),
@@ -342,8 +346,9 @@ export default function Tarifs() {
     const pvprVal = edit.pvpr !== '' ? parseFloat(edit.pvpr) : null
     const pvprHT = pvprVal != null ? pvprVal / (1 + tva / 100) : null
     switch (key) {
-      case 'ean': return p.ean13 || ''
+      case 'ean': return formatEan(p.ean13) || ''
       case 'produit': return displayLibelle(p, lang).toLowerCase()
+      case 'famille': return categorieSortKey(p.categorie_id, categories, displayLibelle(p, 'fr'))
       case 'tva': return tva
       case 'achatHT': return achatHT ?? -Infinity
       case 'achatTTC': return achatHT != null ? achatHT * (1 + tva / 100) : -Infinity
@@ -378,6 +383,7 @@ export default function Tarifs() {
       case 'ref': return isRef ? 1 : 0
       case 'produit': return displayLibelle(p, lang).toLowerCase()
       case 'marque': return (p.marques?.nom || '').toLowerCase()
+      case 'famille': return categorieSortKey(p.categorie_id, categories, displayLibelle(p, 'fr'))
       case 'cessionHT': return genPrice ?? -Infinity
       case 'cessionTTC': return genPrice != null ? genPrice * (1 + tva / 100) : -Infinity
       case 'apRemises': return afterRemises ?? -Infinity
@@ -409,10 +415,10 @@ export default function Tarifs() {
     const effPct = remiseSteps.length ? (1 - remiseSteps.reduce((acc, s) => acc * (1 - s.pct / 100), 1)) * 100 : 0
     switch (colId) {
       case 'photo': return p.photo_url || ''
-      case 'ean': return p.ean13 || ''
-      case 'libelle': return displayLibelle(p, lang)
+      case 'ean': return formatEan(p.ean13) || ''
+      case 'libelle': return displayLibelle(p, 'fr')
       case 'marque': return p.marques?.nom || ''
-      case 'famille': return categories.find(c => c.id === p.categorie_id)?.nom || ''
+      case 'famille': return familleLabelFr(p) || ''
       case 'taux_tva': return p.taux_tva != null ? Math.round(parseFloat(p.taux_tva) * 100) / 100 : null
       case 'pvcHT': return pvpHT != null ? Math.round(pvpHT * 100) / 100 : null
       case 'pvcTTC': return pvpTTC
@@ -476,43 +482,244 @@ export default function Tarifs() {
     } catch { return false }
   }
 
+  // Les exports sont TOUJOURS triés par marque > famille > sous-famille > libellé FR alphabétique,
+  // quel que soit le tri affiché à l'écran (comportement attendu par les clients).
   function getExportProduits(scope) {
     let rows = filteredProduits
     if (scope === 'ref') rows = rows.filter(p => clientRefs.has(p.id))
-    return sortRows(rows, sortClient, getSortValueClient)
+    return [...rows].sort((a, b) => {
+      const ma = (a.marques?.nom || '').toLowerCase()
+      const mb = (b.marques?.nom || '').toLowerCase()
+      if (ma !== mb) return ma < mb ? -1 : 1
+      const ka = categorieSortKey(a.categorie_id, categories, displayLibelle(a, 'fr'))
+      const kb = categorieSortKey(b.categorie_id, categories, displayLibelle(b, 'fr'))
+      return ka < kb ? -1 : ka > kb ? 1 : 0
+    })
   }
 
-  function exportExcel({ cols, scope, title }) {
+  // Retourne l'intitulé complet de la famille (FR) pour un produit, ou null si pas de famille.
+  function familleLabelFr(p) {
+    const cat = categories.find(c => c.id === p.categorie_id)
+    if (!cat) return null
+    const nom = displayCategorieNom(cat, 'fr')
+    if (!cat.parent_id) return nom
+    const parent = categories.find(c => c.id === cat.parent_id)
+    return parent ? `${displayCategorieNom(parent, 'fr')} › ${nom}` : nom
+  }
+
+  async function exportExcel({ cols, scope, title }) {
     const client = selectedClient
     const rows = getExportProduits(scope)
-    const activeCols = cols.map(id => EXPORT_COLUMNS.find(c => c.id === id)).filter(c => c && !c.pdfOnly)
-    const headerRow = activeCols.map(c => c.label)
-    const dataRows = rows.map(p => activeCols.map(c => {
-      const v = getExportValue(p, c.id)
-      return v ?? ''
-    }))
-    const sheetData = [
-      [title || 'Liste tarifaire'],
-      [`Client : ${client.nom}`],
-      [`Émis le ${new Date().toLocaleDateString('fr-FR')}`],
-      [],
-      headerRow,
-      ...dataRows,
+
+    // Collecter tous les labels de remises uniques pour créer une colonne par remise
+    function getRemisesForProd(p) {
+      const general = getGeneralVente(p.id)
+      const genPrice = general?.prix_vente_ht ?? null
+      if (!genPrice) return []
+      const r = applyRemisesCascade(genPrice, clientRemises, p.id, p.marque_id, p.categorie_id)
+      return r?.steps || []
+    }
+    const remiseLabelsSet = new Set()
+    for (const p of rows) {
+      for (const s of getRemisesForProd(p)) remiseLabelsSet.add(s.label || 'Remise')
+    }
+    const remiseLabels = Array.from(remiseLabelsSet)
+
+    // Ordre strict : Marque > Famille > Sous-famille en tête, puis les colonnes
+    // exactement dans l'ordre choisi par l'utilisateur dans le modal.
+    // La colonne "Remises appliquées" (remisesListe) est éclatée en place
+    // en autant de colonnes qu'il y a de labels de remise.
+    const xlCols = [
+      { id: 'marque', label: 'Marque', width: 18 },
+      { id: 'famillePrincipale', label: 'Famille', width: 18 },
+      { id: 'sousFamille', label: 'Sous-famille', width: 18 },
     ]
-    const ws = XLSX.utils.aoa_to_sheet(sheetData)
-    ws['!cols'] = activeCols.map(c => ({ wch: c.id === 'libelle' ? 40 : c.id === 'remisesListe' ? 28 : 14 }))
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Tarifs')
-    const filename = `Tarifs_${client.nom.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`
-    XLSX.writeFile(wb, filename)
+    for (const id of cols) {
+      if (id === 'famille') continue // redondant avec Famille + Sous-famille
+      if (id === 'photo') { xlCols.push({ id: 'photo', label: 'Photo', width: 12 }); continue }
+      if (id === 'remisesListe') {
+        for (const l of remiseLabels) xlCols.push({ id: `rem:${l}`, label: l, width: 12 })
+        continue
+      }
+      const col = EXPORT_COLUMNS.find(c => c.id === id)
+      if (!col) continue
+      const width = id === 'libelle' ? 45 : id === 'ean' ? 16 : 14
+      xlCols.push({ id, label: col.label, width })
+    }
+
+    // ── Construction du classeur ExcelJS ──
+    const wb = new ExcelJS.Workbook()
+    wb.creator = 'Highway'
+    wb.created = new Date()
+    const ws = wb.addWorksheet('Tarifs', {
+      views: [{ state: 'frozen', ySplit: 5 }],
+    })
+
+    // Largeurs
+    ws.columns = xlCols.map(c => ({ width: c.width || 14 }))
+
+    const PRIMARY = 'FF5A4A7A'       // violet primary
+    const PRIMARY_LIGHT = 'FFEDE9F6'  // violet clair pour l'alternance
+    const PRIMARY_SOFT = 'FFF7F5FB'   // alternance plus subtile
+    const BORDER_COLOR = 'FFE0DDE8'
+    const TEXT_DARK = 'FF1A1820'
+    const TEXT_MUTED = 'FF6B6780'
+
+    // Logo Highway — inséré en haut à gauche (A1:C3 zone)
+    try {
+      const logoRes = await fetch('/highway-logo-light.png')
+      const logoBuf = await logoRes.arrayBuffer()
+      const logoImgId = wb.addImage({ buffer: logoBuf, extension: 'png' })
+      ws.addImage(logoImgId, { tl: { col: 0, row: 0 }, ext: { width: 130, height: 40 } })
+    } catch {}
+
+    // Ligne 1 : réservée au logo (espace visuel)
+    ws.getRow(1).height = 28
+    // Ligne 2 : titre | client (à droite)
+    const titleRow = ws.getRow(2)
+    titleRow.height = 22
+    titleRow.getCell(1).value = title || 'Liste tarifaire'
+    titleRow.getCell(1).font = { name: 'Calibri', bold: true, size: 16, color: { argb: TEXT_DARK } }
+    const clientCol = Math.max(4, xlCols.length)
+    titleRow.getCell(clientCol).value = client.nom
+    titleRow.getCell(clientCol).font = { name: 'Calibri', bold: true, size: 13, color: { argb: PRIMARY } }
+    titleRow.getCell(clientCol).alignment = { horizontal: 'right' }
+
+    // Ligne 3 : nb référence | date à droite
+    const refsRow = ws.getRow(3)
+    refsRow.height = 16
+    refsRow.getCell(1).value = `${rows.length} référence(s)`
+    refsRow.getCell(1).font = { name: 'Calibri', size: 10, color: { argb: TEXT_MUTED } }
+    const dRaw = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+    const dateFr = dRaw.charAt(0).toUpperCase() + dRaw.slice(1)
+    refsRow.getCell(clientCol).value = dateFr
+    refsRow.getCell(clientCol).font = { name: 'Calibri', bold: true, size: 11, color: { argb: PRIMARY } }
+    refsRow.getCell(clientCol).alignment = { horizontal: 'right' }
+
+    // Ligne 4 : vide (séparation visuelle)
+    ws.getRow(4).height = 6
+
+    // Ligne 5 : en-têtes de colonnes (violet primary, texte blanc, gras)
+    const headerRowIdx = 5
+    const headerRow = ws.getRow(headerRowIdx)
+    headerRow.height = 24
+    for (let i = 0; i < xlCols.length; i++) {
+      const cell = headerRow.getCell(i + 1)
+      cell.value = xlCols[i].label
+      cell.font = { name: 'Calibri', bold: true, size: 11, color: { argb: 'FFFFFFFF' } }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PRIMARY } }
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+      cell.border = {
+        top: { style: 'thin', color: { argb: PRIMARY } },
+        bottom: { style: 'medium', color: { argb: PRIMARY } },
+        left: { style: 'thin', color: { argb: PRIMARY } },
+        right: { style: 'thin', color: { argb: PRIMARY } },
+      }
+    }
+
+    // ── Lignes de données ──
+    function cellValueFor(p, colId) {
+      if (colId === 'marque') return p.marques?.nom || ''
+      if (colId === 'famillePrincipale') {
+        const cat = categories.find(c => c.id === p.categorie_id)
+        if (!cat) return ''
+        if (cat.parent_id) return displayCategorieNom(categories.find(c => c.id === cat.parent_id), 'fr')
+        return displayCategorieNom(cat, 'fr')
+      }
+      if (colId === 'sousFamille') {
+        const cat = categories.find(c => c.id === p.categorie_id)
+        if (!cat || !cat.parent_id) return ''
+        return displayCategorieNom(cat, 'fr')
+      }
+      if (colId === 'photo') return p.photo_url ? { text: 'Voir', hyperlink: p.photo_url, tooltip: 'Voir la photo' } : ''
+      if (colId.startsWith('rem:')) {
+        const label = colId.slice(4)
+        const steps = getRemisesForProd(p)
+        const match = steps.find(s => (s.label || 'Remise') === label)
+        return match ? -match.pct / 100 : ''
+      }
+      // remiseEff : getExportValue renvoie un pourcentage (ex. 5.25). Excel formate en %, on doit
+      // donc stocker une fraction (-0.0525) pour un affichage "-5,25 %".
+      if (colId === 'remiseEff') {
+        const v = getExportValue(p, colId)
+        return v != null ? -v / 100 : null
+      }
+      return getExportValue(p, colId)
+    }
+
+    let r = headerRowIdx + 1
+    for (const p of rows) {
+      const row = ws.getRow(r)
+      for (let i = 0; i < xlCols.length; i++) {
+        const col = xlCols[i]
+        const v = cellValueFor(p, col.id)
+        const cell = row.getCell(i + 1)
+        if (v && typeof v === 'object' && v.hyperlink) {
+          cell.value = { text: v.text, hyperlink: v.hyperlink, tooltip: v.tooltip }
+          cell.font = { name: 'Calibri', size: 10, color: { argb: PRIMARY }, underline: true }
+        } else {
+          cell.value = v === '' ? null : v
+          cell.font = { name: 'Calibri', size: 10, color: { argb: TEXT_DARK } }
+        }
+        // Alignement
+        if (col.id === 'libelle' || col.id === 'marque' || col.id === 'famillePrincipale' || col.id === 'sousFamille') {
+          cell.alignment = { horizontal: 'left', vertical: 'middle' }
+        } else {
+          cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        }
+        // Formats
+        if (col.id.startsWith('rem:') || col.id === 'remiseEff') {
+          cell.numFmt = '0.00%'
+        } else if (col.id === 'cessionHT' || col.id === 'cessionTTC' || col.id === 'pvcHT' || col.id === 'pvcTTC' || col.id === 'netHT' || col.id === 'netTTC') {
+          cell.numFmt = '#,##0.00 "€"'
+        } else if (col.id === 'taux_tva') {
+          cell.numFmt = '0.0" %"'
+        }
+        // Bordures fines partout (lignes séparatrices)
+        cell.border = {
+          top: { style: 'thin', color: { argb: BORDER_COLOR } },
+          bottom: { style: 'thin', color: { argb: BORDER_COLOR } },
+          left: { style: 'thin', color: { argb: BORDER_COLOR } },
+          right: { style: 'thin', color: { argb: BORDER_COLOR } },
+        }
+        // Alternance (zebra) — 1 ligne sur 2 en violet très clair
+        if ((r - headerRowIdx) % 2 === 0) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PRIMARY_SOFT } }
+        }
+        // Colonnes Tarif net en gras
+        if (col.id === 'netHT' || col.id === 'netTTC') {
+          cell.font = { ...cell.font, bold: true }
+        }
+      }
+      r++
+    }
+
+    // Auto-filtre sur la ligne d'en-tête + toutes les lignes produit
+    const lastCol = ws.getColumn(xlCols.length).letter
+    ws.autoFilter = {
+      from: { row: headerRowIdx, column: 1 },
+      to: { row: r - 1, column: xlCols.length },
+    }
+
+    // Générer et télécharger
+    const buffer = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Tarifs_${client.nom.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
     toast('Export Excel généré', 'success')
   }
 
   async function exportPDF({ cols, scope, title }) {
     const client = selectedClient
     const rows = getExportProduits(scope)
-    // Respecte l'ordre choisi par l'utilisateur (cols est ordonné) + filtre sur les cols connues
-    const activeCols = cols.map(id => EXPORT_COLUMNS.find(c => c.id === id)).filter(Boolean)
+    // On masque la colonne Famille dans le tableau : l'info est affichée en en-tête de groupe.
+    const activeCols = cols.map(id => EXPORT_COLUMNS.find(c => c.id === id)).filter(c => c && c.id !== 'famille')
     const includePhotos = activeCols.some(c => c.id === 'photo')
 
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
@@ -523,9 +730,10 @@ export default function Tarifs() {
     const hasPoppins = await registerPoppinsFont(doc)
     const FONT = hasPoppins ? 'Poppins' : 'helvetica'
 
-    // Logo (fond blanc du kit = naturellement fondu sur page blanche)
+    // Logo Highway
     let logo = null
     try { logo = await loadImageAsDataURL('/highway-logo-light.png', 'image/png') } catch {}
+
 
     // Photos produits
     const photoMap = {}
@@ -536,8 +744,8 @@ export default function Tarifs() {
       }))
     }
 
-    const PRIMARY = [90, 74, 122]        // #5A4A7A
-    const PRIMARY_LIGHT = [237, 233, 246] // #EDE9F6
+    const PRIMARY = [90, 74, 122]        // #5A4A7A — en-tête de colonnes
+    const PRIMARY_LIGHT = [237, 233, 246] // #EDE9F6 — bande famille
     const ALT_ROW = [247, 245, 251]
     const TEXT_DARK = [26, 24, 32]
     const TEXT_MUTED = [158, 154, 176]
@@ -548,62 +756,99 @@ export default function Tarifs() {
     doc.setFillColor(...PRIMARY)
     doc.rect(0, 0, pageWidth, 3, 'F')
 
-    // ── En-tête blanc : logo à gauche, méta à droite ──
+    // Date format "Mois année" (ex. "Avril 2026")
+    const dRaw = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+    const dateFr = dRaw.charAt(0).toUpperCase() + dRaw.slice(1)
+
+    // ── En-tête : logo Highway à gauche, date à droite (plus grosse) ──
     if (logo) {
-      const h = 16
+      const h = 12
       const w = h * (logo.width / logo.height)
-      doc.addImage(logo.data, 'PNG', 10, 7, w, h)
+      doc.addImage(logo.data, 'PNG', 10, 5, w, h)
     } else {
       doc.setFont(FONT, 'bold')
       doc.setTextColor(...TEXT_DARK)
-      doc.setFontSize(22)
-      doc.text('Highway', 10, 20)
-      doc.setFont(FONT, 'normal')
-      doc.setFontSize(7)
-      doc.setTextColor(...PRIMARY)
-      doc.text('ROAD TO THE FINEST', 10, 25)
+      doc.setFontSize(18)
+      doc.text('Highway', 10, 13)
     }
-    // Méta (haut droite)
-    doc.setFont(FONT, 'normal')
-    doc.setTextColor(...TEXT_SECONDARY)
-    doc.setFontSize(9)
-    doc.text(`Émis le ${new Date().toLocaleDateString('fr-FR')}`, pageWidth - 10, 13, { align: 'right' })
-    doc.text(`${rows.length} référence(s)`, pageWidth - 10, 19, { align: 'right' })
-
-    // ── Séparateur violet clair ──
-    doc.setDrawColor(...PRIMARY_LIGHT)
-    doc.setLineWidth(0.5)
-    doc.line(10, 28, pageWidth - 10, 28)
-
-    // ── Titre + client ──
+    // Date (haut droite, plus grosse)
     doc.setFont(FONT, 'bold')
     doc.setTextColor(...TEXT_DARK)
-    doc.setFontSize(15)
-    doc.text(title || 'Liste tarifaire', 10, 37)
-    doc.setFont(FONT, 'normal')
-    doc.setFontSize(10)
-    doc.setTextColor(...TEXT_SECONDARY)
-    doc.text(`Client : ${client.nom}`, 10, 42.5)
+    doc.setFontSize(12)
+    doc.text(dateFr, pageWidth - 10, 13, { align: 'right' })
 
-    // ── Table ──
+    // ── Titre seul (le nom du client est inclus dans le titre si besoin) ──
+    doc.setFont(FONT, 'bold')
+    doc.setTextColor(...TEXT_DARK)
+    doc.setFontSize(14)
+    const titleText = title || 'Liste tarifaire'
+    doc.text(titleText, 10, 27)
+
+    // Nombre de références sous le titre
+    doc.setFont(FONT, 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(...TEXT_MUTED)
+    doc.text(`${rows.length} référence(s)`, 10, 32)
+
+    // ── Séparateur violet clair (déplacé sous le bloc titre/client) ──
+    doc.setDrawColor(...PRIMARY_LIGHT)
+    doc.setLineWidth(0.3)
+    doc.line(10, 35, pageWidth - 10, 35)
+
+    let tableStartY = 38
+
+    // ── Table avec un en-tête unique par combo marque + famille/sous-famille ──
+    // Format : "{Marque} › {Famille} › {Sous-famille}"
     const head = [activeCols.map(c => c.label)]
-    const body = rows.map(p => activeCols.map(c => {
-      if (c.id === 'photo') return ''
-      const v = getExportValue(p, c.id)
-      return formatExportCell(v, c)
-    }))
+    const body = []
+    const bodyRowMeta = []
+    let lastGroupKey = null
+    for (const p of rows) {
+      const brandName = p.marques?.nom || 'Sans marque'
+      const familleLabel = familleLabelFr(p) || 'Sans famille'
+      const groupLabel = `${brandName} › ${familleLabel}`
+      if (groupLabel !== lastGroupKey) {
+        body.push([{
+          content: groupLabel,
+          colSpan: activeCols.length,
+          styles: {
+            fontStyle: 'bold',
+            fontSize: 9,
+            fillColor: PRIMARY_LIGHT,
+            textColor: PRIMARY,
+            halign: 'left',
+            cellPadding: { top: 1.5, right: 4, bottom: 1.5, left: 4 },
+            minCellHeight: 6,
+          },
+        }])
+        bodyRowMeta.push({ kind: 'famille' })
+        lastGroupKey = groupLabel
+      }
+      body.push(activeCols.map(c => {
+        if (c.id === 'photo') return ''
+        const v = getExportValue(p, c.id)
+        return formatExportCell(v, c)
+      }))
+      bodyRowMeta.push({ kind: 'product', produit: p })
+    }
 
     const colStyles = activeCols.reduce((acc, c, i) => {
       acc[i] = { halign: c.align || 'left' }
       if (c.width) acc[i].cellWidth = c.width
       if (c.bold) acc[i].fontStyle = 'bold'
+      // EAN : force sur une seule ligne (pas de retour à la ligne) + largeur suffisante pour 13 chiffres
+      if (c.id === 'ean') {
+        acc[i].overflow = 'visible'
+        acc[i].cellWidth = Math.max(c.width || 28, 30)
+      }
       return acc
     }, {})
 
     autoTable(doc, {
       head, body,
-      startY: 48,
+      startY: tableStartY,
       theme: 'striped',
+      rowPageBreak: 'avoid', // pas de produit coupé entre deux pages
       styles: {
         font: FONT,
         fontSize: 8,
@@ -625,11 +870,36 @@ export default function Tarifs() {
       alternateRowStyles: { fillColor: ALT_ROW },
       columnStyles: colStyles,
       bodyStyles: includePhotos ? { minCellHeight: 16 } : undefined,
-      margin: { left: 8, right: 8, top: 30, bottom: 14 },
+      margin: { left: 8, right: 8, top: 18, bottom: 14 },
+      willDrawCell: (data) => {
+        // Empêche qu'un en-tête de famille soit orphelin en bas de page :
+        // si moins de 2 lignes de produits peuvent tenir après, on force un saut de page.
+        if (data.section !== 'body' || data.column.index !== 0) return
+        const meta = bodyRowMeta[data.row.index]
+        if (meta?.kind !== 'famille') return
+        let upcomingProducts = 0
+        for (let i = data.row.index + 1; i < bodyRowMeta.length; i++) {
+          const m = bodyRowMeta[i]
+          if (m.kind === 'famille') break
+          if (m.kind === 'product') upcomingProducts++
+        }
+        const productsToFit = Math.min(upcomingProducts, 2)
+        const productRowHeight = includePhotos ? 16 : 7
+        const headerHeight = 6
+        const minBlock = headerHeight + productsToFit * productRowHeight
+        const pageH = doc.internal.pageSize.getHeight()
+        const bottomMargin = 14
+        if (data.cursor.y + minBlock > pageH - bottomMargin) {
+          // Force un saut de page avant de dessiner cet en-tête
+          data.cursor.y = pageH + 1
+        }
+      },
       didDrawCell: (data) => {
         if (data.section !== 'body') return
+        const meta = bodyRowMeta[data.row.index]
+        if (!meta || meta.kind !== 'product') return
         const col = activeCols[data.column.index]
-        const p = rows[data.row.index]
+        const p = meta.produit
         if (!p || !col) return
         if (col.id === 'photo') {
           const img = photoMap[p.id]
@@ -665,26 +935,26 @@ export default function Tarifs() {
         doc.setFillColor(...PRIMARY)
         doc.rect(0, 0, pageWidth, 3, 'F')
 
-        // Pages suivantes : logo compact + titre + client
+        // Pages suivantes : logo très compact + titre
         if (pageNum > 1) {
           if (logo) {
-            const h = 10
+            const h = 7
             const w = h * (logo.width / logo.height)
-            doc.addImage(logo.data, 'PNG', 10, 6, w, h)
+            doc.addImage(logo.data, 'PNG', 10, 5, w, h)
           }
           doc.setFont(FONT, 'normal')
           doc.setTextColor(...TEXT_SECONDARY)
-          doc.setFontSize(8)
-          doc.text(`${title || 'Liste tarifaire'} — ${client.nom}`, pageWidth - 10, 12, { align: 'right' })
+          doc.setFontSize(7.5)
+          doc.text(title || 'Liste tarifaire', pageWidth - 10, 9, { align: 'right' })
         }
 
-        // Bande du bas + pied de page
+        // Bande du bas + pied de page + rappel confidentialité (même police que le reste)
         doc.setFillColor(...PRIMARY)
         doc.rect(0, pageHeight - 3, pageWidth, 3, 'F')
         doc.setFont(FONT, 'normal')
         doc.setFontSize(7)
         doc.setTextColor(...TEXT_MUTED)
-        doc.text('Highway — Tarifs confidentiels', 10, pageHeight - 6)
+        doc.text('Document confidentiel — réservé à l\'usage exclusif du destinataire, toute diffusion est strictement interdite', 10, pageHeight - 6)
         doc.text(`Page ${pageNum} / ${pageCount}`, pageWidth - 10, pageHeight - 6, { align: 'right' })
       },
     })
@@ -1296,8 +1566,11 @@ export default function Tarifs() {
                         // Build cells map for dynamic column rendering
                         const cells = {
                           photo: <td key="photo" style={{ padding: '2px 4px' }}><Thumb url={p.photo_url} /></td>,
-                          ean: <td key="ean" style={{ padding: '2px 6px', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{p.ean13 || '—'}</td>,
+                          ean: <td key="ean" style={{ padding: '2px 6px', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{formatEan(p.ean13) || '—'}</td>,
                           produit: <td key="produit" style={{ cursor: 'pointer', padding: '2px 6px' }} onClick={() => toggleAccordion(p.id)}><div style={{ fontWeight: 500, fontSize: 12 }}>{displayLibelle(p, lang)}</div></td>,
+                          famille: <td key="famille" style={{ padding: '2px 6px', fontSize: 11 }}>
+                            <FamillePath categorieId={p.categorie_id} categories={categories} lang={lang} />
+                          </td>,
                           tva: <td key="tva" style={{ padding: '2px 6px', background: df.tva ? (src === 'tva' ? hl : hlS) : undefined }} onClick={() => { if (editingField !== `${p.id}-tva`) setEditingField(`${p.id}-tva`) }}>
                             {editingField === `${p.id}-tva` ? (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1377,6 +1650,7 @@ export default function Tarifs() {
                               photo: <td key="photo" style={hs}></td>,
                               ean: <td key="ean" style={hs}></td>,
                               produit: <td key="produit" style={hs}>Client</td>,
+                              famille: <td key="famille" style={hs}></td>,
                               tva: <td key="tva" style={hs}>Prix fixé</td>,
                               achatHT: <td key="achatHT" style={hs}>Prix gén.</td>,
                               achatTTC: <td key="achatTTC" style={hs}>Ap. rem.</td>,
@@ -1405,6 +1679,7 @@ export default function Tarifs() {
                                     ))}</span>}
                                     {cr.fixedPrice != null && <span style={{ fontSize: 8, background: '#E6C547', color: '#5C4B00', padding: '1px 4px', borderRadius: 3, fontWeight: 700, marginLeft: 4 }}>FIXÉ</span>}
                                   </td>,
+                                  famille: <td key="famille" style={cs}></td>,
                                   tva: <td key="tva" style={cs}>{cr.fixedPrice != null ? <span style={{ fontWeight: 600 }}>{cr.fixedPrice.toFixed(2)}</span> : ''}</td>,
                                   achatHT: <td key="achatHT" style={{ ...cs, color: 'var(--text-muted)' }}>{cr.genVal != null ? `${cr.genVal.toFixed(2)}` : '—'}</td>,
                                   achatTTC: <td key="achatTTC" style={{ ...cs, color: 'var(--text-muted)' }}>{cr.afterRemises != null ? `${cr.afterRemises.toFixed(2)}` : '—'}</td>,
@@ -1726,11 +2001,14 @@ export default function Tarifs() {
                                 {isRef && <Check size={11} color="#fff" strokeWidth={3} />}
                               </button>
                             </td>,
-                            produit: <td key="produit" style={{ padding: '2px 6px' }}>
+                            produit: <td key="produit" style={{ padding: '2px 6px', minWidth: 240 }}>
                               <div style={{ fontWeight: 500, fontSize: 12 }}>{displayLibelle(p, lang)}</div>
-                              {p.ean13 && <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.ean13}</div>}
                             </td>,
+                            ean: <td key="ean" style={{ padding: '2px 6px', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{formatEan(p.ean13) || '—'}</td>,
                             marque: <td key="marque" style={{ padding: '2px 6px' }}>{p.marques?.nom || '—'}</td>,
+                            famille: <td key="famille" style={{ padding: '2px 6px', fontSize: 11 }}>
+                              <FamillePath categorieId={p.categorie_id} categories={categories} lang={lang} />
+                            </td>,
                             cessionHT: <td key="cessionHT" style={{ padding: '2px 6px' }}>{genPrice != null ? `${Number(genPrice).toFixed(2)} €` : '—'}</td>,
                             cessionTTC: <td key="cessionTTC" style={{ padding: '2px 6px' }}>{genPrice != null ? `${(Number(genPrice) * (1 + tva / 100)).toFixed(2)} €` : '—'}</td>,
                             apRemises: <td key="apRemises" style={{ padding: '2px 6px', color: hasRemises ? 'var(--primary)' : 'var(--text-muted)' }}>

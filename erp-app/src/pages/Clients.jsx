@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
 import { Plus, Search, X, Users, Edit2, Trash2, UserPlus } from 'lucide-react'
+import LogoUploader from '../components/LogoUploader'
 
 const empty = {
   nom: '', code: '', type: 'indépendant', enseigne: '', siret: '',
   tva_intracommunautaire: '', adresse_facturation: '', adresse_livraison_principale: '',
   code_postal: '', ville: '', pays: 'France',
   conditions_paiement: '', delai_paiement_jours: 30,
-  mode_transmission_commande: 'email', code_edi: '', notes: '', actif: true
+  mode_transmission_commande: 'email', code_edi: '', notes: '', actif: true, logo_url: ''
 }
 
 const emptyContact = { prenom: '', nom: '', fonction: '', email: '', telephone: '' }
@@ -297,6 +298,7 @@ export default function Clients() {
                   <ReadRow label="TVA intracomm." value={form.tva_intracommunautaire} />
                   <ReadRow label="Pays" value={form.pays} />
                   <ReadRow label="Notes" value={form.notes} />
+                  <ReadRow label="Logo" value={form.logo_url ? <img src={form.logo_url} alt="logo" style={{ maxHeight: 32, maxWidth: 120 }} /> : null} />
                   <div style={{ display: 'flex', padding: '7px 0', fontSize: 13 }}>
                     <span style={{ width: 140, flexShrink: 0, color: 'var(--text-muted)', fontSize: 12 }}>Statut</span>
                     <span className={`badge ${form.actif ? 'badge-green' : 'badge-gray'}`} style={{ fontSize: 11 }}>{form.actif ? 'Actif' : 'Inactif'}</span>
@@ -342,6 +344,10 @@ export default function Clients() {
                     <div className="form-group form-full">
                       <label>Notes internes</label>
                       <textarea value={form.notes || ''} onChange={e => set('notes', e.target.value)} rows={2} />
+                    </div>
+                    <div className="form-group form-full">
+                      <label>Logo</label>
+                      <LogoUploader value={form.logo_url} onChange={url => set('logo_url', url)} folder="clients" />
                     </div>
                   </div>
                   <div style={{ marginTop: 10 }}>
