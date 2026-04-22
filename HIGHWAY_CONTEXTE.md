@@ -40,18 +40,23 @@ Highway/
         ├── App.jsx                (auth localStorage + routes par rôle)
         ├── index.css              (palette Highway + responsive mobile, font Poppins)
         ├── lib/supabase.js
+        ├── lib/i18n.js            ✅ displayLibelle, displayCategorieNom, displayCategoriePath,
+        │                              buildCategoryTree, categorieSortKey, formatEan, translateToFr
         ├── components/
         │   ├── Sidebar.jsx        (responsive : fixe desktop / hamburger mobile)
-        │   └── Toast.jsx
+        │   ├── Toast.jsx
+        │   ├── LangToggle.jsx     ✅ toggle VO/FR compact
+        │   ├── FamillePath.jsx    ✅ badge "Parent › Enfant" réutilisable (harmonisé partout)
+        │   └── LogoUploader.jsx   ✅ upload logo vers Supabase Storage (bucket "logos")
         └── pages/
             ├── Login.jsx          ✅ auth via RPC sécurisé
             ├── Dashboard.jsx      ✅ stats globales
-            ├── Marques.jsx        ✅ CRUD marques + contacts multiples + catégories par marque
-            ├── Produits.jsx       ✅ Catalogue — volet droit fiche produit + CRUD
+            ├── Marques.jsx        ✅ CRUD marques + contacts + familles hiérarchiques (2 niveaux) + drag reorder + logo
+            ├── Produits.jsx       ✅ Catalogue — volet droit fiche produit + CRUD + Famille hiérarchique
             ├── ImportProduits.jsx ✅ import Excel avec mapping colonnes
-            ├── Clients.jsx        ✅ CRUD complet
+            ├── Clients.jsx        ✅ CRUD complet + logo
             ├── Stock.jsx          ✅ lots + alertes DLC
-            ├── Tarifs.jsx         ✅ gestion tarifs achat/vente/clients + marges + historique
+            ├── Tarifs.jsx         ✅ gestion tarifs + marges + export PDF/Excel vue client (ExcelJS)
             ├── Utilisateurs.jsx   ✅ gestion via RPC sécurisé
             ├── Fournisseurs.jsx   ✅ gestion fournisseurs
             └── Placeholders.jsx   ⏳ CommandesVente, CommandesAchat, Expeditions, Factures
@@ -170,6 +175,21 @@ logo color: #D4B8F0          /* violet clair */
 - **Nomenclature familles** : choix par marque entre générale ou spécifique
 - **Familles générales** : gérées via bouton dédié dans le header de la page
 - **Terminologie UI : "famille"** partout (ex-"catégorie"). La table DB reste `categories` et la colonne `categorie_id` — ne pas renommer.
+- **Hiérarchie 2 niveaux** : famille parent → sous-famille via `categories.parent_id`. Icône **+** à côté du parent pour ajouter une sous-famille. Icône `CornerDownRight` et indentation pour sous-familles.
+- **Édition inline** par ligne : crayon ouvre deux inputs (Nom VO + Traduction FR) avec bouton traduction auto Google Translate par ligne. Bouton **Traduire tout** en masse (familles sans `nom_fr`).
+- **Ordre des familles** : drag & drop (GripVertical) pour réordonner parents entre eux et sous-familles au sein d'un même parent. Persisté dans `categories.ordre` (incréments de 10).
+- **Logo marque** : upload via `<LogoUploader>` → Supabase Storage bucket `logos/marques/`. Stocké dans `marques.logo_url`.
+
+### Familles / Sous-familles — règles de tri et d'affichage
+- **Composant `<FamillePath>`** (`components/FamillePath.jsx`) : badge gris harmonisé `badge badge-gray` affichant `Parent › Enfant`. Parent en `text-muted`, enfant en couleur normale. Utilisé partout (Produits table, fiche produit, Tarifs vue produit + vue client).
+- **`buildCategoryTree(cats, lang)`** (i18n.js) : liste plate → arbre 2 niveaux ordonné par `ordre` puis `nom`. Produit des options indentées `↳` dans les `<select>`.
+- **`displayCategoriePath(cat, allCats, lang)`** : "Parent › Enfant" ou juste "Nom" si famille parent.
+- **`categorieSortKey(catId, allCats, libelle)`** : clé de tri composite `{ordre_parent}_{ordre_sous}_{libelle_trim_lower}` avec produits sans famille → `999999_999999_...` (fin de liste).
+- **Tri par famille** activé **par défaut** sur Produits.jsx et Tarifs.jsx (ascendant). Produits dans une sous-famille triés **alphabétiquement par libellé FR** (`displayLibelle(p, 'fr')`).
+- **Filtre famille** inclut les sous-familles : filtrer par une famille parent affiche aussi tous les produits de ses sous-familles.
+
+### Clients
+- **Logo** : upload via `<LogoUploader>` → Supabase Storage bucket `logos/clients/`. Stocké dans `clients.logo_url`.
 
 ### Catalogue (Produits)
 - **Clic sur ligne** → volet droit 620px (pas de modal) avec fiche complète
@@ -191,7 +211,8 @@ logo color: #D4B8F0          /* violet clair */
 - **Variation achat récente** : flèche ↑/↓ + % à côté de l'icône horloge si changement de prix d'achat dans les 30 derniers jours (rouge = hausse, vert = baisse)
 - **Historique des prix** : icône horloge par produit → modale avec filtres par champ (Achat/Cession/PVC/TVA), tableau ancien→nouveau + variation %, source (manuel/import). Note : les clés DB restent `vente_ht` et `pvpr`, l'affichage utilise "Cession" et "PVC"
 - **Vue par client** :
-  - Colonnes : Réf., Produit, Marque, Cession HT/TTC, Ap. remises, Remises appliquées, **Remise eff.**, Prix fixé, Prix effectif, **PVC HT/TTC**, Marge HW, Marge Client
+  - Colonnes : Réf., **EAN** (séparée), Produit, Marque, **Famille** (badge `<FamillePath>`), Cess. HT/TTC, Ap. rem., Remises, Rem. eff., Prix fixé, Prix eff., PVC HT/TTC, M. HW, M. Cl. — libellés raccourcis
+  - Produit `minWidth: 240px` pour lisibilité
   - **Remise effective** = `1 − Π(1 − pi/100)` calculée depuis les pourcentages de la cascade (pas depuis les prix arrondis) → identique pour tous les produits où les mêmes remises s'appliquent
   - Bouton **Tout référencer** : insère en masse les références pour tous les produits filtrés non encore référencés (confirmation + toast)
   - Bouton toggle **Masquer non-référencés / Tous les produits**
@@ -204,19 +225,44 @@ logo color: #D4B8F0          /* violet clair */
 - **Export tarif client (PDF + Excel)** : bouton "Exporter" dans l'en-tête vue client, ouvre une modale avec :
   - **Format** : PDF (A4 paysage) ou Excel
   - **Étendue** : Référencés seuls / Tous les filtrés
-  - **Titre** : éditable (défaut "Liste tarifaire")
-  - **Colonnes sélectionnées** (ordonnées, draggables via GripVertical, numérotées, × pour retirer) + zone "Ajouter" avec les colonnes disponibles en pastilles pointillées
-  - Colonnes disponibles : Photo (PDF seulement), Code EAN, Désignation, Marque, Famille, Taux TVA, PVC HT/TTC, Tarif HT/TTC, **Remises appliquées** (liste multi-ligne `Nom -X%`), **Remise totale** (négatif), Prix net HT/TTC (gras)
+  - **Titre** : éditable (défaut "Liste tarifaire") — on y inclut le nom client si besoin
+  - **Colonnes sélectionnées** (ordonnées, draggables via GripVertical, numérotées, × pour retirer) + zone "Ajouter" avec les colonnes disponibles
+  - Colonnes disponibles : Photo (PDF seulement), Code EAN, Désignation, Famille, Taux TVA, PVC HT/TTC, Tarif HT/TTC, **Remises** (multi-ligne `Nom -X%` en PDF ; éclatée en 1 colonne par remise en Excel), **Remise totale** (négatif), **Tarif net HT/TTC** (gras)
+  - Les cols "Marque" a été retirée de la sélection : les marques apparaissent désormais **dans les en-têtes de groupe** (PDF) ou en colonne fixe (Excel).
+- **Tri et langue forcés à l'export** :
+  - Toujours en français (`libelle_fr`, `nom_fr`), indépendamment du toggle VO/FR à l'écran
+  - Tri **marque → famille (ordre) → sous-famille (ordre) → libellé FR alphabétique** (via `categorieSortKey`)
 - **PDF design** :
   - Police **Poppins** embarquée via `addFileToVFS` + `addFont` (public/fonts/Poppins-Regular.ttf + Poppins-Bold.ttf), fallback helvetica
-  - 2 fines bandes violet primary (`#5A4A7A`, 3 mm) en haut et en bas, corps blanc (comme le site)
-  - Logo `highway-logo-light.png` (texte sombre sur fond blanc qui se fond sur la page) dans l'en-tête
-  - En-tête table : fond primary, texte blanc, centré. Lignes alternées `#F7F5FB`. Lignes 16 mm si photo incluse.
-  - Photos produits préchargées en parallèle via canvas → dataURL, cliquables (lien vers `photo_url`). Fallback "Voir" si CORS bloqué.
+  - Bande violette fine (`#5A4A7A`, 3 mm) en haut et en bas, corps blanc
+  - En-tête compact : Logo Highway (12 mm) à gauche + **Mois Année** (ex. `Avril 2026`) en haut à droite en 12pt gras
+  - Titre seul au centre-gauche (14pt gras) + séparateur violet clair
+  - Nombre de références sous le titre
+  - **En-têtes de groupe unique** par combo marque + famille/sous-famille, format `Marque › Famille › Sous-famille`, 9pt gras, fond violet clair `#EDE9F6`, minCellHeight 6mm
+  - Hook `willDrawCell` : si un en-tête de famille ne peut pas afficher ≥ 2 lignes produits sur la page courante, saut de page forcé (anti-orphelin)
+  - `rowPageBreak: 'avoid'` : aucun produit coupé entre deux pages
+  - Table : fond primary sur en-têtes de colonnes, texte blanc. Lignes alternées `#F7F5FB`. Toutes colonnes centrées sauf **Désignation** (gauche)
+  - EAN : largeur ≥ 30mm + `overflow: visible` → 13 chiffres sur une ligne
+  - Photos produits préchargées en parallèle via canvas → dataURL, cliquables (lien vers `photo_url`)
   - Si colonne Photo absente mais `photo_url` dispo : petit lien "Voir photo ▸" sous la désignation
-  - Pages suivantes : bande + logo compact + titre/client + pagination
-- **Fichiers** : `erp-app/public/highway-logo-light.png` (PNG texte sombre sur fond blanc), `erp-app/public/highway-logo-dark.png` (blanc sur fond sombre, non utilisé actuellement), `erp-app/public/fonts/Poppins-*.ttf`
-- **Dépendances** : `jspdf` + `jspdf-autotable` + `xlsx` (existant)
+  - Pied de page : mention confidentialité dans la même écriture que le reste (pas d'italique) + `Page X / Y`
+  - Pages suivantes : bande + logo compact + titre + pagination
+- **Excel design (ExcelJS, pas `xlsx`)** :
+  - **Logo Highway** embarqué réellement (`wb.addImage` depuis `/highway-logo-light.png`) en A1
+  - Ligne 2 : titre (16pt gras) + nom client (13pt violet gras à droite)
+  - Ligne 3 : nombre de références + date (Mois année, violet gras droite)
+  - Ligne 4 : espacement
+  - Ligne 5 : **en-tête de colonnes** violet primary `#5A4A7A` fond plein, texte blanc gras, centré
+  - **Freeze panes** sur les 5 premières lignes
+  - **Auto-filtre** activé sur la ligne 5 (les en-têtes réels, pas le titre) → tri/filtre pour le client
+  - Lignes alternées `#F7F5FB`, bordures fines `#E0DDE8` entre toutes les cellules
+  - Formats numériques : `0,00%` pour remises (fractions négatives), `#,##0.00 "€"` pour prix, `0,0 %` pour TVA
+  - **Colonnes Marque + Famille + Sous-famille toujours en tête** (3 colonnes fixes), puis les colonnes user dans **l'ordre exact du modal**
+  - Colonne `Remises appliquées` éclatée **en place** : 1 colonne par label de remise unique (ex: "Remise Carrefour 1", "Coop", ...) avec le pourcentage négatif en fraction
+  - Photo = lien hyperlink "Voir" dans la cellule (pas d'image embarquée par produit)
+  - Tarif net HT/TTC en gras
+- **Fichiers** : `erp-app/public/highway-logo-light.png`, `erp-app/public/highway-logo-dark.png`, `erp-app/public/fonts/Poppins-*.ttf`
+- **Dépendances** : `jspdf` + `jspdf-autotable` (PDF), **`exceljs`** (Excel, nouveau), `xlsx` (encore utilisé pour import)
 
 ---
 
@@ -224,11 +270,11 @@ logo color: #D4B8F0          /* violet clair */
 | Table | Description |
 |---|---|
 | `admin_users` | Utilisateurs ERP (protégé par RPC) |
-| `marques` | Marques distribuées — champs : nom, code, pays, devise, delai_livraison_jours, conditions_paiement, adresse, notes, actif, **nomenclature_specifique** |
+| `marques` | Marques distribuées — champs : nom, code, pays, devise, delai_livraison_jours, conditions_paiement, adresse, notes, actif, **nomenclature_specifique**, **logo_url** |
 | `marque_contacts` | Contacts par marque — champs : marque_id (FK), prenom, nom, fonction, email, telephone |
-| `categories` | Familles produits (terminologie UI = "famille", schéma DB inchangé) — champs : nom, parent_id, **marque_id** (FK nullable, null = générale) |
-| `produits` | Catalogue produits — champs classiques + **description_fr**, **type_conditionnement** (unites/kg), **poids_colis_kg**, **longueur/largeur/hauteur_colis_cm**, **poids_produit_brut_kg**, **poids_produit_net_kg** |
-| `clients` | Clients (centrale/indépendant/grossiste) |
+| `categories` | Familles produits — champs : nom, **nom_fr**, **parent_id** (FK auto → sous-famille 2 niveaux max), **ordre** (int, incréments de 10), **marque_id** (FK nullable, null = famille générale) |
+| `produits` | Catalogue produits — champs classiques + **libelle_fr**, **libelle_court_fr**, **description_fr**, **ingredients_fr**, **type_conditionnement** (unites/kg), **poids_colis_kg**, **longueur/largeur/hauteur_colis_cm**, **poids_produit_brut_kg**, **poids_produit_net_kg** |
+| `clients` | Clients (centrale/indépendant/grossiste) — **logo_url** |
 | `tarifs_achat` | Prix achat HT par produit — champs : produit_id, prix_achat_ht, date_debut |
 | `tarifs_vente` | Prix vente HT général (client_id=null) ou par client — champs : produit_id, client_id, prix_vente_ht, remise_pct, date_debut, notes |
 | `tarif_historique` | **Historique des changements de prix** — champs : produit_id, champ (achat_ht/vente_ht/pvpr/tva), ancien_prix, nouveau_prix, date_changement, source (manuel/import) |
@@ -242,6 +288,24 @@ logo color: #D4B8F0          /* violet clair */
 | `commandes_vente` | ⏳ À construire |
 | `expeditions` | ⏳ À construire |
 | `factures` | ⏳ À construire |
+
+---
+
+## Supabase Storage
+
+### Bucket `logos` (public)
+- Usage : logos de marques (dossier `marques/`) et de clients (dossier `clients/`)
+- Upload via composant `<LogoUploader value={form.logo_url} onChange={url => set('logo_url', url)} folder="marques|clients" />`
+- Policies : lecture/écriture/update/delete publiques (pas d'auth pour l'instant — à durcir quand l'app sera publiée)
+- URL publique stockée dans `marques.logo_url` / `clients.logo_url`
+
+---
+
+## EAN / UPC
+- **`formatEan(val)`** dans i18n.js : pad à gauche avec des zéros jusqu'à 13 caractères
+- Les produits M&S utilisent souvent des UPC à 8 chiffres → on les affiche comme EAN-13 (7 zéros devant)
+- Appliqué partout : table Produits, fiche produit, Tarifs vue produit + vue client, exports PDF/Excel
+- Le champ de saisie reste libre — pas de padding lors de l'écriture, seulement à l'affichage
 
 ---
 
