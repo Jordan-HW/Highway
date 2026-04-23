@@ -8,8 +8,8 @@ import { translateToFr } from '../lib/i18n'
 // ─── Champs disponibles dans Highway ─────────────────────────────────────────
 const HW_FIELDS = [
   { key: '__ignore__',          label: '— Ignorer cette colonne —', group: '' },
-  { key: 'ean13',               label: 'EAN13',                     group: 'Général' },
-  { key: 'libelle',             label: 'Libellé * (VO)',            group: 'Général' },
+  { key: 'ean13',               label: 'EAN / Code barre * (clé)',  group: 'Général' },
+  { key: 'libelle',             label: 'Libellé (VO)',              group: 'Général' },
   { key: 'libelle_fr',          label: 'Libellé (FR)',              group: 'Général' },
   { key: 'libelle_court',       label: 'Libellé court (VO)',        group: 'Général' },
   { key: 'libelle_court_fr',    label: 'Libellé court (FR)',        group: 'Général' },
@@ -47,36 +47,37 @@ const NUMERIC_FIELDS = ['pcb','poids_brut_kg','poids_net_kg','volume_m3','longue
 function autoMap(cols) {
   const map = {}
   const hints = {
-    ean: 'ean13', ean13: 'ean13', upc: 'ean13', barcode: 'ean13', 'code-barres': 'ean13',
-    libelle: 'libelle', label: 'libelle', 'product title': 'libelle', title: 'libelle', nom: 'libelle', name: 'libelle',
-    'libelle court': 'libelle_court', 'short name': 'libelle_court',
+    ean: 'ean13', ean13: 'ean13', 'ean 13': 'ean13', upc: 'ean13', barcode: 'ean13', 'code barre': 'ean13', 'code barres': 'ean13', 'code-barres': 'ean13', 'code ean': 'ean13', 'code-ean': 'ean13', gtin: 'ean13',
+    libelle: 'libelle', libellé: 'libelle', label: 'libelle', 'product title': 'libelle', title: 'libelle', nom: 'libelle', name: 'libelle', 'product name': 'libelle', désignation: 'libelle', designation: 'libelle',
+    'libelle court': 'libelle_court', 'libellé court': 'libelle_court', 'short name': 'libelle_court', 'short title': 'libelle_court',
     marque: 'marque', brand: 'marque',
-    'ref marque': 'ref_marque', reference: 'ref_marque', ref: 'ref_marque',
-    description: 'description', 'description fr': 'description_fr',
-    'libelle fr': 'libelle_fr', 'french title': 'libelle_fr', 'nom fr': 'libelle_fr', 'french name': 'libelle_fr',
-    'libelle court fr': 'libelle_court_fr',
-    statut: 'statut', status: 'statut',
+    'ref marque': 'ref_marque', reference: 'ref_marque', référence: 'ref_marque', ref: 'ref_marque', réf: 'ref_marque', 'ref interne': 'ref_marque', 'sku': 'ref_marque',
+    description: 'description', 'description vo': 'description', 'product description': 'description', descriptif: 'description',
+    'description fr': 'description_fr', 'description française': 'description_fr',
+    'libelle fr': 'libelle_fr', 'libellé fr': 'libelle_fr', 'french title': 'libelle_fr', 'nom fr': 'libelle_fr', 'french name': 'libelle_fr', 'libelle français': 'libelle_fr',
+    'libelle court fr': 'libelle_court_fr', 'libellé court fr': 'libelle_court_fr',
+    statut: 'statut', status: 'statut', état: 'statut', etat: 'statut',
     conditionnement: 'conditionnement', packaging: 'conditionnement',
-    pcb: 'pcb', 'units per case': 'pcb',
-    'poids brut': 'poids_brut_kg', 'gross weight': 'poids_brut_kg',
-    'poids net': 'poids_net_kg', 'net weight': 'poids_net_kg',
-    volume: 'volume_m3',
-    longueur: 'longueur_cm', length: 'longueur_cm',
-    largeur: 'largeur_cm', width: 'largeur_cm',
-    hauteur: 'hauteur_cm', height: 'hauteur_cm',
-    temperature: 'temperature_stockage', stockage: 'temperature_stockage',
+    pcb: 'pcb', 'units per case': 'pcb', 'unite par carton': 'pcb',
+    'poids brut': 'poids_brut_kg', 'gross weight': 'poids_brut_kg', 'poids brut kg': 'poids_brut_kg',
+    'poids net': 'poids_net_kg', 'net weight': 'poids_net_kg', 'poids net kg': 'poids_net_kg',
+    volume: 'volume_m3', 'volume m3': 'volume_m3',
+    longueur: 'longueur_cm', length: 'longueur_cm', 'longueur cm': 'longueur_cm',
+    largeur: 'largeur_cm', width: 'largeur_cm', 'largeur cm': 'largeur_cm',
+    hauteur: 'hauteur_cm', height: 'hauteur_cm', 'hauteur cm': 'hauteur_cm',
+    temperature: 'temperature_stockage', température: 'temperature_stockage', stockage: 'temperature_stockage', 'storage temperature': 'temperature_stockage',
     dlc: 'dlc_type', 'type dlc': 'dlc_type',
-    'duree dlc': 'dlc_duree_jours', 'dlc duree': 'dlc_duree_jours', 'shelf life': 'dlc_duree_jours',
-    'code douanier': 'code_douanier', hsn: 'code_douanier', 'hs code': 'code_douanier',
-    'pays origine': 'pays_origine', coo: 'pays_origine', 'country of origin': 'pays_origine',
-    meursing: 'meursing_code', 'meursing code': 'meursing_code',
-    ingredients: 'ingredients_vo', 'ingredients vo': 'ingredients_vo',
-    'ingredients fr': 'ingredients_fr',
-    allergenes: 'allergenes', allergens: 'allergenes',
-    photo: 'photo_url', image: 'photo_url', url: 'photo_url',
+    'duree dlc': 'dlc_duree_jours', 'durée dlc': 'dlc_duree_jours', 'dlc duree': 'dlc_duree_jours', 'shelf life': 'dlc_duree_jours', 'dlc jours': 'dlc_duree_jours',
+    'code douanier': 'code_douanier', hsn: 'code_douanier', 'hs code': 'code_douanier', 'code customs': 'code_douanier', 'nomenclature douanière': 'code_douanier',
+    'pays origine': 'pays_origine', 'pays d origine': 'pays_origine', coo: 'pays_origine', 'country of origin': 'pays_origine', 'origin country': 'pays_origine',
+    meursing: 'meursing_code', 'meursing code': 'meursing_code', 'code meursing': 'meursing_code',
+    ingredients: 'ingredients_vo', ingrédients: 'ingredients_vo', 'ingredients vo': 'ingredients_vo', 'ingrédients vo': 'ingredients_vo', 'ingredient list': 'ingredients_vo', 'liste ingrédients': 'ingredients_vo',
+    'ingredients fr': 'ingredients_fr', 'ingrédients fr': 'ingredients_fr', 'ingrédients français': 'ingredients_fr',
+    allergenes: 'allergenes', allergènes: 'allergenes', allergens: 'allergenes', 'liste allergènes': 'allergenes',
+    photo: 'photo_url', image: 'photo_url', url: 'photo_url', 'photo url': 'photo_url', 'image url': 'photo_url',
   }
   cols.forEach(col => {
-    const key = col.toLowerCase().trim().replace(/_/g, ' ')
+    const key = col.toLowerCase().trim().replace(/_/g, ' ').replace(/\s+/g, ' ')
     map[col] = hints[key] || '__ignore__'
   })
   return map
@@ -129,9 +130,9 @@ export default function ImportProduits({ onClose, onImported }) {
   }
 
   async function validateMapping() {
-    // Vérifier qu'au moins libelle est mappé
-    const haslibelle = Object.values(mapping).includes('libelle')
-    if (!haslibelle) return toast('Vous devez mapper au moins le champ "Libellé"', 'error')
+    // Vérifier que l'EAN est mappé : c'est la clé d'identification des produits
+    const hasEan = Object.values(mapping).includes('ean13')
+    if (!hasEan) return toast('Vous devez mapper au moins le champ "EAN / Code barre" — c\'est la clé d\'identification des produits', 'error')
 
     // Construire les objets produits
     const products = fileData.rows.map((row, i) => {
@@ -145,15 +146,20 @@ export default function ImportProduits({ onClose, onImported }) {
         } else {
           val = String(val).trim()
         }
+        // EAN : on normalise (supprime espaces, tirets) et on pad à 13 si numérique plus court
+        if (hwKey === 'ean13' && val) {
+          val = val.replace(/[\s-]/g, '')
+          if (/^\d+$/.test(val) && val.length < 13) val = val.padStart(13, '0')
+        }
         obj[hwKey] = val
       })
       if (!obj.statut) obj.statut = 'actif'
       return obj
-    }).filter(p => p.libelle) // ignorer lignes sans libellé
+    })
 
     // Récupérer les EAN existants
     const eans = products.map(p => p.ean13).filter(Boolean)
-    let existingEans = new Set()
+    let existingEans = new Map()
     if (eans.length) {
       const { data } = await supabase.from('produits').select('ean13, libelle').in('ean13', eans)
       existingEans = new Map((data || []).map(r => [r.ean13, r.libelle]))
@@ -164,8 +170,13 @@ export default function ImportProduits({ onClose, onImported }) {
     const errors   = []
 
     products.forEach(p => {
-      if (!p.libelle) { errors.push({ row: p._row, msg: 'Libellé manquant' }); return }
-      if (p.ean13 && existingEans.has(p.ean13)) {
+      // Clé obligatoire : EAN
+      if (!p.ean13) { errors.push({ row: p._row, msg: 'EAN manquant — ligne ignorée (EAN est la clé)' }); return }
+      if (p.ean13.length > 13) { errors.push({ row: p._row, msg: `EAN "${p.ean13}" trop long (> 13 chiffres)` }); return }
+      // libelle NOT NULL en DB → obligatoire pour création, pas pour mise à jour
+      const isExisting = existingEans.has(p.ean13)
+      if (!isExisting && !p.libelle) { errors.push({ row: p._row, msg: `Libellé manquant pour la création du produit ${p.ean13}` }); return }
+      if (isExisting) {
         toUpdate.push({ ...p, _existing: existingEans.get(p.ean13) })
       } else {
         toCreate.push(p)
@@ -181,6 +192,7 @@ export default function ImportProduits({ onClose, onImported }) {
     setImporting(true)
     const { toCreate, toUpdate } = validation
     let created = 0, updated = 0, failed = 0
+    const failedDetails = []
 
     // Nettoyer les champs internes
     const clean = p => {
@@ -188,12 +200,25 @@ export default function ImportProduits({ onClose, onImported }) {
       return rest
     }
 
-    // Créations par batch de 50
-    const creates = toCreate.map(clean)
-    for (let i = 0; i < creates.length; i += 50) {
-      const { error } = await supabase.from('produits').insert(creates.slice(i, i + 50))
-      if (error) failed += Math.min(50, creates.length - i)
-      else created += Math.min(50, creates.length - i)
+    // Créations par batch de 50 — en cas d'erreur batch, on retry ligne par ligne pour identifier les coupables
+    for (let i = 0; i < toCreate.length; i += 50) {
+      const batch = toCreate.slice(i, i + 50)
+      const cleaned = batch.map(clean)
+      const { error } = await supabase.from('produits').insert(cleaned)
+      if (!error) {
+        created += batch.length
+      } else {
+        // Retry ligne par ligne pour trouver les erreurs précises
+        for (let k = 0; k < batch.length; k++) {
+          const { error: e2 } = await supabase.from('produits').insert(clean(batch[k]))
+          if (e2) {
+            failed++
+            failedDetails.push({ row: batch[k]._row, ean: batch[k].ean13, msg: e2.message })
+          } else {
+            created++
+          }
+        }
+      }
     }
 
     // Mises à jour
@@ -201,12 +226,16 @@ export default function ImportProduits({ onClose, onImported }) {
       for (const p of toUpdate) {
         const { ean13, ...data } = clean(p)
         const { error } = await supabase.from('produits').update(data).eq('ean13', ean13)
-        if (error) failed++
-        else updated++
+        if (error) {
+          failed++
+          failedDetails.push({ row: p._row, ean: p.ean13, msg: error.message })
+        } else {
+          updated++
+        }
       }
     }
 
-    setImportResult({ created, updated, failed })
+    setImportResult({ created, updated, failed, failedDetails })
     setImporting(false)
 
     if (autoTranslate) {
@@ -422,14 +451,34 @@ export default function ImportProduits({ onClose, onImported }) {
 
           {/* ── ÉTAPE 4 : Terminé ── */}
           {step === 'done' && importResult && (
-            <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-              <CheckCircle size={48} color="#2D5A3D" style={{ marginBottom: 20 }} />
-              <h3 style={{ marginBottom: 16 }}>Import terminé !</h3>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 20 }}>
-                {importResult.created > 0 && <div style={{ padding: '12px 24px', background: '#e8f0eb', borderRadius: 10 }}><div style={{ fontSize: 24, fontWeight: 700, color: '#2D5A3D' }}>{importResult.created}</div><div style={{ fontSize: 12, color: '#2D5A3D' }}>créés</div></div>}
-                {importResult.updated > 0 && <div style={{ padding: '12px 24px', background: '#fef3c7', borderRadius: 10 }}><div style={{ fontSize: 24, fontWeight: 700, color: '#b45309' }}>{importResult.updated}</div><div style={{ fontSize: 12, color: '#b45309' }}>mis à jour</div></div>}
-                {importResult.failed > 0 && <div style={{ padding: '12px 24px', background: '#fee2e2', borderRadius: 10 }}><div style={{ fontSize: 24, fontWeight: 700, color: '#dc2626' }}>{importResult.failed}</div><div style={{ fontSize: 12, color: '#dc2626' }}>échecs</div></div>}
+            <div style={{ padding: '20px 20px 40px' }}>
+              <div style={{ textAlign: 'center' }}>
+                <CheckCircle size={48} color="#2D5A3D" style={{ marginBottom: 20 }} />
+                <h3 style={{ marginBottom: 16 }}>Import terminé !</h3>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 20, marginBottom: 24 }}>
+                  {importResult.created > 0 && <div style={{ padding: '12px 24px', background: '#e8f0eb', borderRadius: 10 }}><div style={{ fontSize: 24, fontWeight: 700, color: '#2D5A3D' }}>{importResult.created}</div><div style={{ fontSize: 12, color: '#2D5A3D' }}>créés</div></div>}
+                  {importResult.updated > 0 && <div style={{ padding: '12px 24px', background: '#fef3c7', borderRadius: 10 }}><div style={{ fontSize: 24, fontWeight: 700, color: '#b45309' }}>{importResult.updated}</div><div style={{ fontSize: 12, color: '#b45309' }}>mis à jour</div></div>}
+                  {importResult.failed > 0 && <div style={{ padding: '12px 24px', background: '#fee2e2', borderRadius: 10 }}><div style={{ fontSize: 24, fontWeight: 700, color: '#dc2626' }}>{importResult.failed}</div><div style={{ fontSize: 12, color: '#dc2626' }}>échecs</div></div>}
+                </div>
               </div>
+              {importResult.failedDetails?.length > 0 && (
+                <>
+                  <p className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertTriangle size={14} color="#dc2626" /> Détail des échecs
+                  </p>
+                  <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #fca5a5', borderRadius: 8 }}>
+                    {importResult.failedDetails.map((e, i) => (
+                      <div key={i} style={{ padding: '8px 12px', borderBottom: '1px solid #fee2e2', fontSize: 12 }}>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 2 }}>
+                          <span style={{ color: '#dc2626', fontWeight: 600 }}>Ligne {e.row}</span>
+                          {e.ean && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>EAN {e.ean}</span>}
+                        </div>
+                        <div style={{ color: 'var(--text-secondary)' }}>{e.msg}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
