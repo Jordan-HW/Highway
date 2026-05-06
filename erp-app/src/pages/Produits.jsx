@@ -760,7 +760,7 @@ export default function Produits() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [showExport, setShowExport]   = useState(false)
   const [showImport, setShowImport]   = useState(false)
-  const [sortConfig, setSortConfig]   = useState({ key: 'categorie_nom', dir: 'asc' })
+  const [sortConfig, setSortConfig]   = useState({ key: 'marque_nom', dir: 'asc' })
   const [colFilters, setColFilters]   = useState({})
   const [tooltipDlc, setTooltipDlc]   = useState(false)
   const [translatingMain, setTranslatingMain] = useState(false)
@@ -789,7 +789,11 @@ export default function Produits() {
     switch (key) {
       case 'libelle':          return displayLibelle(row, lang).toLowerCase()
       case 'ean13':            return row.ean13 || ''
-      case 'marque_nom':       return (row.marques?.nom || '').toLowerCase()
+      case 'marque_nom': {
+        // Tri composite : marque → famille (ordre) → sous-famille (ordre) → libellé FR alphabétique
+        const m = (row.marques?.nom || 'zzz').toLowerCase()
+        return m + '|' + categorieSortKey(row.categorie_id, categories, displayLibelle(row, 'fr'))
+      }
       case 'categorie_nom':    return categorieSortKey(row.categorie_id, categories, displayLibelle(row, 'fr'))
       case 'ref_marque':       return (row.ref_marque || '').toLowerCase()
       case 'statut':           return row.statut || ''
