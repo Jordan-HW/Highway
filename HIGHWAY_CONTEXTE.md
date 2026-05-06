@@ -197,9 +197,15 @@ logo color: #D4B8F0          /* violet clair */
 - **Traduction auto** : description et ingrédients VO → FR via Google Translate
 - **Type conditionnement** : unités (PCB) ou kg (poids colis)
 - **Tooltip DLC** : icone info expliquant DLC/DLUO/DDM
-- **Photo** : cliquable pour zoom plein écran
+- **Photo** : upload direct via `<LogoUploader folder="produits">` (bucket Supabase `logos`, dossier `produits/`). Aperçu cliquable pour zoom plein écran. Compatibilité conservée avec les URLs externes (import Excel) — le composant lit/écrit `photo_url`.
 - **Modal création** séparée (nouveau produit uniquement)
 - **Statuts** affichés avec majuscule (Actif, En référencement, Arrêté, Inactif)
+- **Tri par défaut** : marque (alpha) → famille (ordre paramétré) → sous-famille (ordre) → libellé FR (alpha). Le tri sur la colonne *Marque* cascade en regroupant par famille ; le tri sur *Famille* groupe uniquement par famille.
+- **Affectation de famille en masse** :
+  - Cocher des produits dans la liste → bouton **« Affecter une famille »** apparaît dans l'en-tête
+  - Modale avec sélecteur hiérarchique de familles/sous-familles (et option « Retirer la famille »)
+  - Logique de filtrage : si tous les produits sélectionnés ont la même marque + nomenclature spécifique → familles propres à cette marque ; si même marque mais générale → familles générales ; si marques mixtes → familles générales uniquement
+  - UPDATE en lot via `.in('id', selectedIds)` puis désélection + refresh
 
 ### Référencement & Tarifs (Tarifs.jsx)
 - **Vue par produit** : tableau inline avec colonnes EAN, Produit, TVA, Achat HT/TTC, Cession HT/TTC, PVC HT/TTC, Marge HW %/€, Marge Client %/€
@@ -266,6 +272,24 @@ logo color: #D4B8F0          /* violet clair */
 
 ---
 
+## Imports Excel — règles communes
+
+### ImportProduits.jsx (catalogue articles)
+- **Clé d'identification : EAN** (mandatory). Le libellé n'est plus la clé. EAN normalisé à l'import : suppression des espaces/tirets, padding à 13 chiffres si numérique plus court (UPC 8 → EAN-13).
+- **Auto-mapping enrichi** des colonnes : reconnaît `gtin`, `code-barre`, `désignation`, `ingrédients` (avec accents), `ref interne`, `sku`, `température`, `nomenclature douanière`, `country of origin`, etc.
+- **Résolution marque texte → marque_id** :
+  - Si la marque existe dans `marques` (matching insensible à la casse) → `marque_id` rempli automatiquement
+  - Si la marque n'existe pas → **création automatique** à l'import (avec confirmation visuelle dans la validation : pastilles violettes « Nouvelles marques à créer automatiquement »)
+- **Erreurs détaillées** : si un batch INSERT échoue, retry ligne par ligne pour identifier les coupables. Affichage à l'étape Terminé : ligne du fichier + EAN + message Supabase exact.
+- **Validation** : le libellé est obligatoire pour les CRÉATIONS, optionnel pour les MISES À JOUR.
+
+### Tarifs.jsx (référencement & tarifs) — import des prix
+- Même normalisation EAN à l'import (essai EAN brut + paddé à 13 chiffres).
+- **`marque_id` requis** sur `tarifs_achat` (NOT NULL en DB) → automatiquement renseigné depuis le `produit.marque_id`. Si le produit n'a pas de marque, l'insert tarifs_achat échouera : il faut d'abord assigner une marque au produit (via affectation en masse ou édition).
+- Erreurs détaillées également remontées à l'étape Terminé (ligne, EAN, libellé, message Supabase).
+
+---
+
 ## Tables Supabase
 | Table | Description |
 |---|---|
@@ -273,9 +297,9 @@ logo color: #D4B8F0          /* violet clair */
 | `marques` | Marques distribuées — champs : nom, code, pays, devise, delai_livraison_jours, conditions_paiement, adresse, notes, actif, **nomenclature_specifique**, **logo_url** |
 | `marque_contacts` | Contacts par marque — champs : marque_id (FK), prenom, nom, fonction, email, telephone |
 | `categories` | Familles produits — champs : nom, **nom_fr**, **parent_id** (FK auto → sous-famille 2 niveaux max), **ordre** (int, incréments de 10), **marque_id** (FK nullable, null = famille générale) |
-| `produits` | Catalogue produits — champs classiques + **libelle_fr**, **libelle_court_fr**, **description_fr**, **ingredients_fr**, **type_conditionnement** (unites/kg), **poids_colis_kg**, **longueur/largeur/hauteur_colis_cm**, **poids_produit_brut_kg**, **poids_produit_net_kg** |
+| `produits` | Catalogue produits — champs classiques + **libelle_fr**, **libelle_court_fr**, **description_fr**, **ingredients_vo**, **ingredients_fr**, **type_conditionnement** (unites/kg), **poids_colis_kg**, **longueur/largeur/hauteur_colis_cm**, **poids_produit_brut_kg**, **poids_produit_net_kg** |
 | `clients` | Clients (centrale/indépendant/grossiste) — **logo_url** |
-| `tarifs_achat` | Prix achat HT par produit — champs : produit_id, prix_achat_ht, date_debut |
+| `tarifs_achat` | Prix achat HT par produit — champs : produit_id, **marque_id** (NOT NULL), prix_achat_ht, date_debut |
 | `tarifs_vente` | Prix vente HT général (client_id=null) ou par client — champs : produit_id, client_id, prix_vente_ht, remise_pct, date_debut, notes |
 | `tarif_historique` | **Historique des changements de prix** — champs : produit_id, champ (achat_ht/vente_ht/pvpr/tva), ancien_prix, nouveau_prix, date_changement, source (manuel/import) |
 | `client_remises` | Remises en cascade par client — champs : client_id, label, pourcentage, ordre, marque_id, **categorie_id** (FK nullable → famille), produit_ids |
