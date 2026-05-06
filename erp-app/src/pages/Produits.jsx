@@ -7,6 +7,7 @@ import ImportProduits from './ImportProduits'
 import LangToggle from '../components/LangToggle'
 import { displayLibelle, displayLibelleCourt, displayCategorieNom, displayCategoriePath, categorieSortKey, formatEan, loadLang, saveLang, translateToFr, buildCategoryTree } from '../lib/i18n'
 import FamillePath from '../components/FamillePath'
+import LogoUploader from '../components/LogoUploader'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatStatut(s) {
@@ -198,7 +199,7 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
                   <ReadRow label="Statut" value={formatStatut(form.statut)} />
                   <ReadRow label="Description (VO)" value={form.description} />
                   <ReadRow label="Description (FR)" value={form.description_fr} />
-                  <ReadRow label="Photo URL" value={form.photo_url} />
+                  <ReadRow label="Photo" value={form.photo_url ? <img src={form.photo_url} alt="" style={{ maxHeight: 60, maxWidth: 120, objectFit: 'contain', borderRadius: 4, border: '1px solid var(--border)' }} /> : null} />
                 </div>
               ) : (
                 <div className="form-grid">
@@ -262,7 +263,10 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
                     </div>
                     <textarea value={form.description_fr || ''} onChange={e => set('description_fr', e.target.value)} rows={3} placeholder="Description traduite en français..." style={{ marginTop: 6 }} />
                   </div>
-                  <div className="form-group form-full"><label>URL Photo</label><input value={form.photo_url || ''} onChange={e => set('photo_url', e.target.value)} placeholder="https://..." /></div>
+                  <div className="form-group form-full">
+                    <label>Photo produit</label>
+                    <LogoUploader value={form.photo_url} onChange={url => set('photo_url', url)} folder="produits" />
+                  </div>
                 </div>
               )}
             </>
@@ -1145,13 +1149,10 @@ export default function Produits() {
                     </div>
                     <textarea value={form.description_fr || ''} onChange={e => set('description_fr', e.target.value)} rows={3} placeholder="Description traduite en français..." style={{ marginTop: 6 }} />
                   </div>
-                  <div className="form-group form-full"><label>URL Photo</label><input value={form.photo_url || ''} onChange={e => set('photo_url', e.target.value)} placeholder="https://..." /></div>
-                  {form.photo_url && (
-                    <div className="form-full" style={{ marginTop: 4 }}>
-                      <img src={form.photo_url} alt="" onClick={() => setPhotoZoomUrl(form.photo_url)} style={{ height: 80, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', padding: 4, cursor: 'zoom-in' }} />
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Cliquez pour agrandir</div>
-                    </div>
-                  )}
+                  <div className="form-group form-full">
+                    <label>Photo produit</label>
+                    <LogoUploader value={form.photo_url} onChange={url => set('photo_url', url)} folder="produits" />
+                  </div>
                 </div>
               )}
               {activeTab === 'colisage' && (
