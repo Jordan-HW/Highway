@@ -1154,7 +1154,7 @@ export default function Tarifs() {
       if (edit.achat !== '' && edit.achat !== null) {
         const newVal = r2(edit.achat)
         await logPriceChange(produitId, 'achat_ht', orig.achat, newVal, 'manuel')
-        const payload = { produit_id: produitId, prix_achat_ht: newVal, date_debut: today }
+        const payload = { produit_id: produitId, marque_id: prod.marque_id, prix_achat_ht: newVal, date_debut: today }
         const existing = getLastAchat(produitId)
         const { error } = existing
           ? await supabase.from('tarifs_achat').update(payload).eq('id', existing.id)
@@ -1425,7 +1425,7 @@ export default function Tarifs() {
         if (prodUpdate.taux_tva) await logPriceChange(prodId, 'tva', item._produit.taux_tva, prodUpdate.taux_tva, 'import')
         const { error } = await supabase.from('produits').update(prodUpdate).eq('id', prodId); if (error) failed++
       }
-      if (item.prix_achat_ht) { const ex = getLastAchat(prodId); await logPriceChange(prodId, 'achat_ht', ex?.prix_achat_ht, r2(item.prix_achat_ht), 'import'); const payload = { produit_id: prodId, prix_achat_ht: r2(item.prix_achat_ht), date_debut: today }; const { error } = ex ? await supabase.from('tarifs_achat').update(payload).eq('id', ex.id) : await supabase.from('tarifs_achat').insert(payload); if (error) { failed++; continue } }
+      if (item.prix_achat_ht) { const ex = getLastAchat(prodId); await logPriceChange(prodId, 'achat_ht', ex?.prix_achat_ht, r2(item.prix_achat_ht), 'import'); const payload = { produit_id: prodId, marque_id: item._produit?.marque_id, prix_achat_ht: r2(item.prix_achat_ht), date_debut: today }; const { error } = ex ? await supabase.from('tarifs_achat').update(payload).eq('id', ex.id) : await supabase.from('tarifs_achat').insert(payload); if (error) { failed++; continue } }
       if (item.prix_vente_ht) { const ex = getGeneralVente(prodId); await logPriceChange(prodId, 'vente_ht', ex?.prix_vente_ht, r2(item.prix_vente_ht), 'import'); const payload = { produit_id: prodId, client_id: null, prix_vente_ht: r2(item.prix_vente_ht), remise_pct: null, date_debut: today }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
       if (item.prix_client_ht && item._client) { const ex = getClientVente(prodId, item._client.id); await logPriceChange(prodId, 'vente_client_' + item._client.nom, ex?.prix_vente_ht, r2(item.prix_client_ht), 'import'); const payload = { produit_id: prodId, client_id: item._client.id, prix_vente_ht: r2(item.prix_client_ht), remise_pct: null, date_debut: today, notes: 'Import Excel' }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
       updated++
