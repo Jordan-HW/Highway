@@ -157,6 +157,22 @@ export default function ImportProduits({ onClose, onImported }) {
       return obj
     })
 
+    // Résolution des marques : on récupère les marques existantes pour matcher par nom (insensible à la casse)
+    const { data: marquesData } = await supabase.from('marques').select('id, nom')
+    const marquesByName = new Map((marquesData || []).map(m => [m.nom.toLowerCase(), m]))
+    const newMarqueNames = new Set() // marques inconnues à créer
+
+    products.forEach(p => {
+      if (p.marque) {
+        const found = marquesByName.get(p.marque.toLowerCase())
+        if (found) {
+          p.marque_id = found.id
+        } else {
+          newMarqueNames.add(p.marque)
+        }
+      }
+    })
+
     // Récupérer les EAN existants
     const eans = products.map(p => p.ean13).filter(Boolean)
     let existingEans = new Map()
@@ -183,16 +199,33 @@ export default function ImportProduits({ onClose, onImported }) {
       }
     })
 
-    setValidation({ toCreate, toUpdate, errors })
+    setValidation({ toCreate, toUpdate, errors, newMarqueNames: Array.from(newMarqueNames) })
     setStep('validation')
   }
 
   // ── ÉTAPE 3 : Import ────────────────────────────────────────────────────────
   async function doImport(includeUpdates) {
     setImporting(true)
-    const { toCreate, toUpdate } = validation
+    const { toCreate, toUpdate, newMarqueNames = [] } = validation
     let created = 0, updated = 0, failed = 0
     const failedDetails = []
+
+    // Auto-création des marques inconnues, puis résolution de marque_id sur tous les produits
+    if (newMarqueNames.length) {
+      const inserts = newMarqueNames.map(nom => ({ nom, actif: true }))
+      const { data: createdMarques, error } = await supabase.from('marques').insert(inserts).select('id, nom')
+      if (error) {
+        toast(`Erreur création marques : ${error.message}`, 'error')
+      } else {
+        const map = new Map((createdMarques || []).map(m => [m.nom.toLowerCase(), m.id]))
+        for (const p of [...toCreate, ...toUpdate]) {
+          if (!p.marque_id && p.marque) {
+            const id = map.get(p.marque.toLowerCase())
+            if (id) p.marque_id = id
+          }
+        }
+      }
+    }
 
     // Nettoyer les champs internes
     const clean = p => {
@@ -424,6 +457,27 @@ export default function ImportProduits({ onClose, onImported }) {
                     <div style={{ height: '100%', width: `${Math.round(100 * translateProgress.done / Math.max(1, translateProgress.total))}%`, background: 'var(--primary)', transition: 'width 0.2s' }} />
                   </div>
                 </div>
+              )}
+
+              {/* Marques inconnues qui seront auto-créées */}
+              {validation.newMarqueNames?.length > 0 && (
+                <>
+                  <p className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertTriangle size={14} color="var(--primary)" /> Nouvelles marques à créer automatiquement
+                  </p>
+                  <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--primary-light)', borderRadius: 8 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                      Ces marques n'existent pas dans Highway, elles seront créées automatiquement à l'import :
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {validation.newMarqueNames.map((m, i) => (
+                        <span key={i} style={{ padding: '3px 10px', background: 'var(--surface)', border: '1px solid var(--primary)', borderRadius: 12, fontSize: 12, fontWeight: 500, color: 'var(--primary)' }}>
+                          {m}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </>
               )}
 
               {/* Aperçu créations */}
