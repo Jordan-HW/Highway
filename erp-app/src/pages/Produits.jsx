@@ -755,6 +755,8 @@ export default function Produits() {
     }
   }
   const [showColPanel, setShowColPanel] = useState(false)
+  const [bulkFamille, setBulkFamille] = useState(null) // { categorieId, marqueId } | null
+  const [savingBulk, setSavingBulk] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [showExport, setShowExport]   = useState(false)
   const [showImport, setShowImport]   = useState(false)
@@ -955,6 +957,11 @@ export default function Produits() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {selectedIds.size > 0 && (
+            <button className="btn btn-secondary" onClick={() => setBulkFamille({ categorieId: '', marqueId: '' })} title="Affecter une famille à la sélection">
+              <Settings2 size={15} /> Affecter une famille
+            </button>
+          )}
           <button className="btn btn-secondary" onClick={() => setShowImport(true)}><Upload size={15} /> Importer</button>
           <button className="btn btn-secondary" onClick={() => setShowExport(true)}><Download size={15} /> Exporter</button>
           <button className="btn btn-secondary" onClick={() => setShowColPanel(true)}><Settings2 size={15} /> Colonnes</button>
@@ -1246,6 +1253,74 @@ export default function Produits() {
       {showImport   && <ImportProduits onClose={() => setShowImport(false)} onImported={fetchAll} />}
       {showColPanel && <ColumnPanel colOrder={colOrder} visibleCols={visibleCols} onChange={updateColConfig} onClose={() => setShowColPanel(false)} />}
       {showExport   && <ExportModal products={selectedRows} allProducts={filtered} categories={categories} lang={lang} langFamille={langFamille} onClose={() => setShowExport(false)} />}
+
+      {bulkFamille && (() => {
+        // Marques uniques des produits sélectionnés
+        const selectedMarqueIds = [...new Set(selectedRows.map(p => p.marque_id).filter(Boolean))]
+        const oneBrand = selectedMarqueIds.length === 1 ? selectedMarqueIds[0] : null
+        const brandObj = oneBrand ? marques.find(m => m.id === oneBrand) : null
+        // Familles utilisables : si toutes la même marque ET nomenclature spécifique → familles de cette marque ;
+        // sinon, on propose les familles générales (compatibles avec n'importe quelle marque)
+        let availableCats = []
+        if (oneBrand && brandObj?.nomenclature_specifique) {
+          availableCats = categories.filter(c => c.marque_id === oneBrand)
+        } else if (oneBrand && !brandObj?.nomenclature_specifique) {
+          availableCats = categories.filter(c => !c.marque_id)
+        } else {
+          // Multi-marques : on n'autorise que les familles générales pour éviter les incohérences
+          availableCats = categories.filter(c => !c.marque_id)
+        }
+        const tree = buildCategoryTree(availableCats, langFamille)
+        async function applyBulk() {
+          setSavingBulk(true)
+          const ids = [...selectedIds]
+          const newCatId = bulkFamille.categorieId || null
+          const { error } = await supabase.from('produits').update({ categorie_id: newCatId }).in('id', ids)
+          setSavingBulk(false)
+          if (error) { toast('Erreur : ' + error.message, 'error'); return }
+          toast(`${ids.length} produit(s) mis à jour`, 'success')
+          setBulkFamille(null)
+          setSelectedIds(new Set())
+          fetchAll()
+        }
+        return (
+          <div className="modal-overlay" onClick={() => !savingBulk && setBulkFamille(null)}>
+            <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>Affecter une famille</h3>
+                <button className="btn-icon" onClick={() => setBulkFamille(null)}><X size={18} /></button>
+              </div>
+              <div className="modal-body">
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                  {selectedIds.size} produit(s) sélectionné(s){oneBrand && brandObj ? ` — marque : ${brandObj.nom}` : selectedMarqueIds.length > 1 ? ` — marques mixtes (familles générales uniquement)` : ''}
+                </p>
+                <div className="form-group form-full">
+                  <label>Famille à affecter</label>
+                  <select value={bulkFamille.categorieId} onChange={e => setBulkFamille(b => ({ ...b, categorieId: e.target.value }))}>
+                    <option value="">— Retirer la famille —</option>
+                    {tree.map(({ cat, depth }) => (
+                      <option key={cat.id} value={cat.id}>
+                        {depth > 0 ? '    ↳ ' : ''}{displayCategorieNom(cat, langFamille)}
+                      </option>
+                    ))}
+                  </select>
+                  {tree.length === 0 && (
+                    <div style={{ fontSize: 12, color: 'var(--warning)', marginTop: 6 }}>
+                      Aucune famille disponible pour cette sélection. Crée des familles dans la rubrique Marques.
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setBulkFamille(null)} disabled={savingBulk}>Annuler</button>
+                <button className="btn btn-primary" onClick={applyBulk} disabled={savingBulk}>
+                  {savingBulk ? 'Application...' : 'Appliquer'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
       {photoZoomUrl && (
         <div onClick={() => setPhotoZoomUrl(null)} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
           <img src={photoZoomUrl} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
