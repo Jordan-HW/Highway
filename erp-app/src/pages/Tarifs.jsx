@@ -1389,17 +1389,25 @@ export default function Tarifs() {
 
   function validateImportMapping() {
     if (!Object.values(importMapping).includes('ean13')) return toast('Mappez la colonne EAN13', 'error')
-    const eanIdx = new Map(); produits.forEach(p => { if (p.ean13) eanIdx.set(p.ean13, p) })
+    // Index par EAN brut ET par EAN paddé à 13 chiffres pour gérer les UPC à 8 chiffres
+    const eanIdx = new Map()
+    produits.forEach(p => {
+      if (!p.ean13) return
+      eanIdx.set(p.ean13, p)
+      eanIdx.set(formatEan(p.ean13), p)
+    })
     const clientIdx = new Map(); clients.forEach(c => clientIdx.set(c.nom.toLowerCase(), c))
     const toProcess = [], errors = []
     importFile.rows.forEach((row, i) => {
       const obj = {}
       Object.entries(importMapping).forEach(([col, field]) => { if (field !== '__ignore__') obj[field] = String(row[col] ?? '').trim() })
       if (!obj.ean13) { errors.push({ row: i + 2, msg: 'EAN13 manquant' }); return }
-      const produit = eanIdx.get(obj.ean13)
-      if (!produit) { errors.push({ row: i + 2, msg: `EAN ${obj.ean13} non trouvé` }); return }
+      // Normalisation : on essaie l'EAN tel quel + paddé
+      const cleanEan = obj.ean13.replace(/[\s-]/g, '')
+      const produit = eanIdx.get(cleanEan) || eanIdx.get(formatEan(cleanEan))
+      if (!produit) { errors.push({ row: i + 2, ean: cleanEan, msg: `EAN ${cleanEan} non trouvé dans le catalogue` }); return }
       let resolvedClient = null
-      if (obj.client_nom) { resolvedClient = clientIdx.get(obj.client_nom.toLowerCase()); if (!resolvedClient) { errors.push({ row: i + 2, msg: `Client "${obj.client_nom}" non trouvé` }); return } }
+      if (obj.client_nom) { resolvedClient = clientIdx.get(obj.client_nom.toLowerCase()); if (!resolvedClient) { errors.push({ row: i + 2, ean: cleanEan, msg: `Client "${obj.client_nom}" non trouvé` }); return } }
       toProcess.push({ ...obj, _row: i + 2, _produit: produit, _client: resolvedClient })
     })
     setImportValidation({ toProcess, errors }); setImportStep('validation')
@@ -1409,9 +1417,12 @@ export default function Tarifs() {
     setImportingData(true)
     const today = new Date().toISOString().slice(0, 10)
     let updated = 0, failed = 0
+    const failedDetails = []
     for (const item of importValidation.toProcess) {
       const prodId = item._produit.id
+      const prodLib = item._produit.libelle || item._produit.libelle_fr || ''
       const r2 = v => Math.round(parseFloat(v) * 100) / 100
+      let rowFailed = false
       // PVC + TVA sur fiche produit
       const prodUpdate = {}
       if (item.pvpr) prodUpdate.pvpr = r2(item.pvpr)
@@ -1423,15 +1434,35 @@ export default function Tarifs() {
       if (Object.keys(prodUpdate).length) {
         if (prodUpdate.pvpr) await logPriceChange(prodId, 'pvpr', item._produit.pvpr, prodUpdate.pvpr, 'import')
         if (prodUpdate.taux_tva) await logPriceChange(prodId, 'tva', item._produit.taux_tva, prodUpdate.taux_tva, 'import')
-        const { error } = await supabase.from('produits').update(prodUpdate).eq('id', prodId); if (error) failed++
+        const { error } = await supabase.from('produits').update(prodUpdate).eq('id', prodId)
+        if (error) { rowFailed = true; failedDetails.push({ row: item._row, ean: item.ean13, libelle: prodLib, msg: 'Fiche produit : ' + error.message }) }
       }
-      if (item.prix_achat_ht) { const ex = getLastAchat(prodId); await logPriceChange(prodId, 'achat_ht', ex?.prix_achat_ht, r2(item.prix_achat_ht), 'import'); const payload = { produit_id: prodId, marque_id: item._produit?.marque_id, prix_achat_ht: r2(item.prix_achat_ht), date_debut: today }; const { error } = ex ? await supabase.from('tarifs_achat').update(payload).eq('id', ex.id) : await supabase.from('tarifs_achat').insert(payload); if (error) { failed++; continue } }
-      if (item.prix_vente_ht) { const ex = getGeneralVente(prodId); await logPriceChange(prodId, 'vente_ht', ex?.prix_vente_ht, r2(item.prix_vente_ht), 'import'); const payload = { produit_id: prodId, client_id: null, prix_vente_ht: r2(item.prix_vente_ht), remise_pct: null, date_debut: today }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
-      if (item.prix_client_ht && item._client) { const ex = getClientVente(prodId, item._client.id); await logPriceChange(prodId, 'vente_client_' + item._client.nom, ex?.prix_vente_ht, r2(item.prix_client_ht), 'import'); const payload = { produit_id: prodId, client_id: item._client.id, prix_vente_ht: r2(item.prix_client_ht), remise_pct: null, date_debut: today, notes: 'Import Excel' }; const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload); if (error) { failed++; continue } }
-      updated++
+      if (item.prix_achat_ht) {
+        const ex = getLastAchat(prodId)
+        await logPriceChange(prodId, 'achat_ht', ex?.prix_achat_ht, r2(item.prix_achat_ht), 'import')
+        const payload = { produit_id: prodId, marque_id: item._produit?.marque_id, prix_achat_ht: r2(item.prix_achat_ht), date_debut: today }
+        const { error } = ex ? await supabase.from('tarifs_achat').update(payload).eq('id', ex.id) : await supabase.from('tarifs_achat').insert(payload)
+        if (error) { rowFailed = true; failedDetails.push({ row: item._row, ean: item.ean13, libelle: prodLib, msg: 'Prix achat : ' + error.message }) }
+      }
+      if (item.prix_vente_ht) {
+        const ex = getGeneralVente(prodId)
+        await logPriceChange(prodId, 'vente_ht', ex?.prix_vente_ht, r2(item.prix_vente_ht), 'import')
+        const payload = { produit_id: prodId, client_id: null, prix_vente_ht: r2(item.prix_vente_ht), remise_pct: null, date_debut: today }
+        const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload)
+        if (error) { rowFailed = true; failedDetails.push({ row: item._row, ean: item.ean13, libelle: prodLib, msg: 'Tarif général : ' + error.message }) }
+      }
+      if (item.prix_client_ht && item._client) {
+        const ex = getClientVente(prodId, item._client.id)
+        await logPriceChange(prodId, 'vente_client_' + item._client.nom, ex?.prix_vente_ht, r2(item.prix_client_ht), 'import')
+        const payload = { produit_id: prodId, client_id: item._client.id, prix_vente_ht: r2(item.prix_client_ht), remise_pct: null, date_debut: today, notes: 'Import Excel' }
+        const { error } = ex ? await supabase.from('tarifs_vente').update(payload).eq('id', ex.id) : await supabase.from('tarifs_vente').insert(payload)
+        if (error) { rowFailed = true; failedDetails.push({ row: item._row, ean: item.ean13, libelle: prodLib, msg: 'Tarif client : ' + error.message }) }
+      }
+      if (rowFailed) failed++
+      else updated++
     }
     setRowEdits({}); setEditSource({})
-    setImportResult({ updated, failed }); setImportingData(false); setImportStep('done'); fetchAll()
+    setImportResult({ updated, failed, failedDetails }); setImportingData(false); setImportStep('done'); fetchAll()
   }
 
   const Thumb = ({ url }) => url
@@ -2180,13 +2211,34 @@ export default function Tarifs() {
                 </>
               )}
               {importStep === 'done' && importResult && (
-                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                  <CheckCircle size={48} color="#2D5A3D" style={{ marginBottom: 20 }} />
-                  <h3 style={{ marginBottom: 16 }}>Import terminé !</h3>
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: 20 }}>
-                    {importResult.updated > 0 && <div style={{ padding: '12px 24px', background: '#e8f0eb', borderRadius: 10 }}><div style={{ fontSize: 24, fontWeight: 700, color: '#2D5A3D' }}>{importResult.updated}</div><div style={{ fontSize: 12, color: '#2D5A3D' }}>importés</div></div>}
-                    {importResult.failed > 0 && <div style={{ padding: '12px 24px', background: '#fee2e2', borderRadius: 10 }}><div style={{ fontSize: 24, fontWeight: 700, color: '#dc2626' }}>{importResult.failed}</div><div style={{ fontSize: 12, color: '#dc2626' }}>échecs</div></div>}
+                <div style={{ padding: '20px' }}>
+                  <div style={{ textAlign: 'center', marginBottom: 24 }}>
+                    <CheckCircle size={48} color="#2D5A3D" style={{ marginBottom: 20 }} />
+                    <h3 style={{ marginBottom: 16 }}>Import terminé !</h3>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: 20 }}>
+                      {importResult.updated > 0 && <div style={{ padding: '12px 24px', background: '#e8f0eb', borderRadius: 10 }}><div style={{ fontSize: 24, fontWeight: 700, color: '#2D5A3D' }}>{importResult.updated}</div><div style={{ fontSize: 12, color: '#2D5A3D' }}>importés</div></div>}
+                      {importResult.failed > 0 && <div style={{ padding: '12px 24px', background: '#fee2e2', borderRadius: 10 }}><div style={{ fontSize: 24, fontWeight: 700, color: '#dc2626' }}>{importResult.failed}</div><div style={{ fontSize: 12, color: '#dc2626' }}>échecs</div></div>}
+                    </div>
                   </div>
+                  {importResult.failedDetails?.length > 0 && (
+                    <>
+                      <p className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <AlertTriangle size={14} color="#dc2626" /> Détail des échecs
+                      </p>
+                      <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #fca5a5', borderRadius: 8 }}>
+                        {importResult.failedDetails.map((e, i) => (
+                          <div key={i} style={{ padding: '8px 12px', borderBottom: '1px solid #fee2e2', fontSize: 12 }}>
+                            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 2 }}>
+                              <span style={{ color: '#dc2626', fontWeight: 600 }}>Ligne {e.row}</span>
+                              {e.ean && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>EAN {e.ean}</span>}
+                              {e.libelle && <span style={{ fontWeight: 500 }}>{e.libelle.slice(0, 60)}</span>}
+                            </div>
+                            <div style={{ color: 'var(--text-secondary)' }}>{e.msg}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
