@@ -844,11 +844,58 @@ export default function Tarifs() {
       return acc
     }, {})
 
-    autoTable(doc, {
-      head, body,
-      startY: tableStartY,
+    // ── Chrome de page (bande, logo compact pages 2+, footer) ──
+    // Extrait dans une fonction pour pouvoir l'appeler aussi lors de nos addPage manuels.
+    function drawPageChrome(pageNum, pageCountForFooter) {
+      // Bande du haut (violet plein)
+      doc.setFillColor(...PRIMARY)
+      doc.rect(0, 0, pageWidth, 3, 'F')
+      // Pages suivantes : logo compact + titre
+      if (pageNum > 1) {
+        if (logo) {
+          const h = 7
+          const w = h * (logo.width / logo.height)
+          doc.addImage(logo.data, 'PNG', 10, 5, w, h)
+        }
+        doc.setFont(FONT, 'normal')
+        doc.setTextColor(...TEXT_SECONDARY)
+        doc.setFontSize(7.5)
+        doc.text(title || 'Liste tarifaire', pageWidth - 10, 9, { align: 'right' })
+      }
+      // Bande du bas + pied de page + rappel confidentialité
+      doc.setFillColor(...PRIMARY)
+      doc.rect(0, pageHeight - 3, pageWidth, 3, 'F')
+      doc.setFont(FONT, 'normal')
+      doc.setFontSize(7)
+      doc.setTextColor(...TEXT_MUTED)
+      doc.text('Document confidentiel — réservé à l\'usage exclusif du destinataire, toute diffusion est strictement interdite', 10, pageHeight - 6)
+      doc.text(`Page ${pageNum} / ${pageCountForFooter || pageNum}`, pageWidth - 10, pageHeight - 6, { align: 'right' })
+    }
+
+    // ── Découpage du body en groupes par famille ──
+    // Un groupe = { headerCell (cellule famille), productRows, productMetas }
+    const groups = []
+    let curGroup = null
+    for (let i = 0; i < body.length; i++) {
+      const meta = bodyRowMeta[i]
+      if (meta.kind === 'famille') {
+        curGroup = { headerRow: body[i], productRows: [], productMetas: [] }
+        groups.push(curGroup)
+      } else if (curGroup) {
+        curGroup.productRows.push(body[i])
+        curGroup.productMetas.push(meta)
+      }
+    }
+
+    // Estimations conservatives pour décider du saut de page
+    const FAMILLE_H_EST = 9        // en-tête famille (mm)
+    const PROD_H_EST = includePhotos ? 18 : 14  // produit (mm)
+    const BOTTOM_MARGIN = 14
+    const PAGE_USABLE_BOTTOM = pageHeight - BOTTOM_MARGIN
+
+    const commonOpts = {
       theme: 'striped',
-      rowPageBreak: 'avoid', // pas de produit coupé entre deux pages
+      rowPageBreak: 'avoid',
       styles: {
         font: FONT,
         fontSize: 8,
@@ -870,99 +917,106 @@ export default function Tarifs() {
       alternateRowStyles: { fillColor: ALT_ROW },
       columnStyles: colStyles,
       bodyStyles: includePhotos ? { minCellHeight: 16 } : undefined,
-      margin: { left: 8, right: 8, top: 18, bottom: 14 },
-      willDrawCell: (data) => {
-        // Empêche qu'un en-tête de famille soit orphelin en bas de page :
-        // si moins de 2 lignes de produits peuvent tenir après, on force un saut de page.
-        if (data.section !== 'body' || data.column.index !== 0) return
-        const meta = bodyRowMeta[data.row.index]
-        if (meta?.kind !== 'famille') return
-        let upcomingProducts = 0
-        for (let i = data.row.index + 1; i < bodyRowMeta.length; i++) {
-          const m = bodyRowMeta[i]
-          if (m.kind === 'famille') break
-          if (m.kind === 'product') upcomingProducts++
-        }
-        // Doit pouvoir tenir l'en-tête + au moins 2 produits (ou tout ce qui reste s'il y en a moins).
-        // Estimations délibérément larges pour absorber les libellés multi-lignes :
-        // - sans photos, un produit peut faire jusqu'à ~14mm (texte qui wrap sur 2 lignes)
-        // - avec photos, minCellHeight 16mm + un peu de marge → ~18mm
-        const productsToFit = Math.min(upcomingProducts, 2)
-        const productRowHeight = includePhotos ? 18 : 14
-        const headerHeight = 9
-        const minBlock = headerHeight + productsToFit * productRowHeight
-        const pageH = doc.internal.pageSize.getHeight()
-        const bottomMargin = 14
-        if (data.cursor.y + minBlock > pageH - bottomMargin) {
-          // Force un saut de page avant de dessiner cet en-tête.
-          // On pousse cursor.y au-delà de la page pour qu'autoTable déclenche le pageBreak interne.
-          data.cursor.y = pageH + 100
-        }
-      },
-      didDrawCell: (data) => {
-        if (data.section !== 'body') return
-        const meta = bodyRowMeta[data.row.index]
-        if (!meta || meta.kind !== 'product') return
-        const col = activeCols[data.column.index]
-        const p = meta.produit
-        if (!p || !col) return
-        if (col.id === 'photo') {
-          const img = photoMap[p.id]
-          if (img) {
-            const size = Math.min(data.cell.height - 2, 14)
-            const x = data.cell.x + (data.cell.width - size) / 2
-            const y = data.cell.y + (data.cell.height - size) / 2
-            try {
-              doc.addImage(img.data, 'JPEG', x, y, size, size)
-              if (p.photo_url) doc.link(x, y, size, size, { url: p.photo_url })
-            } catch {}
-          } else if (p.photo_url) {
+      margin: { left: 8, right: 8, top: 18, bottom: BOTTOM_MARGIN },
+    }
+
+    // Pour les hooks, on doit pouvoir retrouver le produit depuis (groupe courant, row.index)
+    let activeGroupMetas = null
+
+    function makeHooks() {
+      return {
+        didDrawCell: (data) => {
+          if (data.section !== 'body') return
+          const meta = activeGroupMetas?.[data.row.index]
+          if (!meta || meta.kind !== 'product') return
+          const col = activeCols[data.column.index]
+          const p = meta.produit
+          if (!p || !col) return
+          if (col.id === 'photo') {
+            const img = photoMap[p.id]
+            if (img) {
+              const size = Math.min(data.cell.height - 2, 14)
+              const x = data.cell.x + (data.cell.width - size) / 2
+              const y = data.cell.y + (data.cell.height - size) / 2
+              try {
+                doc.addImage(img.data, 'JPEG', x, y, size, size)
+                if (p.photo_url) doc.link(x, y, size, size, { url: p.photo_url })
+              } catch {}
+            } else if (p.photo_url) {
+              doc.setTextColor(...PRIMARY)
+              doc.setFont(FONT, 'normal')
+              doc.setFontSize(7)
+              const cx = data.cell.x + data.cell.width / 2
+              const cy = data.cell.y + data.cell.height / 2 + 1
+              doc.text('Voir', cx, cy, { align: 'center' })
+              doc.link(data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2, { url: p.photo_url })
+            }
+          } else if (col.id === 'libelle' && p.photo_url && !includePhotos) {
             doc.setTextColor(...PRIMARY)
-            doc.setFont(FONT, 'normal')
-            doc.setFontSize(7)
-            const cx = data.cell.x + data.cell.width / 2
-            const cy = data.cell.y + data.cell.height / 2 + 1
-            doc.text('Voir', cx, cy, { align: 'center' })
-            doc.link(data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2, { url: p.photo_url })
+            doc.setFont(FONT, 'italic')
+            doc.setFontSize(6)
+            const textY = data.cell.y + data.cell.height - 1.5
+            doc.textWithLink('Voir photo ▸', data.cell.x + 1, textY, { url: p.photo_url })
           }
-        } else if (col.id === 'libelle' && p.photo_url && !includePhotos) {
-          doc.setTextColor(...PRIMARY)
-          doc.setFont(FONT, 'italic')
-          doc.setFontSize(6)
-          const textY = data.cell.y + data.cell.height - 1.5
-          doc.textWithLink('Voir photo ▸', data.cell.x + 1, textY, { url: p.photo_url })
-        }
-      },
-      didDrawPage: (data) => {
-        const pageCount = doc.internal.getNumberOfPages()
-        const pageNum = data.pageNumber
-        // Bande du haut (violet plein) sur chaque page
-        doc.setFillColor(...PRIMARY)
-        doc.rect(0, 0, pageWidth, 3, 'F')
+        },
+        didDrawPage: (data) => {
+          drawPageChrome(data.pageNumber)
+        },
+      }
+    }
 
-        // Pages suivantes : logo très compact + titre
-        if (pageNum > 1) {
-          if (logo) {
-            const h = 7
-            const w = h * (logo.width / logo.height)
-            doc.addImage(logo.data, 'PNG', 10, 5, w, h)
-          }
-          doc.setFont(FONT, 'normal')
-          doc.setTextColor(...TEXT_SECONDARY)
-          doc.setFontSize(7.5)
-          doc.text(title || 'Liste tarifaire', pageWidth - 10, 9, { align: 'right' })
-        }
+    // Première page : on a déjà dessiné l'en-tête haut (logos, titre, séparateur). Pas besoin de drawPageChrome ici.
+    let currentY = tableStartY
+    let isFirstTable = true
 
-        // Bande du bas + pied de page + rappel confidentialité (même police que le reste)
-        doc.setFillColor(...PRIMARY)
-        doc.rect(0, pageHeight - 3, pageWidth, 3, 'F')
-        doc.setFont(FONT, 'normal')
-        doc.setFontSize(7)
-        doc.setTextColor(...TEXT_MUTED)
-        doc.text('Document confidentiel — réservé à l\'usage exclusif du destinataire, toute diffusion est strictement interdite', 10, pageHeight - 6)
-        doc.text(`Page ${pageNum} / ${pageCount}`, pageWidth - 10, pageHeight - 6, { align: 'right' })
-      },
-    })
+    for (let gi = 0; gi < groups.length; gi++) {
+      const group = groups[gi]
+      activeGroupMetas = [{ kind: 'famille' }, ...group.productMetas]
+      const subBody = [group.headerRow, ...group.productRows]
+
+      // Doit pouvoir tenir l'en-tête + au moins min(2, products) lignes produits sans casser
+      const productsForBlock = Math.min(2, group.productRows.length)
+      const minBlockH = FAMILLE_H_EST + productsForBlock * PROD_H_EST
+      const remainingOnPage = PAGE_USABLE_BOTTOM - currentY
+
+      let needsHeadAtTop = isFirstTable
+      let useStartY = currentY
+
+      if (!isFirstTable && minBlockH > remainingOnPage) {
+        // Forcer un saut de page propre avant de commencer ce groupe
+        doc.addPage()
+        drawPageChrome(doc.internal.getCurrentPageInfo().pageNumber)
+        useStartY = 18 // top margin
+        needsHeadAtTop = true
+      }
+
+      autoTable(doc, {
+        ...commonOpts,
+        head: needsHeadAtTop ? head : undefined,
+        body: subBody,
+        startY: useStartY,
+        // showHead: 'everyPage' sur le 1er groupe et chaque fois qu'on démarre une nouvelle page → l'en-tête se redessine
+        // si le groupe déborde en pages suivantes.
+        showHead: needsHeadAtTop ? 'everyPage' : 'never',
+        ...makeHooks(),
+      })
+
+      currentY = doc.lastAutoTable.finalY
+      isFirstTable = false
+    }
+
+    // Re-trace numéros de page corrects sur toutes les pages (avec le pageCount final)
+    const totalPages = doc.internal.getNumberOfPages()
+    for (let p = 1; p <= totalPages; p++) {
+      doc.setPage(p)
+      // On efface uniquement la zone du numéro et on réécrit
+      doc.setFillColor(255, 255, 255)
+      doc.rect(pageWidth - 40, pageHeight - 9, 38, 5, 'F')
+      doc.setFont(FONT, 'normal')
+      doc.setFontSize(7)
+      doc.setTextColor(...TEXT_MUTED)
+      doc.text(`Page ${p} / ${totalPages}`, pageWidth - 10, pageHeight - 6, { align: 'right' })
+    }
 
     const filename = `Tarifs_${client.nom.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`
     doc.save(filename)
