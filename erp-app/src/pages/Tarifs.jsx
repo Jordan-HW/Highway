@@ -883,15 +883,20 @@ export default function Tarifs() {
           if (m.kind === 'famille') break
           if (m.kind === 'product') upcomingProducts++
         }
+        // Doit pouvoir tenir l'en-tête + au moins 2 produits (ou tout ce qui reste s'il y en a moins).
+        // Estimations délibérément larges pour absorber les libellés multi-lignes :
+        // - sans photos, un produit peut faire jusqu'à ~14mm (texte qui wrap sur 2 lignes)
+        // - avec photos, minCellHeight 16mm + un peu de marge → ~18mm
         const productsToFit = Math.min(upcomingProducts, 2)
-        const productRowHeight = includePhotos ? 16 : 7
-        const headerHeight = 6
+        const productRowHeight = includePhotos ? 18 : 14
+        const headerHeight = 9
         const minBlock = headerHeight + productsToFit * productRowHeight
         const pageH = doc.internal.pageSize.getHeight()
         const bottomMargin = 14
         if (data.cursor.y + minBlock > pageH - bottomMargin) {
-          // Force un saut de page avant de dessiner cet en-tête
-          data.cursor.y = pageH + 1
+          // Force un saut de page avant de dessiner cet en-tête.
+          // On pousse cursor.y au-delà de la page pour qu'autoTable déclenche le pageBreak interne.
+          data.cursor.y = pageH + 100
         }
       },
       didDrawCell: (data) => {
