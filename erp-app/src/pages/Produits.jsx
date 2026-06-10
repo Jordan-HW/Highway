@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/Toast'
-import { Plus, Search, X, Package, Edit2, Trash2, Settings2, Download, Upload, CheckSquare, Square, Info, Languages, Save, GripVertical } from 'lucide-react'
+import { Plus, Search, X, Package, Edit2, Trash2, Settings2, Download, Upload, CheckSquare, Square, Info, Languages, Save, GripVertical, Power, Eye, EyeOff } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import ImportProduits from './ImportProduits'
 import LangToggle from '../components/LangToggle'
@@ -95,6 +95,20 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
 
   const [photoZoom, setPhotoZoom] = useState(false)
   const [translating, setTranslating] = useState(false)
+  const [togglingStatut, setTogglingStatut] = useState(false)
+
+  async function toggleStatut() {
+    const isActive = form.statut === 'actif'
+    const next = isActive ? 'inactif' : 'actif'
+    if (isActive && !confirm('Désactiver ce produit ? Il restera dans la base mais ne sera plus référenceable.')) return
+    setTogglingStatut(true)
+    const { error } = await supabase.from('produits').update({ statut: next }).eq('id', product.id)
+    setTogglingStatut(false)
+    if (error) return toast('Erreur : ' + error.message, 'error')
+    set('statut', next)
+    toast(isActive ? 'Produit désactivé' : 'Produit réactivé', 'success')
+    onSaved(panelTab)
+  }
 
   async function translateText(sourceField, targetField) {
     const text = form[sourceField]
@@ -147,6 +161,15 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{marqueName}{product.ean13 ? ` · ${formatEan(product.ean13)}` : ''}</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button
+              className="btn-icon"
+              onClick={toggleStatut}
+              disabled={togglingStatut}
+              title={form.statut === 'actif' ? 'Désactiver ce produit' : 'Réactiver ce produit'}
+              style={{ color: form.statut === 'actif' ? 'var(--success)' : 'var(--danger)' }}
+            >
+              <Power size={15} />
+            </button>
             <button className="btn-icon" onClick={() => { if (confirm('Supprimer ce produit ?')) { onDelete(product.id); onClose() } }} title="Supprimer"><Trash2 size={15} /></button>
             <button className="btn-icon" onClick={onClose}><X size={18} /></button>
           </div>
@@ -712,6 +735,16 @@ export default function Produits() {
   const [filterMarque, setFilterMarque]         = useState('')
   const [filterCategorie, setFilterCategorie]   = useState('')
   const [filterStatut, setFilterStatut]         = useState('')
+  const [hideInactifs, setHideInactifs] = useState(() => {
+    try { const v = localStorage.getItem('highway_hide_inactifs'); return v == null ? true : v === '1' } catch { return true }
+  })
+  function toggleHideInactifs() {
+    setHideInactifs(v => {
+      const next = !v
+      try { localStorage.setItem('highway_hide_inactifs', next ? '1' : '0') } catch {}
+      return next
+    })
+  }
   const [modal, setModal]             = useState(false)
   const [form, setForm]               = useState(emptyForm)
   const [saving, setSaving]           = useState(false)
@@ -877,7 +910,9 @@ export default function Produits() {
       || r.categorie_id === filterCategorie
       || categories.some(c => c.id === r.categorie_id && c.parent_id === filterCategorie)
     const matchStatut    = !filterStatut    || r.statut       === filterStatut
-    return matchSearch && matchMarque && matchCategorie && matchStatut
+    // Si "Masquer inactifs" est actif ET pas de filtre statut explicite → on cache les inactifs
+    const matchHide      = !hideInactifs || filterStatut || r.statut !== 'inactif'
+    return matchSearch && matchMarque && matchCategorie && matchStatut && matchHide
   })
 
   const sorted = sortConfig.key
@@ -999,6 +1034,15 @@ export default function Produits() {
             <option value="">Tous les statuts</option>
             {STATUTS.map(s => <option key={s} value={s}>{formatStatut(s)}</option>)}
           </select>
+          <button
+            className="btn btn-secondary"
+            onClick={toggleHideInactifs}
+            title={hideInactifs ? 'Afficher les produits inactifs' : 'Masquer les produits inactifs'}
+            style={{ fontSize: 12, padding: '6px 12px', gap: 6 }}
+          >
+            {hideInactifs ? <EyeOff size={14} /> : <Eye size={14} />}
+            {hideInactifs ? 'Inactifs masqués' : 'Inactifs affichés'}
+          </button>
         </div>
 
         <div className="card">
