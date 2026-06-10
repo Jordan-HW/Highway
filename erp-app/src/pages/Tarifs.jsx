@@ -1564,7 +1564,7 @@ export default function Tarifs() {
             <Search />
             <input placeholder="Rechercher un produit..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          {view === 'produit' && (
+          {(view === 'produit' || (view === 'client' && selectedClient)) && (
             <select className="filter-select" value={filterMarque} onChange={e => setFilterMarque(e.target.value)}>
               <option value="">Toutes les marques</option>
               {marques.map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
