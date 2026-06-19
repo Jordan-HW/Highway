@@ -131,6 +131,7 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
     ['colisage', 'Colisage'],
     ['conservation', 'Conservation'],
     ['ingredients', 'Ingrédients'],
+    ['etiquette', 'Étiquette'],
     ['douane', 'Douane'],
     ['tarifs', 'Tarifs'],
   ]
@@ -416,6 +417,44 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
             </>
           )}
 
+          {/* ── Étiquette ── */}
+          {panelTab === 'etiquette' && (
+            <>
+              <SectionHeader section="etiquette" title="Étiquettes produit" />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary)' }}>Étiquette originale (VO)</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+                    Format d'étiquette du fabricant tel qu'il apparaît sur le packaging d'origine.
+                  </div>
+                  <LogoUploader
+                    value={form.etiquette_originale_url}
+                    onChange={url => set('etiquette_originale_url', url)}
+                    folder="etiquettes/originales"
+                    accept="image/*,application/pdf"
+                  />
+                </div>
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary)' }}>Étiquette FR (à superposer)</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+                    Étiquette traduite en français avec les mentions réglementaires pour la distribution en France (ingrédients, allergènes, DLC, conservation, opérateur, etc.). À venir collaborative — pour l'instant, upload du fichier final.
+                  </div>
+                  <LogoUploader
+                    value={form.etiquette_fr_url}
+                    onChange={url => set('etiquette_fr_url', url)}
+                    folder="etiquettes/fr"
+                    accept="image/*,application/pdf"
+                  />
+                </div>
+              </div>
+              <div style={{ marginTop: 18 }}>
+                <button className="btn btn-primary" onClick={saveSection} disabled={saving} style={{ fontSize: 12, padding: '6px 14px', gap: 4 }}>
+                  <Save size={13} /> {saving ? 'Enregistrement...' : 'Enregistrer'}
+                </button>
+              </div>
+            </>
+          )}
+
           {/* ── Douane ── */}
           {panelTab === 'douane' && (
             <>
@@ -505,6 +544,7 @@ const ALL_COLUMNS = [
   { key: 'categorie_nom',       label: 'Famille',         group: 'Général',  default: true,  exportKey: 'categorie_nom' },
   { key: 'ref_marque',          label: 'Réf. interne',    group: 'Général',  default: false, exportKey: 'ref_marque' },
   { key: 'statut',              label: 'Statut',          group: 'Général',  default: true,  exportKey: 'statut' },
+  { key: 'etiquettes',          label: 'Étiquettes',      group: 'Général',  default: true,  exportKey: null },
   { key: 'pcb',                 label: 'Cdt',             group: 'Colisage', default: true,  exportKey: 'pcb' },
   { key: 'poids_brut_kg',       label: 'Poids brut (kg)', group: 'Colisage', default: false, exportKey: 'poids_brut_kg' },
   { key: 'poids_net_kg',        label: 'Poids net (kg)',  group: 'Colisage', default: false, exportKey: 'poids_net_kg' },
@@ -721,7 +761,7 @@ const emptyForm = {
   temperature_stockage: 'ambiant',
   dlc_type: 'DLC', dlc_duree_jours: '',
   ref_marque: '', photo_url: '', fiche_technique_url: '',
-  statut: 'actif', code_douanier: '', pays_origine: '', meursing_code: '',
+  statut: 'actif', code_douanier: '', pays_origine: '', meursing_code: '', etiquette_originale_url: '', etiquette_fr_url: '',
   taux_tva: 5.5, pvpr: ''
 }
 
@@ -754,7 +794,17 @@ export default function Produits() {
   const [visibleCols, setVisibleCols] = useState(() => {
     try {
       const stored = localStorage.getItem('highway_cols')
-      return stored ? JSON.parse(stored) : ALL_COLUMNS.filter(c => c.default).map(c => c.key)
+      const parsed = stored ? JSON.parse(stored) : null
+      const defaults = ALL_COLUMNS.filter(c => c.default).map(c => c.key)
+      if (!parsed) return defaults
+      // Merge : on garde le choix user mais on ajoute les nouvelles colonnes default ajoutées au code
+      const knownKeys = new Set(ALL_COLUMNS.map(c => c.key))
+      const seen = new Set(parsed.filter(k => knownKeys.has(k)))
+      const knownStored = JSON.parse(localStorage.getItem('highway_cols_known') || '[]')
+      const knownStoredSet = new Set(knownStored)
+      defaults.forEach(k => { if (!knownStoredSet.has(k)) seen.add(k) })
+      localStorage.setItem('highway_cols_known', JSON.stringify(ALL_COLUMNS.map(c => c.key)))
+      return Array.from(seen)
     } catch { return ALL_COLUMNS.filter(c => c.default).map(c => c.key) }
   })
   const [colOrder, setColOrder] = useState(() => {
@@ -968,6 +1018,17 @@ export default function Produits() {
         return <FamillePath categorieId={row.categorie_id} categories={categories} lang={langFamille} />
       case 'ref_marque':     return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>{row.ref_marque || '—'}</span>
       case 'statut':         return <span className={`badge ${statutBadge(row.statut)}`}>{formatStatut(row.statut)}</span>
+      case 'etiquettes': {
+        const hasVO = !!row.etiquette_originale_url
+        const hasFR = !!row.etiquette_fr_url
+        if (!hasVO && !hasFR) return <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>
+        return (
+          <span style={{ display: 'inline-flex', gap: 4 }} title={`Étiquette VO : ${hasVO ? 'OK' : 'absente'}\nÉtiquette FR : ${hasFR ? 'OK' : 'absente'}`}>
+            <span title="Étiquette originale" style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: hasVO ? '#e8f0eb' : 'var(--surface-2)', color: hasVO ? '#2D5A3D' : 'var(--text-muted)' }}>VO</span>
+            <span title="Étiquette FR" style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: hasFR ? '#e8f0eb' : 'var(--surface-2)', color: hasFR ? '#2D5A3D' : 'var(--text-muted)' }}>FR</span>
+          </span>
+        )
+      }
       case 'pcb':            return row.pcb || '—'
       case 'poids_brut_kg':  return row.poids_brut_kg  ? `${row.poids_brut_kg} kg`  : '—'
       case 'poids_net_kg':   return row.poids_net_kg   ? `${row.poids_net_kg} kg`   : '—'
