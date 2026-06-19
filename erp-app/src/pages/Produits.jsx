@@ -8,6 +8,7 @@ import LangToggle from '../components/LangToggle'
 import { displayLibelle, displayLibelleCourt, displayCategorieNom, displayCategoriePath, categorieSortKey, formatEan, loadLang, saveLang, translateToFr, buildCategoryTree } from '../lib/i18n'
 import FamillePath from '../components/FamillePath'
 import LogoUploader from '../components/LogoUploader'
+import PdfThumb from '../components/PdfThumb'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatStatut(s) {
@@ -188,21 +189,14 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
                 </div>
               )}
               {product.etiquette_originale_url && (
-                packIsPdf ? (
-                  <div onClick={() => setPhotoZoom('packaging')} style={{ flex: 1, background: 'var(--surface-2)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', maxHeight: 200, cursor: 'zoom-in', position: 'relative', overflow: 'hidden' }}>
-                    <embed
-                      src={product.etiquette_originale_url + '#toolbar=0&navpanes=0&scrollbar=0&view=Fit'}
-                      type="application/pdf"
-                      style={{ width: '100%', height: 160, border: 0, borderRadius: 8, pointerEvents: 'none', background: '#fff' }}
-                    />
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, textTransform: 'uppercase', letterSpacing: '.05em' }}>Packaging (PDF)</div>
-                  </div>
-                ) : (
-                  <div onClick={() => setPhotoZoom('packaging')} style={{ flex: 1, background: 'var(--surface-2)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', maxHeight: 200, cursor: 'zoom-in' }}>
+                <div onClick={() => setPhotoZoom('packaging')} style={{ flex: 1, background: 'var(--surface-2)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', maxHeight: 200, cursor: 'zoom-in' }}>
+                  {packIsPdf ? (
+                    <PdfThumb url={product.etiquette_originale_url} maxHeight={160} />
+                  ) : (
                     <img src={product.etiquette_originale_url} alt="packaging" style={{ maxWidth: '100%', maxHeight: 160, objectFit: 'contain', borderRadius: 8 }} />
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, textTransform: 'uppercase', letterSpacing: '.05em' }}>Packaging</div>
-                  </div>
-                )
+                  )}
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, textTransform: 'uppercase', letterSpacing: '.05em' }}>Packaging</div>
+                </div>
               )}
             </div>
           )
