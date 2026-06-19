@@ -189,11 +189,14 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
               )}
               {product.etiquette_originale_url && (
                 packIsPdf ? (
-                  <a href={product.etiquette_originale_url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, background: 'var(--surface-2)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', maxHeight: 200, textDecoration: 'none', color: 'var(--text-primary)' }}>
-                    <FileText size={48} color="var(--primary)" />
-                    <div style={{ fontSize: 11, fontWeight: 600, marginTop: 8, color: 'var(--primary)' }}>Ouvrir le packaging (PDF)</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, textTransform: 'uppercase', letterSpacing: '.05em' }}>Packaging</div>
-                  </a>
+                  <div onClick={() => setPhotoZoom('packaging')} style={{ flex: 1, background: 'var(--surface-2)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', maxHeight: 200, cursor: 'zoom-in', position: 'relative', overflow: 'hidden' }}>
+                    <embed
+                      src={product.etiquette_originale_url + '#toolbar=0&navpanes=0&scrollbar=0&view=Fit'}
+                      type="application/pdf"
+                      style={{ width: '100%', height: 160, border: 0, borderRadius: 8, pointerEvents: 'none', background: '#fff' }}
+                    />
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, textTransform: 'uppercase', letterSpacing: '.05em' }}>Packaging (PDF)</div>
+                  </div>
                 ) : (
                   <div onClick={() => setPhotoZoom('packaging')} style={{ flex: 1, background: 'var(--surface-2)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', maxHeight: 200, cursor: 'zoom-in' }}>
                     <img src={product.etiquette_originale_url} alt="packaging" style={{ maxWidth: '100%', maxHeight: 160, objectFit: 'contain', borderRadius: 8 }} />
@@ -204,11 +207,24 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
             </div>
           )
         })()}
-        {photoZoom && (
-          <div onClick={() => setPhotoZoom(false)} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
-            <img src={photoZoom === 'packaging' ? product.etiquette_originale_url : product.photo_url} alt={product.libelle} style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
-          </div>
-        )}
+        {photoZoom && (() => {
+          const url = photoZoom === 'packaging' ? product.etiquette_originale_url : product.photo_url
+          const isPdf = url && /\.pdf(\?|$)/i.test(url)
+          return (
+            <div onClick={() => setPhotoZoom(false)} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
+              {isPdf ? (
+                <embed
+                  onClick={e => e.stopPropagation()}
+                  src={url}
+                  type="application/pdf"
+                  style={{ width: '90vw', height: '90vh', border: 0, borderRadius: 12, background: '#fff' }}
+                />
+              ) : (
+                <img src={url} alt={product.libelle} style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
+              )}
+            </div>
+          )
+        })()}
 
         {/* Tabs bar */}
         <div style={{ display: 'flex', padding: '0 20px', borderBottom: '1px solid var(--border)' }}>
