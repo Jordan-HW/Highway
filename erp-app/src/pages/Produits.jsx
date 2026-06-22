@@ -186,18 +186,22 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
           </div>
         )}
         {photoZoom && (() => {
-          const url = photoZoom === 'packaging' ? product.etiquette_originale_url
-                    : photoZoom === 'etiquette_fr' ? product.etiquette_fr_url
-                    : product.photo_url
-          const isPdf = url && /\.pdf(\?|$)/i.test(url)
+          // Pour zoom : on préfère le preview PNG (rendu fiable, pas de download forcé)
+          // et on garde l'URL du PDF d'origine pour le bouton "ouvrir"
+          const pdfUrl = photoZoom === 'packaging' ? product.etiquette_originale_url
+                       : photoZoom === 'etiquette_fr' ? product.etiquette_fr_url
+                       : null
+          const previewUrl = photoZoom === 'packaging' ? product.etiquette_originale_preview_url
+                           : photoZoom === 'etiquette_fr' ? product.etiquette_fr_preview_url
+                           : null
+          const displayUrl = previewUrl || pdfUrl || product.photo_url
           return (
             <div onClick={() => setPhotoZoom(false)} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
-              {isPdf ? (
-                <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 16, maxHeight: '90vh', overflow: 'auto' }}>
-                  <PdfThumb url={url} maxHeight={window.innerHeight * 0.82} />
-                </div>
-              ) : (
-                <img src={url} alt={product.libelle} style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
+              <img onClick={e => e.stopPropagation()} src={displayUrl} alt={product.libelle} style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12, background: '#fff' }} />
+              {pdfUrl && (
+                <a href={pdfUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ position: 'fixed', bottom: 24, right: 24, padding: '8px 16px', background: 'rgba(255,255,255,0.95)', color: '#222', borderRadius: 8, fontSize: 13, fontWeight: 500, textDecoration: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
+                  Ouvrir le PDF
+                </a>
               )}
             </div>
           )
