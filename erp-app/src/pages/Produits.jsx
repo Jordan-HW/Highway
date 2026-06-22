@@ -177,42 +177,25 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
           </div>
         </div>
 
-        {/* Photo + Packaging côte à côte (le packaging est optionnel — vérification visuelle) */}
-        {(product.photo_url || product.etiquette_originale_url) && (() => {
-          const packIsPdf = product.etiquette_originale_url && /\.pdf(\?|$)/i.test(product.etiquette_originale_url)
-          return (
-            <div style={{ padding: '16px 20px 0', display: 'flex', justifyContent: 'center', gap: 10 }}>
-              {product.photo_url && (
-                <div onClick={() => setPhotoZoom('photo')} style={{ flex: 1, background: 'var(--surface-2)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', maxHeight: 200, cursor: 'zoom-in' }}>
-                  <img src={product.photo_url} alt={product.libelle} style={{ maxWidth: '100%', maxHeight: 160, objectFit: 'contain', borderRadius: 8 }} />
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, textTransform: 'uppercase', letterSpacing: '.05em' }}>Photo</div>
-                </div>
-              )}
-              {product.etiquette_originale_url && (
-                <div onClick={() => setPhotoZoom('packaging')} style={{ flex: 1, background: 'var(--surface-2)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', maxHeight: 200, cursor: 'zoom-in' }}>
-                  {packIsPdf ? (
-                    <PdfThumb url={product.etiquette_originale_url} maxHeight={160} />
-                  ) : (
-                    <img src={product.etiquette_originale_url} alt="packaging" style={{ maxWidth: '100%', maxHeight: 160, objectFit: 'contain', borderRadius: 8 }} />
-                  )}
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, textTransform: 'uppercase', letterSpacing: '.05em' }}>Packaging</div>
-                </div>
-              )}
+        {/* Photo produit en haut — packaging/étiquette FR sont dans l'onglet Packaging */}
+        {product.photo_url && (
+          <div style={{ padding: '16px 20px 0', display: 'flex', justifyContent: 'center' }}>
+            <div onClick={() => setPhotoZoom('photo')} style={{ background: 'var(--surface-2)', borderRadius: 12, padding: 12, cursor: 'zoom-in', maxWidth: 240 }}>
+              <img src={product.photo_url} alt={product.libelle} style={{ maxWidth: '100%', maxHeight: 160, objectFit: 'contain', borderRadius: 8, display: 'block' }} />
             </div>
-          )
-        })()}
+          </div>
+        )}
         {photoZoom && (() => {
-          const url = photoZoom === 'packaging' ? product.etiquette_originale_url : product.photo_url
+          const url = photoZoom === 'packaging' ? product.etiquette_originale_url
+                    : photoZoom === 'etiquette_fr' ? product.etiquette_fr_url
+                    : product.photo_url
           const isPdf = url && /\.pdf(\?|$)/i.test(url)
           return (
             <div onClick={() => setPhotoZoom(false)} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
               {isPdf ? (
-                <embed
-                  onClick={e => e.stopPropagation()}
-                  src={url}
-                  type="application/pdf"
-                  style={{ width: '90vw', height: '90vh', border: 0, borderRadius: 12, background: '#fff' }}
-                />
+                <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 16, maxHeight: '90vh', overflow: 'auto' }}>
+                  <PdfThumb url={url} maxHeight={window.innerHeight * 0.82} />
+                </div>
               ) : (
                 <img src={url} alt={product.libelle} style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
               )}
@@ -448,42 +431,72 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
           )}
 
           {/* ── Packaging ── */}
-          {panelTab === 'etiquette' && (
-            <>
-              <SectionHeader section="etiquette" title="Packaging produit" />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary)' }}>Packaging original (VO)</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
-                    Image ou PDF du packaging d'origine tel qu'il apparaît sur le produit.
+          {panelTab === 'etiquette' && (() => {
+            const isPdf = (u) => u && /\.pdf(\?|$)/i.test(u)
+            // Choix de l'URL d'affichage : preview PNG si dispo, sinon URL d'origine
+            const voThumb = product.etiquette_originale_preview_url || product.etiquette_originale_url
+            const frThumb = product.etiquette_fr_preview_url || product.etiquette_fr_url
+            const tiles = [
+              product.photo_url && { key: 'photo', thumb: product.photo_url, full: product.photo_url, label: 'Photo produit', sub: null },
+              voThumb && { key: 'packaging', thumb: voThumb, full: product.etiquette_originale_url, label: 'Packaging VO', sub: null },
+              frThumb && { key: 'etiquette_fr', thumb: frThumb, full: product.etiquette_fr_url, label: 'Étiquette FR', sub: product.etiquette_fr_format },
+            ].filter(Boolean)
+            return (
+              <>
+                <SectionHeader section="etiquette" title="Packaging produit" />
+                {tiles.length > 0 && (
+                  <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+                    {tiles.map(t => (
+                      <div key={t.key} onClick={() => setPhotoZoom(t.key)} style={{ flex: '1 1 0', minWidth: 140, background: 'var(--surface-2)', borderRadius: 12, padding: 12, cursor: 'zoom-in', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 180, width: '100%' }}>
+                          {isPdf(t.thumb) ? (
+                            <PdfThumb url={t.thumb} maxHeight={180} />
+                          ) : (
+                            <img src={t.thumb} alt={t.label} style={{ maxWidth: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 8 }} />
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 8, fontWeight: 600, textAlign: 'center' }}>{t.label}</div>
+                        {t.sub && (
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, textTransform: 'uppercase', letterSpacing: '.05em' }}>{t.sub}</div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  <LogoUploader
-                    value={form.etiquette_originale_url}
-                    onChange={url => set('etiquette_originale_url', url)}
-                    folder="etiquettes/originales"
-                    accept="image/*,application/pdf"
-                  />
-                </div>
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary)' }}>Étiquette FR (à superposer)</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
-                    Étiquette française à coller par dessus le packaging — mentions réglementaires pour la distribution en France (ingrédients, allergènes, DLC, conservation, opérateur, etc.). À générer dans un second temps.
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary)' }}>Packaging original (VO)</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+                      Image ou PDF du packaging d'origine tel qu'il apparaît sur le produit.
+                    </div>
+                    <LogoUploader
+                      value={form.etiquette_originale_url}
+                      onChange={url => set('etiquette_originale_url', url)}
+                      folder="etiquettes/originales"
+                      accept="image/*,application/pdf"
+                    />
                   </div>
-                  <LogoUploader
-                    value={form.etiquette_fr_url}
-                    onChange={url => set('etiquette_fr_url', url)}
-                    folder="etiquettes/fr"
-                    accept="image/*,application/pdf"
-                  />
+                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary)' }}>Étiquette FR (à superposer)</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+                      Étiquette française à coller par dessus le packaging — mentions réglementaires pour la distribution en France (ingrédients, allergènes, DLC, conservation, opérateur, etc.). À générer dans un second temps.
+                    </div>
+                    <LogoUploader
+                      value={form.etiquette_fr_url}
+                      onChange={url => set('etiquette_fr_url', url)}
+                      folder="etiquettes/fr"
+                      accept="image/*,application/pdf"
+                    />
+                  </div>
                 </div>
-              </div>
-              <div style={{ marginTop: 18 }}>
-                <button className="btn btn-primary" onClick={saveSection} disabled={saving} style={{ fontSize: 12, padding: '6px 14px', gap: 4 }}>
-                  <Save size={13} /> {saving ? 'Enregistrement...' : 'Enregistrer'}
-                </button>
-              </div>
-            </>
-          )}
+                <div style={{ marginTop: 18 }}>
+                  <button className="btn btn-primary" onClick={saveSection} disabled={saving} style={{ fontSize: 12, padding: '6px 14px', gap: 4 }}>
+                    <Save size={13} /> {saving ? 'Enregistrement...' : 'Enregistrer'}
+                  </button>
+                </div>
+              </>
+            )
+          })()}
 
           {/* ── Douane ── */}
           {panelTab === 'douane' && (
