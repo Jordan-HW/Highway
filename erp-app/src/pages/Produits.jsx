@@ -9,6 +9,7 @@ import { displayLibelle, displayLibelleCourt, displayCategorieNom, displayCatego
 import FamillePath from '../components/FamillePath'
 import LogoUploader from '../components/LogoUploader'
 import PdfThumb from '../components/PdfThumb'
+import StickerSimulation from '../components/StickerSimulation'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatStatut(s) {
@@ -80,7 +81,8 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
     ;['poids_brut_kg','poids_net_kg','volume_m3','longueur_cm','largeur_cm','hauteur_cm',
       'dlc_duree_jours','pcb','taux_tva','pvpr',
       'poids_colis_kg','longueur_colis_cm','largeur_colis_cm','hauteur_colis_cm',
-      'poids_produit_brut_kg','poids_produit_net_kg'].forEach(f => {
+      'poids_produit_brut_kg','poids_produit_net_kg',
+      'packaging_largeur_mm','etiquette_fr_pos_x_mm','etiquette_fr_pos_y_mm'].forEach(f => {
       if (payload[f] === '') payload[f] = null
     })
     ;['taux_tva','pvpr'].forEach(f => {
@@ -492,6 +494,45 @@ function DetailPanel({ product, marques, categories, lang, langFamille, onClose,
                       accept="image/*,application/pdf"
                     />
                   </div>
+                  {product.etiquette_originale_preview_url && product.etiquette_fr_preview_url && (
+                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary)' }}>Simulation de pose</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+                        Saisis la largeur réelle du packaging (en mm), puis glisse l'étiquette FR à la bonne position. La taille de l'étiquette respecte le format ({product.etiquette_fr_format || 'inconnu'}).
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+                        <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                          Largeur réelle du packaging&nbsp;:&nbsp;
+                          <input
+                            type="number"
+                            min="20"
+                            max="500"
+                            step="1"
+                            value={form.packaging_largeur_mm || ''}
+                            onChange={e => set('packaging_largeur_mm', e.target.value)}
+                            placeholder="ex: 120"
+                            style={{ width: 80, marginLeft: 4 }}
+                          /> mm
+                        </label>
+                      </div>
+                      {parseFloat(form.packaging_largeur_mm) > 0 ? (
+                        <StickerSimulation
+                          packagingUrl={product.etiquette_originale_preview_url}
+                          stickerUrl={product.etiquette_fr_preview_url}
+                          stickerFormat={product.etiquette_fr_format}
+                          packagingWidthMm={parseFloat(form.packaging_largeur_mm)}
+                          posXmm={form.etiquette_fr_pos_x_mm !== '' && form.etiquette_fr_pos_x_mm != null ? parseFloat(form.etiquette_fr_pos_x_mm) : null}
+                          posYmm={form.etiquette_fr_pos_y_mm !== '' && form.etiquette_fr_pos_y_mm != null ? parseFloat(form.etiquette_fr_pos_y_mm) : null}
+                          onPosChange={(x, y) => {
+                            set('etiquette_fr_pos_x_mm', x)
+                            set('etiquette_fr_pos_y_mm', y)
+                          }}
+                        />
+                      ) : (
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>Renseigne la largeur du packaging pour activer la simulation.</div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div style={{ marginTop: 18 }}>
                   <button className="btn btn-primary" onClick={saveSection} disabled={saving} style={{ fontSize: 12, padding: '6px 14px', gap: 4 }}>
@@ -809,6 +850,7 @@ const emptyForm = {
   dlc_type: 'DLC', dlc_duree_jours: '',
   ref_marque: '', photo_url: '', fiche_technique_url: '',
   statut: 'actif', code_douanier: '', pays_origine: '', meursing_code: '', etiquette_originale_url: '', etiquette_fr_url: '',
+  packaging_largeur_mm: '', etiquette_fr_pos_x_mm: '', etiquette_fr_pos_y_mm: '',
   taux_tva: 5.5, pvpr: ''
 }
 
@@ -971,7 +1013,8 @@ export default function Produits() {
     ;['poids_brut_kg','poids_net_kg','volume_m3','longueur_cm','largeur_cm','hauteur_cm',
       'dlc_duree_jours','pcb','taux_tva','pvpr',
       'poids_colis_kg','longueur_colis_cm','largeur_colis_cm','hauteur_colis_cm',
-      'poids_produit_brut_kg','poids_produit_net_kg'].forEach(f => {
+      'poids_produit_brut_kg','poids_produit_net_kg',
+      'packaging_largeur_mm','etiquette_fr_pos_x_mm','etiquette_fr_pos_y_mm'].forEach(f => {
       if (payload[f] === '') payload[f] = null
     })
     ;['taux_tva','pvpr'].forEach(f => {
